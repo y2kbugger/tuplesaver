@@ -29,14 +29,21 @@ class Engine:
     #### Writing
     def ensure_table_created(self, Model: type[ROW]) -> None:
         preamble = f"CREATE TABLE IF NOT EXISTS {Model.__name__} ("
-        columnname_types = [(name, column_type(name, FieldType)) for name, FieldType in Model.__annotations__.items()]
-        columns = ", ".join([f"{n} {t}" for n, t in columnname_types])
+        colname_types = [(name, column_type(name, FieldType)) for name, FieldType in Model.__annotations__.items()]
+        cols = ", ".join([f"{n} {t}" for n, t in colname_types])
         endcap = ");"
-        query = f"{preamble} {columns} {endcap}"
+        query = f"{preamble} {cols} {endcap}"
         self.connection.execute(query)
 
     def insert(self, row: ROW) -> ROW:
-        raise NotImplementedError
+        preamble = f"INSERT INTO {row.__class__.__name__} ("
+        colnames = ", ".join(row._fields)
+        mid = ") VALUES ("
+        placeholders = ", ".join("?" for _ in range(len(row._fields)))
+        endcap = ");"
+        query = f"{preamble} {colnames} {mid} {placeholders} {endcap}"
+        self.connection.execute(query, row)
+        return row
 
     def update(self, row: ROW) -> ROW:
         raise NotImplementedError

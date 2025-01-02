@@ -58,7 +58,6 @@ If you need to update the precommit hooks, run the following:
     pre-commit autoupdate
 
 # WIP
-- insert row
 - get row
 - update row
 - delete row
@@ -76,3 +75,5 @@ If you need to update the precommit hooks, run the following:
 - Optional columns types
 
 ## Engineering
+- benchmark performance
+- try compiled queries for performance

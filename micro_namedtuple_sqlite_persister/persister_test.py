@@ -8,7 +8,7 @@ from .persister import Engine
 
 @pytest.fixture
 def engine() -> Engine:
-    return Engine("test.db")
+    return Engine(":memory:")
 
 
 def test_get_connection(engine: Engine) -> None:
@@ -20,6 +20,12 @@ def test_get_connection(engine: Engine) -> None:
 class T(NamedTuple):
     id: int
     name: str
+    age: int
+
+
+class TblDates(NamedTuple):
+    id: int
+    name: str
     score: float
     age: int
     data: bytes
@@ -28,7 +34,7 @@ class T(NamedTuple):
 
 
 def test_ensure_table_created(engine: Engine) -> None:
-    engine.ensure_table_created(T)
+    engine.ensure_table_created(TblDates)
 
     # Check that a table was created
     cursor = engine.connection.cursor()
@@ -38,12 +44,12 @@ def test_ensure_table_created(engine: Engine) -> None:
     assert len(tables) == 1
 
     # Table Name
-    assert tables[0][0] == "T"
+    assert tables[0][0] == TblDates.__name__
 
     # Primary Key
-    cursor.execute("PRAGMA table_info(T);")
+    cursor.execute(f"PRAGMA table_info({TblDates.__name__});")
     columns = cursor.fetchall()
-    assert len(columns) == len(T._fields)
+    assert len(columns) == len(TblDates._fields)
     assert columns[0][1] == "id"  # Column Name
     assert columns[0][2] == "INTEGER"  # Column Type
     assert columns[0][3] == 0  # Not Null
@@ -84,3 +90,17 @@ def test_ensure_table_created(engine: Engine) -> None:
     assert columns[6][2] == "TEXT"  # Column Type
     assert columns[6][3] == 0  # Not Null
     assert columns[6][5] == 0  # Not Primary Key
+
+
+def test_insert_row(engine: Engine) -> None:
+    engine.ensure_table_created(T)
+    row = T(1, "Alice", 30)
+
+    engine.insert(row)
+
+    cursor = engine.connection.cursor()
+    cursor.execute("SELECT * FROM T;")
+    rows = cursor.fetchall()
+    assert len(rows) == 1
+    assert rows[0] == (1, "Alice", 30)
+    assert row == T(*rows[0])
