@@ -42,8 +42,8 @@ class Engine:
             ) VALUES (
             {', '.join("?" for _ in range(len(row._fields)))}
             )"""
-        self.connection.execute(query, row)
-        return row
+        cur = self.connection.execute(query, row)
+        return row._replace(id=cur.lastrowid)
 
     def update(self, row: ROW) -> ROW:
         raise NotImplementedError

@@ -18,13 +18,13 @@ def test_get_connection(engine: Engine) -> None:
 
 
 class T(NamedTuple):
-    id: int
+    id: int | None
     name: str
     age: int
 
 
 class TblDates(NamedTuple):
-    id: int
+    id: int | None
     name: str
     score: float
     age: int
@@ -114,3 +114,16 @@ def test_get_row(engine: Engine) -> None:
     retrieved_row = engine.get(T, 1)
 
     assert retrieved_row == row
+
+
+def test_insert_fills_in_id(engine: Engine) -> None:
+    engine.ensure_table_created(T)
+    row = T(None, "Alice", 30)
+
+    returned_row = engine.insert(row)
+
+    assert returned_row.id == 1
+
+    returned_row = engine.insert(row)
+
+    assert returned_row.id == 2
