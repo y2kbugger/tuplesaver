@@ -127,3 +127,11 @@ def test_insert_fills_in_id(engine: Engine) -> None:
     returned_row = engine.insert(row)
 
     assert returned_row.id == 2
+
+
+def test_cannot_insert_null_value_in_not_null_column(engine: Engine) -> None:
+    engine.ensure_table_created(T)
+    row = T(None, "Alice", None)  # type: ignore this bug is part of the test
+
+    with pytest.raises(Exception, match="NOT NULL constraint failed"):
+        engine.insert(row)
