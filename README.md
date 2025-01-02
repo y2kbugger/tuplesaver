@@ -58,7 +58,6 @@ If you need to update the precommit hooks, run the following:
     pre-commit autoupdate
 
 # WIP
-- get row
 - update row
 - delete row
 

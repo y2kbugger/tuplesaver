@@ -53,7 +53,13 @@ class Engine:
 
     ##### Reading
     def get(self, Model: type[ROW], row_id: int) -> ROW:
-        raise NotImplementedError
+        query = f"""
+            SELECT {', '.join(Model._fields)}
+            FROM {Model.__name__}
+            WHERE id = ?
+            """
+        cursor = self.connection.execute(query, (row_id,))
+        return Model._make(cursor.fetchone())
 
 
 ## Serialization and Deserialization

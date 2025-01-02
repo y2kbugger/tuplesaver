@@ -104,3 +104,13 @@ def test_insert_row(engine: Engine) -> None:
     assert len(rows) == 1
     assert rows[0] == (1, "Alice", 30)
     assert row == T(*rows[0])
+
+
+def test_get_row(engine: Engine) -> None:
+    engine.ensure_table_created(T)
+    row = T(1, "Alice", 30)
+    engine.insert(row)
+
+    retrieved_row = engine.get(T, 1)
+
+    assert retrieved_row == row
