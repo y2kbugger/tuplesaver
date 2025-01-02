@@ -1,4 +1,5 @@
 import datetime as dt
+import sqlite3
 from typing import NamedTuple
 
 import pytest
@@ -133,7 +134,7 @@ def test_cannot_insert_null_value_in_not_null_column(engine: Engine) -> None:
     engine.ensure_table_created(T)
     row = T(None, "Alice", None)  # type: ignore this bug is part of the test
 
-    with pytest.raises(Exception, match="NOT NULL constraint failed"):
+    with pytest.raises(sqlite3.IntegrityError, match="NOT NULL constraint failed"):
         engine.insert(row)
 
 
