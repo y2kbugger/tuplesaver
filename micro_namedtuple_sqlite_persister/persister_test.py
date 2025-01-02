@@ -135,3 +135,14 @@ def test_cannot_insert_null_value_in_not_null_column(engine: Engine) -> None:
 
     with pytest.raises(Exception, match="NOT NULL constraint failed"):
         engine.insert(row)
+
+
+def test_update_row(engine: Engine) -> None:
+    engine.ensure_table_created(T)
+    row = engine.insert(T(None, "Alice", 30))
+    engine.update(row._replace(name="Bob"))
+
+    assert row.id is not None
+    retrieved_row = engine.get(T, row.id)
+
+    assert retrieved_row == T(row.id, "Bob", 30)

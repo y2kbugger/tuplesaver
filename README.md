@@ -58,7 +58,6 @@ If you need to update the precommit hooks, run the following:
     pre-commit autoupdate
 
 # WIP
-- update row
 - delete row
 
 # Bugs
@@ -72,7 +71,13 @@ If you need to update the precommit hooks, run the following:
 - pull in object from other table as field
 - verify columns of created tables with option to delete table if mis-matched or fail instead, e.g. force=True
 - Optional columns types
+- Require and check that id is defined as an int and as the first column
 
 ## Engineering
 - benchmark performance
 - try compiled queries for performance
+- make update only update changed fields
+- Use a protocol to fix some weird typing issues
+  - row: NamedTuple vs row: ROW
+  - self.connection.execute(query, (*row, row[0]))
+  - etc.

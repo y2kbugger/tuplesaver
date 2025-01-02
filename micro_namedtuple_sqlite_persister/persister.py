@@ -23,9 +23,11 @@ def _column_definition(annotation: tuple[str, type]) -> str:
 
 
 class Engine:
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: str, echo_sql: bool = False) -> None:
         self.db_path = db_path
         self.connection = sqlite3.connect(self.db_path)
+        if echo_sql:
+            self.connection.set_trace_callback(print)
 
     #### Writing
     def ensure_table_created(self, Model: type[ROW]) -> None:
@@ -45,8 +47,14 @@ class Engine:
         cur = self.connection.execute(query, row)
         return row._replace(id=cur.lastrowid)
 
-    def update(self, row: ROW) -> ROW:
-        raise NotImplementedError
+    def update(self, row: NamedTuple) -> None:
+        query = f"""
+            UPDATE {row.__class__.__name__}
+            SET {', '.join(f"{f} = ?" for f in row._fields)}
+            WHERE id = ?
+            """
+        self.connection.execute(query, (*row, row[0]))
+        self.connection.commit()
 
     def delete(self, Model: type[ROW], row_id: int) -> None:
         raise NotImplementedError
