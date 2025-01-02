@@ -15,10 +15,11 @@ _field_type_map: Mapping[type, str] = {
 }
 
 
-def column_type(field_name: str, FieldType: type) -> str:
+def _column_definition(annotation: tuple[str, type]) -> str:
+    field_name, FieldType = annotation
     if field_name == "id":
-        return "INTEGER PRIMARY KEY"
-    return _field_type_map[FieldType]
+        return "id INTEGER PRIMARY KEY"
+    return f"{field_name} {_field_type_map[FieldType]}"
 
 
 class Engine:
@@ -28,20 +29,19 @@ class Engine:
 
     #### Writing
     def ensure_table_created(self, Model: type[ROW]) -> None:
-        preamble = f"CREATE TABLE IF NOT EXISTS {Model.__name__} ("
-        colname_types = [(name, column_type(name, FieldType)) for name, FieldType in Model.__annotations__.items()]
-        cols = ", ".join([f"{n} {t}" for n, t in colname_types])
-        endcap = ");"
-        query = f"{preamble} {cols} {endcap}"
+        query = f"""
+            CREATE TABLE IF NOT EXISTS {Model.__name__} (
+            {', '.join(_column_definition(f) for f in Model.__annotations__.items())}
+            )"""
         self.connection.execute(query)
 
     def insert(self, row: ROW) -> ROW:
-        preamble = f"INSERT INTO {row.__class__.__name__} ("
-        colnames = ", ".join(row._fields)
-        mid = ") VALUES ("
-        placeholders = ", ".join("?" for _ in range(len(row._fields)))
-        endcap = ");"
-        query = f"{preamble} {colnames} {mid} {placeholders} {endcap}"
+        query = f"""
+            INSERT INTO {row.__class__.__name__} (
+            {', '.join(row._fields)}
+            ) VALUES (
+            {', '.join("?" for _ in range(len(row._fields)))}
+            )"""
         self.connection.execute(query, row)
         return row
 
