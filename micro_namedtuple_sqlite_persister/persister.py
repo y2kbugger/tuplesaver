@@ -57,7 +57,11 @@ class Engine:
         self.connection.commit()
 
     def delete(self, Model: type[ROW], row_id: int) -> None:
-        raise NotImplementedError
+        query = f"""
+            DELETE FROM {Model.__name__}
+            WHERE id = ?
+            """
+        self.connection.execute(query, (row_id,))
 
     ##### Reading
     def get(self, Model: type[ROW], row_id: int) -> ROW:

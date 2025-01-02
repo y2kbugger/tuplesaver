@@ -146,3 +146,21 @@ def test_update_row(engine: Engine) -> None:
     retrieved_row = engine.get(T, row.id)
 
     assert retrieved_row == T(row.id, "Bob", 30)
+
+
+def test_delete_row(engine: Engine) -> None:
+    engine.ensure_table_created(T)
+    row = engine.insert(T(None, "Alice", 30))
+
+    cursor = engine.connection.cursor()
+    cursor.execute("SELECT * FROM T;")
+    rows = cursor.fetchall()
+    assert len(rows) == 1
+
+    assert row.id is not None
+    engine.delete(T, row.id)
+
+    cursor = engine.connection.cursor()
+    cursor.execute("SELECT * FROM T;")
+    rows = cursor.fetchall()
+    assert len(rows) == 0

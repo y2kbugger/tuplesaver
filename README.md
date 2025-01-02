@@ -58,9 +58,13 @@ If you need to update the precommit hooks, run the following:
     pre-commit autoupdate
 
 # WIP
-- delete row
 
 # Bugs
+
+# Tests
+- test delete row that doesn't exist
+- test update row that doesn't exist
+- test insert row with id that already exists
 
 # Backlog
 - query
@@ -72,6 +76,7 @@ If you need to update the precommit hooks, run the following:
 - verify columns of created tables with option to delete table if mis-matched or fail instead, e.g. force=True
 - Optional columns types
 - Require and check that id is defined as an int and as the first column
+- Overload on delete so you can just pass the whole row
 
 ## Engineering
 - benchmark performance
