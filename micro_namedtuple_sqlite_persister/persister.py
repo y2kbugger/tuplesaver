@@ -1,4 +1,5 @@
 import datetime as dt
+import sqlite3
 from collections.abc import Callable
 from typing import NamedTuple, TypeVar
 
@@ -7,7 +8,8 @@ ROW = TypeVar('ROW', bound=NamedTuple)
 
 class Engine:
     def __init__(self, db_path: str) -> None:
-        raise NotImplementedError
+        self.db_path = db_path
+        self.connection = sqlite3.connect(self.db_path)
 
     # writing
     def ensure_table_created(self, model: type[ROW]) -> None:
