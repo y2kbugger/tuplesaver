@@ -26,6 +26,7 @@ class Engine:
     def __init__(self, db_path: str, echo_sql: bool = False) -> None:
         self.db_path = db_path
         self.connection = sqlite3.connect(self.db_path)
+        self.connection.execute("PRAGMA journal_mode=WAL")
         if echo_sql:
             self.connection.set_trace_callback(print)
 
