@@ -117,6 +117,18 @@ def test_get_row(engine: Engine) -> None:
     assert retrieved_row == row
 
 
+def test_get_row_with_id_as_none(engine: Engine) -> None:
+    engine.ensure_table_created(T)
+    with pytest.raises(ValueError, match="Cannot SELECT, id=None"):
+        engine.get(T, None)
+
+
+def test_get_row_with_non_existent_id(engine: Engine) -> None:
+    engine.ensure_table_created(T)
+    with pytest.raises(ValueError, match="Cannot SELECT, no row with id="):
+        engine.get(T, 78787)
+
+
 def test_insert_fills_in_id(engine: Engine) -> None:
     engine.ensure_table_created(T)
     row = T(None, "Alice", 30)
@@ -153,13 +165,13 @@ def test_update_row_with_null_id(engine: Engine) -> None:
     engine.ensure_table_created(T)
     row = engine.insert(T(None, "Alice", 30))
 
-    with pytest.raises(ValueError, match="Cannot update row when id=None"):
+    with pytest.raises(ValueError, match="Cannot UPDATE, id=None"):
         engine.update(row._replace(id=None))
 
 
 def test_update_row_with_non_existent_id(engine: Engine) -> None:
     engine.ensure_table_created(T)
-    with pytest.raises(ValueError, match="No row with id="):
+    with pytest.raises(ValueError, match="Cannot UPDATE, no row with id="):
         engine.update(T(78787, "Bob", 30))
 
 
@@ -172,10 +184,21 @@ def test_delete_row(engine: Engine) -> None:
     rows = cursor.fetchall()
     assert len(rows) == 1
 
-    assert row.id is not None
     engine.delete(T, row.id)
 
     cursor = engine.connection.cursor()
     cursor.execute("SELECT * FROM T;")
     rows = cursor.fetchall()
     assert len(rows) == 0
+
+
+def test_delete_row_with_non_existent_id(engine: Engine) -> None:
+    engine.ensure_table_created(T)
+    with pytest.raises(ValueError, match="Cannot DELETE, no row with id="):
+        engine.delete(T, 78787)
+
+
+def test_delete_row_with_id_as_none(engine: Engine) -> None:
+    engine.ensure_table_created(T)
+    with pytest.raises(ValueError, match="Cannot DELETE, id=None"):
+        engine.delete(T, None)

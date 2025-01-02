@@ -65,10 +65,7 @@ If you need to update the precommit hooks, run the following:
   - Maybe vs code holds a pytest server open or something?
 
 # Tests
-- test delete row that doesn't exist
-- test update row that doesn't exist
-- test insert row with id that already exists
-- test persisting unknown types
+- test persisting unknown types, e.g. DataFrame without a known serializer
 - Insure that the query typehints completely and correctly describe the possible queries that can be made
   e.g.
   only things that should be tested for equality are tested for equality
@@ -95,6 +92,8 @@ If you need to update the precommit hooks, run the following:
   - need way to specify which actual table the columns are from
 
 ## Engineering
+- Remove extra parens from query builder
+- refactor out table creation in test fixture
 - benchmark performance
 - try compiled queries for performance
 - make update only update changed fields
