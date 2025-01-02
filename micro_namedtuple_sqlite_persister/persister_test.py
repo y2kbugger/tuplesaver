@@ -1,3 +1,4 @@
+import datetime as dt
 from typing import NamedTuple
 
 import pytest
@@ -7,7 +8,7 @@ from .persister import Engine
 
 @pytest.fixture
 def engine() -> Engine:
-    return Engine(":memory:")
+    return Engine("test.db")
 
 
 def test_get_connection(engine: Engine) -> None:
@@ -19,6 +20,11 @@ def test_get_connection(engine: Engine) -> None:
 class T(NamedTuple):
     id: int
     name: str
+    score: float
+    age: int
+    data: bytes
+    startdate: dt.date
+    modified: dt.datetime
 
 
 def test_ensure_table_created(engine: Engine) -> None:
@@ -37,7 +43,7 @@ def test_ensure_table_created(engine: Engine) -> None:
     # Primary Key
     cursor.execute("PRAGMA table_info(T);")
     columns = cursor.fetchall()
-    assert len(columns) == 2
+    assert len(columns) == len(T._fields)
     assert columns[0][1] == "id"  # Column Name
     assert columns[0][2] == "INTEGER"  # Column Type
     assert columns[0][3] == 0  # Not Null
@@ -48,3 +54,33 @@ def test_ensure_table_created(engine: Engine) -> None:
     assert columns[1][2] == "TEXT"  # Column Type
     assert columns[1][3] == 0  # Not Null
     assert columns[1][5] == 0  # Not Primary Key
+
+    # Score Field
+    assert columns[2][1] == "score"  # Column Name
+    assert columns[2][2] == "REAL"  # Column Type
+    assert columns[2][3] == 0  # Not Null
+    assert columns[2][5] == 0  # Not Primary Key
+
+    # Age Field
+    assert columns[3][1] == "age"  # Column Name
+    assert columns[3][2] == "INTEGER"  # Column Type
+    assert columns[3][3] == 0  # Not Null
+    assert columns[3][5] == 0  # Not Primary Key
+
+    # Data Field
+    assert columns[4][1] == "data"  # Column Name
+    assert columns[4][2] == "BLOB"  # Column Type
+    assert columns[4][3] == 0  # Not Null
+    assert columns[4][5] == 0  # Not Primary Key
+
+    # Startdate Field
+    assert columns[5][1] == "startdate"  # Column Name
+    assert columns[5][2] == "TEXT"  # Column Type
+    assert columns[5][3] == 0  # Not Null
+    assert columns[5][5] == 0  # Not Primary Key
+
+    # Modified Field
+    assert columns[6][1] == "modified"  # Column Name
+    assert columns[6][2] == "TEXT"  # Column Type
+    assert columns[6][3] == 0  # Not Null
+    assert columns[6][5] == 0  # Not Primary Key

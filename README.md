@@ -58,7 +58,6 @@ If you need to update the precommit hooks, run the following:
     pre-commit autoupdate
 
 # WIP
-- create tables
 - insert row
 - get row
 - update row
@@ -73,6 +72,7 @@ If you need to update the precommit hooks, run the following:
   - filter on field
 - upsert
 - pull in object from other table as field
-- option to delete table if mis-matched or fail instead, e.g. force=True
+- verify columns of created tables with option to delete table if mis-matched or fail instead, e.g. force=True
+- Optional columns types
 
 ## Engineering

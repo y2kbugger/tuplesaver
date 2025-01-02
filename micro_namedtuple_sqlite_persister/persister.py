@@ -1,9 +1,24 @@
 import datetime as dt
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import NamedTuple, TypeVar
 
 ROW = TypeVar('ROW', bound=NamedTuple)
+
+_field_type_map: Mapping[type, str] = {
+    str: "TEXT",
+    float: "REAL",
+    int: "INTEGER",
+    bytes: "BLOB",
+    dt.date: "TEXT",
+    dt.datetime: "TEXT",
+}
+
+
+def column_type(field_name: str, FieldType: type) -> str:
+    if field_name == "id":
+        return "INTEGER PRIMARY KEY"
+    return _field_type_map[FieldType]
 
 
 class Engine:
@@ -11,9 +26,14 @@ class Engine:
         self.db_path = db_path
         self.connection = sqlite3.connect(self.db_path)
 
-    # writing
-    def ensure_table_created(self, model: type[ROW]) -> None:
-        raise NotImplementedError
+    #### Writing
+    def ensure_table_created(self, Model: type[ROW]) -> None:
+        preamble = f"CREATE TABLE IF NOT EXISTS {Model.__name__} ("
+        columnname_types = [(name, column_type(name, FieldType)) for name, FieldType in Model.__annotations__.items()]
+        columns = ", ".join([f"{n} {t}" for n, t in columnname_types])
+        endcap = ");"
+        query = f"{preamble} {columns} {endcap}"
+        self.connection.execute(query)
 
     def insert(self, row: ROW) -> ROW:
         raise NotImplementedError
@@ -21,11 +41,11 @@ class Engine:
     def update(self, row: ROW) -> ROW:
         raise NotImplementedError
 
-    def delete(self, model: type[ROW], row_id: int) -> None:
+    def delete(self, Model: type[ROW], row_id: int) -> None:
         raise NotImplementedError
 
-    # reading
-    def get(self, model: type[ROW], row_id: int) -> ROW:
+    ##### Reading
+    def get(self, Model: type[ROW], row_id: int) -> ROW:
         raise NotImplementedError
 
 
