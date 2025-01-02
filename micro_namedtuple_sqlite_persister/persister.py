@@ -18,8 +18,8 @@ _field_type_map: Mapping[type, str] = {
 def _column_definition(annotation: tuple[str, type]) -> str:
     field_name, FieldType = annotation
     if field_name == "id":
-        return "id INTEGER PRIMARY KEY"
-    return f"{field_name} {_field_type_map[FieldType]}"
+        return "id INTEGER PRIMARY KEY NOT NULL"
+    return f"{field_name} {_field_type_map[FieldType]} NOT NULL"
 
 
 class Engine:
