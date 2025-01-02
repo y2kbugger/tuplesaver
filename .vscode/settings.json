@@ -1,0 +1,28 @@
+{
+  //### Todo Tree
+  "todo-tree.general.tags": [
+    "TODO", "[ ]",
+  ],
+  "todo-tree.filtering.useBuiltInExcludes": "none",
+  "todo-tree.tree.disableCompactFolders": false,
+  "todo-tree.tree.expanded": true,
+  "todo-tree.tree.hideTreeWhenEmpty": false,
+
+  //### Python
+  "[python]": {
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "always",
+      "source.fixAll": "always",
+    },
+    "editor.defaultFormatter": "charliermarsh.ruff",
+  },
+  "python.terminal.activateEnvironment": true,
+  "python.analysis.diagnosticMode": "workspace",
+  "python.testing.pytestArgs": [ ],
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true,
+  "notebook.lineNumbers": "on",
+  "ruff.nativeServer": "on",
+
+  //### Yet unsorted (from settings GUI)
+}

@@ -1,0 +1,71 @@
+[tool.poetry]
+name = "micro-namedtuple-sqlite-persister"
+version = "0.1.0"
+description = "A simple, opinionated, NamedTuple persister for SQLite."
+license = "GPL3"
+authors = ["y2k <git@y2kbugger.com>"]
+readme = "README.md"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.dependencies]
+python = "^3.13"
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "*"
+pytest = "*"
+ruff = "*"
+pre-commit = "*"
+pandas = "*"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+python_files = "*_test.py"
+addopts = [
+    ]
+testpaths = ["micro_namedtuple_sqlite_persister"]
+
+[tool.ruff]
+
+# Exclude a variety of commonly ignored directories.
+extend-exclude = [
+    ".ipynb_checkpoints",
+    ".pytest_cache",
+    ".ruff_cache",
+    "*.ipynb",
+]
+
+line-length = 190
+indent-width = 4
+
+[tool.ruff.lint]
+select = ["FIX", "TD", "F", "A", "COM", "B", "C4", "E", "U", "ERA", "W1", "W2", "I", "ANN001", "ANN201", "RUF100", "ICN", "SLF", "SIM","PTH","PD","RUF"]
+ignore = ["TD001", "TD002", "TD003", "SIM105", "PD901", "PD010", "PD002", "PD008", "FIX002", "COM812", "SIM102", "SIM108", "C408", "C416", "E731", "SIM103"]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.format]
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+
+# Enable auto-formatting of code examples in docstrings. Markdown,
+# reStructuredText code/literal blocks and doctests are all supported.
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
+
+quote-style = "preserve"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "standard"
