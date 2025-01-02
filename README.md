@@ -111,3 +111,4 @@ If you need to update the precommit hooks, run the following:
   - How to actually test this?
   - Is there a connection setting (check same thread) that can be used to at least detect this?
   - https://www.sqlite.org/wal.html
+- All exceptions raised to client api should have a custom exception type
