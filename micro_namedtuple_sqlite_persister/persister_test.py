@@ -1,14 +1,14 @@
+import pytest
+
 from .persister import Engine
 
 
-def test_create_engine() -> None:
-    engine = Engine(":memory:")
-    assert isinstance(engine, Engine)
+@pytest.fixture
+def engine() -> Engine:
+    return Engine(":memory:")
 
 
-def test_get_connection() -> None:
+def test_get_connection(engine: Engine) -> None:
     from sqlite3 import Connection
 
-    engine = Engine(":memory:")
-    connection = engine.connection
-    assert isinstance(connection, Connection)
+    assert isinstance(engine.connection, Connection)
