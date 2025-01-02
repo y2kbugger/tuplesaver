@@ -49,6 +49,8 @@ class Engine:
         return row._replace(id=cur.lastrowid)
 
     def update(self, row: NamedTuple) -> None:
+        if row[0] is None:
+            raise ValueError("Cannot update row when id=None")
         query = f"""
             UPDATE {row.__class__.__name__}
             SET {', '.join(f"{f} = ?" for f in row._fields)}

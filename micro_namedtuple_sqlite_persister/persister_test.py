@@ -148,6 +148,14 @@ def test_update_row(engine: Engine) -> None:
     assert retrieved_row == T(row.id, "Bob", 30)
 
 
+def test_update_row_with_null_id(engine: Engine) -> None:
+    engine.ensure_table_created(T)
+    row = engine.insert(T(None, "Alice", 30))
+
+    with pytest.raises(Exception, match="Cannot update row when id=None"):
+        engine.update(row._replace(id=None))
+
+
 def test_delete_row(engine: Engine) -> None:
     engine.ensure_table_created(T)
     row = engine.insert(T(None, "Alice", 30))
