@@ -2,6 +2,8 @@ import datetime as dt
 from textwrap import dedent
 from typing import NamedTuple
 
+import pytest
+
 from .query import CSV, eq, get_column_name, get_field_idx, get_table_name, or_, render_query, select, where
 
 
@@ -36,8 +38,8 @@ def test_get_table_name() -> None:
 
 
 def test_eq() -> None:
-    assert eq(MyModel.name, "Starfruit") == ('(', MyModel.name, '=', 'Starfruit', ')')
-    assert eq(MyModel.id, 42) == ('(', MyModel.id, '=', 42, ')')
+    assert eq(MyModel.name, "Starfruit") == (MyModel.name, '=', 'Starfruit')
+    assert eq(MyModel.id, 42) == (MyModel.id, '=', 42)
 
 
 def test_select() -> None:
@@ -48,8 +50,13 @@ def test_select() -> None:
 def test_select_with_where_clause() -> None:
     with_where = select(MyModel), where(eq(MyModel.name, "Apple"))
     assert with_where == (
-        ('SELECT', CSV(('id', 'name', 'date')), 'FROM', MyModel),
-        ('WHERE', ('(', MyModel.name, '=', 'Apple', ')')),
+        (
+            'SELECT',
+            CSV(('id', 'name', 'date')),
+            'FROM',
+            MyModel,
+        ),
+        ('WHERE', (MyModel.name, '=', 'Apple')),
     )
 
 
@@ -68,11 +75,9 @@ def test_select_with_complex_where_clause() -> None:
         (
             'WHERE',
             (
-                '(',
-                ('(', MyModel.name, '=', 'Apple', ')'),
+                (MyModel.name, '=', 'Apple'),
                 'OR',
-                ('(', MyModel.id, '=', 42, ')'),
-                ')',
+                (MyModel.id, '=', 42),
             ),
         ),
     )
@@ -91,7 +96,7 @@ def test_select_with_limit_and_where() -> None:
         ('SELECT', CSV(('id', 'name', 'date')), 'FROM', MyModel, 'LIMIT', 5),
         (
             'WHERE',
-            ('(', MyModel.name, '=', 'Apple', ')'),
+            (MyModel.name, '=', 'Apple'),
         ),
     )
 
@@ -104,11 +109,9 @@ def test_or() -> None:
     result = or_(condition1, condition2)
 
     assert result == (
-        '(',
-        ('(', MyModel.name, '=', 'Apple', ')'),
+        (MyModel.name, '=', 'Apple'),
         'OR',
-        ('(', MyModel.id, '=', 42, ')'),
-        ')',
+        (MyModel.id, '=', 42),
     )
 
 
@@ -118,7 +121,7 @@ def test_where_simple() -> None:
     simple = where(eq(MyModel.name, "Apple"))
     assert simple == (
         'WHERE',
-        ('(', MyModel.name, '=', 'Apple', ')'),
+        (MyModel.name, '=', 'Apple'),
     )
 
 
@@ -133,11 +136,9 @@ def test_where_complex() -> None:
     assert complex_condition == (
         'WHERE',
         (
-            '(',
-            ('(', MyModel.name, '=', 'Apple', ')'),
+            (MyModel.name, '=', 'Apple'),
             'OR',
-            ('(', MyModel.id, '=', 42, ')'),
-            ')',
+            (MyModel.id, '=', 42),
         ),
     )
 
@@ -154,4 +155,54 @@ def test_render_query_simple() -> None:
             id, name, date
         FROM
             MyModel
+    """)
+
+
+def test_render_query_with_where() -> None:
+    """Test rendering a query with WHERE clause"""
+    query = select(MyModel), where(eq(MyModel.name, "Apple"))
+    assert render_query(query) == dd("""
+        SELECT
+            id, name, date
+        FROM
+            MyModel
+        WHERE (MyModel.name = Apple)
+    """)
+
+
+@pytest.mark.skip
+def test_render_query_with_complex_where() -> None:
+    """Test rendering a query with complex WHERE clause"""
+    query = (
+        select(MyModel),
+        where(
+            or_(
+                eq(MyModel.name, "Apple"),
+                eq(MyModel.id, 42),
+            ),
+        ),
+    )
+    assert render_query(query) == dd("""
+        SELECT
+            id, name, date
+        FROM
+            MyModel
+        WHERE ((MyModel.name = Apple) OR (MyModel.id = 42))
+    """)
+
+
+@pytest.mark.skip
+def test_render_query_with_where_and_limit() -> None:
+    """Test rendering a query with WHERE clause and LIMIT"""
+    query = (
+        select(MyModel, limit=5),
+        where(eq(MyModel.name, "Apple")),
+    )
+    assert render_query(query) == dd("""
+        SELECT
+            id, name, date
+        FROM
+            MyModel
+        LIMIT 5
+        WHERE (MyModel.name = Apple)
     """)

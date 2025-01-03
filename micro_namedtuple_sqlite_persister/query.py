@@ -52,9 +52,22 @@ class CSV(tuple):
     pass  # command separated values
 
 
+class WHERE(tuple):
+    pass  # WHERE clause
+
+
+class CMP(tuple):
+    pass  # comparison
+
+
+class LOGIC(tuple):
+    pass  # logical operator
+
+
 type Field = _tuplegetter
 type Scalar = Field | str | int | float
-type Fragment = Sequence[Field | Scalar | CSV | Fragment]
+type Frag = Field | Scalar | CSV
+type Fragment = Sequence[Frag | Fragment] | Frag
 
 
 def select(Model: type[NamedTuple], limit: int | None = None) -> Fragment:
@@ -69,29 +82,41 @@ def select(Model: type[NamedTuple], limit: int | None = None) -> Fragment:
 
 def where(condition: Fragment) -> Fragment:
     """Create a WHERE clause"""
-    return ('WHERE', condition)
+    return WHERE(('WHERE', condition))
 
 
 def eq(left: Scalar, right: Scalar) -> Fragment:
-    return ('(', left, '=', right, ')')
+    return CMP((left, '=', right))
 
 
 def or_(left: Fragment, right: Fragment) -> Fragment:
-    return ('(', left, 'OR', right, ')')
+    return LOGIC((left, 'OR', right))
 
 
-def render_query(fg: Field | Scalar | CSV | Fragment, Model: type[NamedTuple] | None = None) -> str:
-    if isinstance(fg, str):
-        return fg
-    elif isinstance(fg, CSV):
-        return '\n    ' + ', '.join(fg) + '\n'
-    elif isinstance(fg, _tuplegetter):
-        assert Model is not None
-        return get_column_name(Model, get_field_idx(fg))
-    elif is_namedtuple_table_model(fg):
-        Model = cast(type[NamedTuple], fg)
-        return '\n    ' + Model.__name__
-    elif isinstance(fg, tuple):
-        return ''.join(render_query(f, Model) for f in fg)
-    else:
-        raise TypeError(f"Unexpected type: {type(fg)}")
+def render_query(fg: Fragment) -> str:
+    Model: type[NamedTuple] | None = None
+
+    def _render_query(fg: Fragment):
+        nonlocal Model
+        if isinstance(fg, str):
+            return fg
+        elif isinstance(fg, CSV):
+            return '\n    ' + ', '.join(fg) + '\n'
+        elif isinstance(fg, WHERE):
+            return '\n' + ' '.join(_render_query(f) for f in fg)
+        elif isinstance(fg, CMP):
+            return '(' + ' '.join(_render_query(f) for f in fg) + ')'
+        elif isinstance(fg, LOGIC):
+            return '(' + '\n'.join(_render_query(f) for f in fg) + ')'
+        elif isinstance(fg, _tuplegetter):
+            assert Model is not None
+            return get_column_name(Model, get_field_idx(fg))
+        elif is_namedtuple_table_model(fg):
+            Model = cast(type[NamedTuple], fg)
+            return '\n    ' + Model.__name__
+        elif isinstance(fg, tuple):
+            return ''.join(_render_query(f) for f in fg)
+        else:
+            raise TypeError(f"Unexpected type: {type(fg)}")
+
+    return _render_query(fg)
