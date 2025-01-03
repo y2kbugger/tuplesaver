@@ -59,7 +59,6 @@ class Engine:
         cur = self.connection.execute(query, (*row, row[0]))
         if cur.rowcount == 0:
             raise ValueError(f"Cannot UPDATE, no row with id={row[0]} in table `{row.__class__.__name__}`")
-        self.connection.commit()
 
     def delete(self, Model: type[ROW], row_id: int | None) -> None:
         if row_id is None:
