@@ -2,7 +2,9 @@ import datetime as dt
 from textwrap import dedent
 from typing import NamedTuple
 
-from .query import CSV, and_, eq, get_column_name, get_field_idx, get_table_name, or_, render_query, select
+import pytest
+
+from .query import CSV, and_, eq, get_column_name, get_field_idx, get_table_name, gt, gte, lt, lte, ne, or_, render_query, select
 
 
 class MyModel(NamedTuple):
@@ -219,4 +221,57 @@ def test_render_query_with_complex_and_or() -> None:
         SELECT id, name, date
         FROM MyModel
         WHERE (((MyModel.name = Apple) AND (MyModel.id = 42)) OR (MyModel.name = Banana))
+    """)
+
+
+@pytest.mark.skip(reason="Not implemented yet")
+def test_supra_binary_logical_operators() -> None:
+    """Test all supra binary logical operators"""
+    assert or_(1, 2, 3) == (1, 'OR', 2, 'OR', 3)  # type: ignore
+
+
+def test_comparison_operators() -> None:
+    """Test all comparison operators"""
+    assert gt(MyModel.id, 42) == (MyModel.id, '>', 42)
+    assert lt(MyModel.id, 42) == (MyModel.id, '<', 42)
+    assert gte(MyModel.id, 42) == (MyModel.id, '>=', 42)
+    assert lte(MyModel.id, 42) == (MyModel.id, '<=', 42)
+    assert ne(MyModel.id, 42) == (MyModel.id, '!=', 42)
+
+
+def test_render_query_with_comparisons() -> None:
+    """Test rendering queries with different comparison operators"""
+    tests = [
+        (gt(MyModel.id, 42), "WHERE (MyModel.id > 42)"),
+        (lt(MyModel.id, 42), "WHERE (MyModel.id < 42)"),
+        (gte(MyModel.id, 42), "WHERE (MyModel.id >= 42)"),
+        (lte(MyModel.id, 42), "WHERE (MyModel.id <= 42)"),
+        (ne(MyModel.id, 42), "WHERE (MyModel.id != 42)"),
+    ]
+
+    for condition, expected_where in tests:
+        query = select(MyModel, where=condition)
+        assert render_query(query) == dd(f"""
+            SELECT id, name, date
+            FROM MyModel
+            {expected_where}
+        """)
+
+
+def test_render_query_with_complex_comparisons() -> None:
+    """Test rendering a query with multiple comparison types"""
+    query = select(
+        MyModel,
+        where=and_(
+            and_(
+                gt(MyModel.id, 42),
+                lt(MyModel.id, 100),
+            ),
+            ne(MyModel.name, "Test"),
+        ),
+    )
+    assert render_query(query) == dd("""
+        SELECT id, name, date
+        FROM MyModel
+        WHERE (((MyModel.id > 42) AND (MyModel.id < 100)) AND (MyModel.name != Test))
     """)

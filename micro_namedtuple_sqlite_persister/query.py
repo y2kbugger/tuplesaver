@@ -78,6 +78,31 @@ def eq(left: Scalar, right: Scalar) -> Fragment:
     return CMP((left, '=', right))
 
 
+def gt(left: Scalar, right: Scalar) -> Fragment:
+    """Greater than comparison"""
+    return CMP((left, '>', right))
+
+
+def lt(left: Scalar, right: Scalar) -> Fragment:
+    """Less than comparison"""
+    return CMP((left, '<', right))
+
+
+def gte(left: Scalar, right: Scalar) -> Fragment:
+    """Greater than or equal comparison"""
+    return CMP((left, '>=', right))
+
+
+def lte(left: Scalar, right: Scalar) -> Fragment:
+    """Less than or equal comparison"""
+    return CMP((left, '<=', right))
+
+
+def ne(left: Scalar, right: Scalar) -> Fragment:
+    """Not equal comparison"""
+    return CMP((left, '!=', right))
+
+
 def or_(left: Fragment, right: Fragment) -> Fragment:
     return LOGIC((left, 'OR', right))
 
