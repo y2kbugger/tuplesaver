@@ -48,21 +48,14 @@ def is_namedtuple_table_model(cls: object) -> bool:
         return False
 
 
-class CSV(tuple):
-    pass  # command separated values
-
-
-class WHERE(tuple):
-    pass  # WHERE clause
-
-
-class CMP(tuple):
-    pass  # comparison
-
-
-class LOGIC(tuple):
-    pass  # logical operator
-
+# fmt: off
+class SELECT(tuple): pass  # SELECT statement  # noqa: E701
+class CSV(tuple): pass  # command separated values  # noqa: E701
+class WHERE(tuple): pass  # WHERE clause  # noqa: E701
+class LIMIT(tuple): pass  # LIMIT clause  # noqa: E701
+class CMP(tuple): pass  # comparison  # noqa: E701
+class LOGIC(tuple): pass  # logical operator # noqa: E701
+# fmt: on
 
 type Field = _tuplegetter
 type Scalar = Field | str | int | float
@@ -70,19 +63,15 @@ type Frag = Field | Scalar | CSV
 type Fragment = Sequence[Frag | Fragment] | Frag
 
 
-def select(Model: type[NamedTuple], limit: int | None = None) -> Fragment:
+def select(Model: type[NamedTuple], *, where: Fragment | None = None, limit: int | None = None) -> Fragment:
     """Create a SELECT statement with optional LIMIT"""
     cols = CSV(Model._fields)
     select = ('SELECT', cols, 'FROM', Model)
+    if where is not None:
+        select = (*select, WHERE(('WHERE', where)))
     if limit is not None:
-        return (*select, "LIMIT", limit)
-    else:
-        return select
-
-
-def where(condition: Fragment) -> Fragment:
-    """Create a WHERE clause"""
-    return WHERE(('WHERE', condition))
+        select = (*select, LIMIT(("LIMIT", limit)))
+    return SELECT(select)
 
 
 def eq(left: Scalar, right: Scalar) -> Fragment:
@@ -100,22 +89,26 @@ def render_query(fg: Fragment) -> str:
         nonlocal Model
         if isinstance(fg, str):
             return fg
+        elif isinstance(fg, SELECT):
+            return '\n'.join(_render_query(f) for f in fg)
         elif isinstance(fg, CSV):
-            return '\n    ' + ', '.join(fg) + '\n'
+            return '    ' + ', '.join(fg)
         elif isinstance(fg, WHERE):
-            return '\n' + ' '.join(_render_query(f) for f in fg)
+            return ' '.join(_render_query(f) for f in fg)
         elif isinstance(fg, CMP):
             return '(' + ' '.join(_render_query(f) for f in fg) + ')'
         elif isinstance(fg, LOGIC):
             return '(' + '\n'.join(_render_query(f) for f in fg) + ')'
+        elif isinstance(fg, LIMIT):
+            return ' '.join(_render_query(f) for f in fg)
         elif isinstance(fg, _tuplegetter):
             assert Model is not None
             return get_column_name(Model, get_field_idx(fg))
         elif is_namedtuple_table_model(fg):
             Model = cast(type[NamedTuple], fg)
-            return '\n    ' + Model.__name__
+            return '    ' + Model.__name__
         elif isinstance(fg, tuple):
-            return ''.join(_render_query(f) for f in fg)
+            return ' '.join(_render_query(f) for f in fg)
         else:
             raise TypeError(f"Unexpected type: {type(fg)}")
 
