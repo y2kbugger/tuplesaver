@@ -91,6 +91,7 @@ If you need to update the precommit hooks, run the following:
 - Subset of columns query
   - need way to specify which actual table the columns are from
 - Add passthrough for commit? e.g. engine.commit???? or just leave them to use engine.connection.commit()?
+- Supra-binay logical operators e.g. (a or b or c)
 
 ## Engineering
 - Remove extra parens from query builder

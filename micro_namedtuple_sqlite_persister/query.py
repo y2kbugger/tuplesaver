@@ -82,6 +82,10 @@ def or_(left: Fragment, right: Fragment) -> Fragment:
     return LOGIC((left, 'OR', right))
 
 
+def and_(left: Fragment, right: Fragment) -> Fragment:
+    return LOGIC((left, 'AND', right))
+
+
 def render_query(fg: Fragment) -> str:
     Model: type[NamedTuple] | None = None
 

@@ -2,7 +2,7 @@ import datetime as dt
 from textwrap import dedent
 from typing import NamedTuple
 
-from .query import CSV, eq, get_column_name, get_field_idx, get_table_name, or_, render_query, select
+from .query import CSV, and_, eq, get_column_name, get_field_idx, get_table_name, or_, render_query, select
 
 
 class MyModel(NamedTuple):
@@ -115,6 +115,20 @@ def test_or() -> None:
     )
 
 
+def test_and() -> None:
+    """Test AND conditions"""
+    condition1 = eq(MyModel.name, "Apple")
+    condition2 = eq(MyModel.id, 42)
+
+    result = and_(condition1, condition2)
+
+    assert result == (
+        (MyModel.name, '=', 'Apple'),
+        'AND',
+        (MyModel.id, '=', 42),
+    )
+
+
 def dd(sql: str) -> str:
     return dedent(sql).strip()
 
@@ -170,4 +184,39 @@ def test_render_query_with_where_and_limit() -> None:
         FROM MyModel
         WHERE (MyModel.name = Apple)
         LIMIT 5
+    """)
+
+
+def test_render_query_with_and() -> None:
+    """Test rendering a query with AND condition"""
+    query = select(
+        MyModel,
+        where=and_(
+            eq(MyModel.name, "Apple"),
+            eq(MyModel.id, 42),
+        ),
+    )
+    assert render_query(query) == dd("""
+        SELECT id, name, date
+        FROM MyModel
+        WHERE ((MyModel.name = Apple) AND (MyModel.id = 42))
+    """)
+
+
+def test_render_query_with_complex_and_or() -> None:
+    """Test rendering a query with complex AND and OR conditions"""
+    query = select(
+        MyModel,
+        where=or_(
+            and_(
+                eq(MyModel.name, "Apple"),
+                eq(MyModel.id, 42),
+            ),
+            eq(MyModel.name, "Banana"),
+        ),
+    )
+    assert render_query(query) == dd("""
+        SELECT id, name, date
+        FROM MyModel
+        WHERE (((MyModel.name = Apple) AND (MyModel.id = 42)) OR (MyModel.name = Banana))
     """)
