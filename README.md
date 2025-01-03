@@ -112,3 +112,5 @@ If you need to update the precommit hooks, run the following:
   - Is there a connection setting (check same thread) that can be used to at least detect this?
   - https://www.sqlite.org/wal.html
 - All exceptions raised to client api should have a custom exception type
+- approx 20% perf boost for execute many on 20k rows
+  - not worth complexity compared to other things to spend time on
