@@ -2,8 +2,6 @@ import datetime as dt
 from textwrap import dedent
 from typing import NamedTuple
 
-import pytest
-
 from .query import CSV, eq, get_column_name, get_field_idx, get_table_name, or_, render_query, select
 
 
@@ -125,10 +123,8 @@ def test_render_query_simple() -> None:
     """Test rendering a simple query"""
     query = select(MyModel)
     assert render_query(query) == dd("""
-        SELECT
-            id, name, date
-        FROM
-            MyModel
+        SELECT id, name, date
+        FROM MyModel
     """)
 
 
@@ -136,15 +132,12 @@ def test_render_query_with_where() -> None:
     """Test rendering a query with WHERE clause"""
     query = select(MyModel, where=eq(MyModel.name, "Apple"))
     assert render_query(query) == dd("""
-        SELECT
-            id, name, date
-        FROM
-            MyModel
+        SELECT id, name, date
+        FROM MyModel
         WHERE (MyModel.name = Apple)
     """)
 
 
-@pytest.mark.skip
 def test_render_query_with_complex_where() -> None:
     """Test rendering a query with complex WHERE clause"""
     query = select(
@@ -157,15 +150,12 @@ def test_render_query_with_complex_where() -> None:
         ),
     )
     assert render_query(query) == dd("""
-        SELECT
-            id, name, date
-        FROM
-            MyModel
+        SELECT id, name, date
+        FROM MyModel
         WHERE ((MyModel.name = Apple) OR (MyModel.id = 42))
     """)
 
 
-@pytest.mark.skip
 def test_render_query_with_where_and_limit() -> None:
     """Test rendering a query with WHERE clause and LIMIT"""
     query = (
@@ -176,10 +166,8 @@ def test_render_query_with_where_and_limit() -> None:
         ),
     )
     assert render_query(query) == dd("""
-        SELECT
-            id, name, date
-        FROM
-            MyModel
-        LIMIT 5
+        SELECT id, name, date
+        FROM MyModel
         WHERE (MyModel.name = Apple)
+        LIMIT 5
     """)
