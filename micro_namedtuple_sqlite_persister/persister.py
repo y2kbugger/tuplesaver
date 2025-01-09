@@ -1,9 +1,9 @@
 import datetime as dt
 import sqlite3
 from collections.abc import Callable, Mapping
-from typing import NamedTuple, TypeVar
+from typing import NamedTuple
 
-ROW = TypeVar('ROW', bound=NamedTuple)
+type Row = NamedTuple
 
 _field_type_map: Mapping[type, str] = {
     str: "TEXT",
@@ -31,14 +31,14 @@ class Engine:
             self.connection.set_trace_callback(print)
 
     #### Writing
-    def ensure_table_created(self, Model: type[ROW]) -> None:
+    def ensure_table_created(self, Model: type[Row]) -> None:
         query = f"""
             CREATE TABLE IF NOT EXISTS {Model.__name__} (
             {', '.join(_column_definition(f) for f in Model.__annotations__.items())}
             )"""
         self.connection.execute(query)
 
-    def insert(self, row: ROW) -> ROW:
+    def insert[R: Row](self, row: R) -> R:
         query = f"""
             INSERT INTO {row.__class__.__name__} (
             {', '.join(row._fields)}
@@ -48,7 +48,7 @@ class Engine:
         cur = self.connection.execute(query, row)
         return row._replace(id=cur.lastrowid)
 
-    def update(self, row: NamedTuple) -> None:
+    def update(self, row: Row) -> None:
         if row[0] is None:
             raise ValueError("Cannot UPDATE, id=None")
         query = f"""
@@ -60,7 +60,7 @@ class Engine:
         if cur.rowcount == 0:
             raise ValueError(f"Cannot UPDATE, no row with id={row[0]} in table `{row.__class__.__name__}`")
 
-    def delete(self, Model: type[ROW], row_id: int | None) -> None:
+    def delete(self, Model: type[Row], row_id: int | None) -> None:
         if row_id is None:
             raise ValueError("Cannot DELETE, id=None")
         query = f"""
@@ -72,7 +72,7 @@ class Engine:
             raise ValueError(f"Cannot DELETE, no row with id={row_id} in table `{Model.__name__}`")
 
     ##### Reading
-    def get(self, Model: type[ROW], row_id: int | None) -> ROW:
+    def get[R: Row](self, Model: type[R], row_id: int | None) -> R:
         if row_id is None:
             raise ValueError("Cannot SELECT, id=None")
         query = f"""
@@ -88,11 +88,7 @@ class Engine:
 
 
 ## Serialization and Deserialization
-D = TypeVar('D')
-S = TypeVar('S', str, bytes)
-
-
-def register_serde(serialize: Callable[[D], S], deserialize: Callable[[S], D]) -> None:
+def register_serde[D, S: (str, bytes)](serialize: Callable[[D], S], deserialize: Callable[[S], D]) -> None:
     raise NotImplementedError
 
 
