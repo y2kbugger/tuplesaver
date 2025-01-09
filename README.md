@@ -82,6 +82,7 @@ If you need to update the precommit hooks, run the following:
 - pull in list of objects from other table as field (1:Many, but on the many side)
 - Add passthrough for commit? e.g. engine.commit???? or just leave them to use engine.connection.commit()?
 - fetchone, fetchall, fetchmany on the query executer results
+  - or queryone, queryall, querymany
 
 ## Engineering
 - refactor out table creation in test fixture
@@ -103,11 +104,12 @@ If you need to update the precommit hooks, run the following:
 - All exceptions raised to client api should have a custom exception type
 - approx 20% perf boost for execute many on 20k rows
   - not worth complexity compared to other things to spend time on
+- Can persister.py have to imports from query.py?
+  - NO
 
 ## QUERYING
 - limit row count
 - order by
-- filter on field
 - Supra-binay logical operators e.g. (a or b or c)
 - Subset of columns query
   - need way to specify which actual table the columns are from

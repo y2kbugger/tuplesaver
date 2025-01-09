@@ -1,6 +1,6 @@
 import datetime as dt
 import sqlite3
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import NamedTuple
 
 type Row = NamedTuple
@@ -85,6 +85,10 @@ class Engine:
         if row is None:
             raise ValueError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
         return Model._make(row)
+
+    def query[R: Row](self, Model: type[R], sql: str) -> Iterable[R]:
+        cursor = self.connection.execute(sql)
+        return (Model._make(row) for row in cursor.fetchall())
 
 
 ## Serialization and Deserialization
