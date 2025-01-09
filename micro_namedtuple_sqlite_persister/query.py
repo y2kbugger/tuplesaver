@@ -1,6 +1,8 @@
 from _collections import _tuplegetter  # type: ignore
 from collections.abc import Sequence
-from typing import Any, NamedTuple, cast
+from typing import Any, NamedTuple
+
+from .persister import Row
 
 
 def get_field_idx(field: Any) -> int:
@@ -63,8 +65,8 @@ type Frag = Field | Scalar | CSV
 type Fragment = Sequence[Frag | Fragment] | Frag
 
 
-def select(Model: type[NamedTuple], *, where: Fragment | None = None, limit: int | None = None) -> Fragment:
-    """Create a SELECT statement with optional LIMIT"""
+def _select(Model: type[Row], *, where: Fragment | None = None, limit: int | None = None) -> Fragment:
+    """Create a SELECT statement"""
     cols = CSV(Model._fields)
     select = ('SELECT', cols, 'FROM', Model)
     if where is not None:
@@ -72,6 +74,42 @@ def select(Model: type[NamedTuple], *, where: Fragment | None = None, limit: int
     if limit is not None:
         select = (*select, LIMIT(("LIMIT", limit)))
     return SELECT(select)
+
+
+def render(M: type[Row], fg: Fragment) -> str:
+    match fg:
+        case SELECT((select, cols, frm, model, *rest)):  # Deconstruct SELECT statement
+            return f"{select} {render(M, cols)}\n{frm} {render(M, model)}" + (f"\n{'\n'.join(render(M, f) for f in rest)}" if rest else "")
+        case CSV(fields):  # Deconstruct CSV into fields
+            return ', '.join(fields)
+        case CMP((left, op, right)):  # Deconstruct CMP into left, op, and right
+            return f"({render(M, left)} {op} {render(M, right)})"
+        case LOGIC((left, operator, right)):  # Deconstruct LOGIC into left and right
+            return f"({render(M, left)} {operator} {render(M, right)})"
+        case WHERE((keyword, condition)):  # Deconstruct WHERE into keyword and condition
+            return f"{keyword} {render(M, condition)}"
+        case LIMIT((keyword, value)):  # Deconstruct LIMIT into keyword and value
+            return f"{keyword} {value}"
+        case _tuplegetter():
+            assert M is not None
+            return get_column_name(M, get_field_idx(fg))
+        case _ if is_namedtuple_table_model(fg):
+            return M.__name__
+        case tuple():  # Match any tuple and deconstruct into elements
+            return ' '.join(render(M, f) for f in fg)
+        case int() | float():
+            return str(fg)
+        case str():
+            return fg
+        case _:
+            raise TypeError(f"Unexpected type: {type(fg)}")
+
+
+def select[R: Row](Model: type[R], *, where: Fragment | None = None, limit: int | None = None) -> tuple[type[R], str]:
+    """Produce a rendered SELECT query"""
+    select_fragment = _select(Model, where=where, limit=limit)
+    sql = render(Model, select_fragment)
+    return Model, sql
 
 
 def eq(left: Scalar, right: Scalar) -> Fragment:
@@ -109,39 +147,3 @@ def or_(left: Fragment, right: Fragment) -> Fragment:
 
 def and_(left: Fragment, right: Fragment) -> Fragment:
     return LOGIC((left, 'AND', right))
-
-
-def render_query(fg: Fragment) -> str:
-    Model: type[NamedTuple] | None = None
-
-    def _(fg: Fragment):
-        nonlocal Model
-        match fg:
-            case SELECT((select, cols, frm, model, *rest)):  # Deconstruct SELECT statement
-                return f"{select} {_(cols)}\n{frm} {_(model)}" + (f"\n{'\n'.join(_(f) for f in rest)}" if rest else "")
-            case CSV(fields):  # Deconstruct CSV into fields
-                return ', '.join(fields)
-            case CMP((left, op, right)):  # Deconstruct CMP into left, op, and right
-                return f"({_(left)} {op} {_(right)})"
-            case LOGIC((left, operator, right)):  # Deconstruct LOGIC into left and right
-                return f"({_(left)} {operator} {_(right)})"
-            case WHERE((keyword, condition)):  # Deconstruct WHERE into keyword and condition
-                return f"{keyword} {_(condition)}"
-            case LIMIT((keyword, value)):  # Deconstruct LIMIT into keyword and value
-                return f"{keyword} {value}"
-            case _tuplegetter():
-                assert Model is not None
-                return get_column_name(Model, get_field_idx(fg))
-            case _ if is_namedtuple_table_model(fg):
-                Model = cast(type[NamedTuple], fg)
-                return Model.__name__
-            case tuple():  # Match any tuple and deconstruct into elements
-                return ' '.join(_(f) for f in fg)
-            case int() | float():
-                return str(fg)
-            case str():
-                return fg
-            case _:
-                raise TypeError(f"Unexpected type: {type(fg)}")
-
-    return _(fg)

@@ -4,7 +4,7 @@ from typing import NamedTuple
 
 import pytest
 
-from .query import CSV, and_, eq, get_column_name, get_field_idx, get_table_name, gt, gte, lt, lte, ne, or_, render_query, select
+from .query import CSV, _select, and_, eq, get_column_name, get_field_idx, get_table_name, gt, gte, lt, lte, ne, or_, select
 
 
 class MyModel(NamedTuple):
@@ -43,12 +43,12 @@ def test_eq() -> None:
 
 
 def test_select() -> None:
-    simple = select(MyModel)
+    simple = _select(MyModel)
     assert simple == ('SELECT', CSV(('id', 'name', 'date')), 'FROM', MyModel)
 
 
 def test_select_with_where_clause() -> None:
-    with_where = select(MyModel, where=eq(MyModel.name, "Apple"))
+    with_where = _select(MyModel, where=eq(MyModel.name, "Apple"))
     assert with_where == (
         'SELECT',
         CSV(('id', 'name', 'date')),
@@ -59,7 +59,7 @@ def test_select_with_where_clause() -> None:
 
 
 def test_select_with_complex_where_clause() -> None:
-    complex_query = select(
+    complex_query = _select(
         MyModel,
         where=or_(
             eq(MyModel.name, "Apple"),
@@ -84,12 +84,12 @@ def test_select_with_complex_where_clause() -> None:
 
 def test_select_with_limit() -> None:
     """Test SELECT with LIMIT clause"""
-    limited = select(MyModel, limit=10)
+    limited = _select(MyModel, limit=10)
     assert limited == ('SELECT', CSV(('id', 'name', 'date')), 'FROM', MyModel, ('LIMIT', 10))
 
 
 def test_select_with_limit_and_where() -> None:
-    limited_with_where = select(MyModel, where=eq(MyModel.name, "Apple"), limit=5)
+    limited_with_where = _select(MyModel, where=eq(MyModel.name, "Apple"), limit=5)
     assert limited_with_where == (
         'SELECT',
         CSV(('id', 'name', 'date')),
@@ -137,8 +137,8 @@ def dd(sql: str) -> str:
 
 def test_render_query_simple() -> None:
     """Test rendering a simple query"""
-    query = select(MyModel)
-    assert render_query(query) == dd("""
+    _, sql = select(MyModel)
+    assert sql == dd("""
         SELECT id, name, date
         FROM MyModel
     """)
@@ -146,8 +146,8 @@ def test_render_query_simple() -> None:
 
 def test_render_query_with_where() -> None:
     """Test rendering a query with WHERE clause"""
-    query = select(MyModel, where=eq(MyModel.name, "Apple"))
-    assert render_query(query) == dd("""
+    _, sql = select(MyModel, where=eq(MyModel.name, "Apple"))
+    assert sql == dd("""
         SELECT id, name, date
         FROM MyModel
         WHERE (MyModel.name = Apple)
@@ -156,7 +156,7 @@ def test_render_query_with_where() -> None:
 
 def test_render_query_with_complex_where() -> None:
     """Test rendering a query with complex WHERE clause"""
-    query = select(
+    Model, sql = select(
         MyModel,
         where=(
             or_(
@@ -165,7 +165,9 @@ def test_render_query_with_complex_where() -> None:
             ),
         ),
     )
-    assert render_query(query) == dd("""
+
+    assert Model == MyModel
+    assert sql == dd("""
         SELECT id, name, date
         FROM MyModel
         WHERE ((MyModel.name = Apple) OR (MyModel.id = 42))
@@ -174,14 +176,14 @@ def test_render_query_with_complex_where() -> None:
 
 def test_render_query_with_where_and_limit() -> None:
     """Test rendering a query with WHERE clause and LIMIT"""
-    query = (
-        select(
-            MyModel,
-            where=eq(MyModel.name, "Apple"),
-            limit=5,
-        ),
+    Model, sql = select(
+        MyModel,
+        where=eq(MyModel.name, "Apple"),
+        limit=5,
     )
-    assert render_query(query) == dd("""
+
+    assert Model == MyModel
+    assert sql == dd("""
         SELECT id, name, date
         FROM MyModel
         WHERE (MyModel.name = Apple)
@@ -191,14 +193,16 @@ def test_render_query_with_where_and_limit() -> None:
 
 def test_render_query_with_and() -> None:
     """Test rendering a query with AND condition"""
-    query = select(
+    Model, sql = select(
         MyModel,
         where=and_(
             eq(MyModel.name, "Apple"),
             eq(MyModel.id, 42),
         ),
     )
-    assert render_query(query) == dd("""
+
+    assert Model == MyModel
+    assert sql == dd("""
         SELECT id, name, date
         FROM MyModel
         WHERE ((MyModel.name = Apple) AND (MyModel.id = 42))
@@ -207,7 +211,7 @@ def test_render_query_with_and() -> None:
 
 def test_render_query_with_complex_and_or() -> None:
     """Test rendering a query with complex AND and OR conditions"""
-    query = select(
+    Model, sql = select(
         MyModel,
         where=or_(
             and_(
@@ -217,7 +221,9 @@ def test_render_query_with_complex_and_or() -> None:
             eq(MyModel.name, "Banana"),
         ),
     )
-    assert render_query(query) == dd("""
+
+    assert Model == MyModel
+    assert sql == dd("""
         SELECT id, name, date
         FROM MyModel
         WHERE (((MyModel.name = Apple) AND (MyModel.id = 42)) OR (MyModel.name = Banana))
@@ -228,6 +234,16 @@ def test_render_query_with_complex_and_or() -> None:
 def test_supra_binary_logical_operators() -> None:
     """Test all supra binary logical operators"""
     assert or_(1, 2, 3) == (1, 'OR', 2, 'OR', 3)  # type: ignore
+
+
+@pytest.mark.skip(reason="Agg Not implmenented yet")
+def test_render_query_with_agg_functions() -> None:
+    M, q = select((avg(MyModel.score), count(MyModel)))  # type: ignore  # noqa: F821
+    assert MyModel == M
+    assert q == dd("""
+        SELECT AVG(score), COUNT(*)
+        FROM MyModel
+    """)
 
 
 def test_comparison_operators() -> None:
@@ -250,8 +266,8 @@ def test_render_query_with_comparisons() -> None:
     ]
 
     for condition, expected_where in tests:
-        query = select(MyModel, where=condition)
-        assert render_query(query) == dd(f"""
+        _, sql = select(MyModel, where=condition)
+        assert sql == dd(f"""
             SELECT id, name, date
             FROM MyModel
             {expected_where}
@@ -260,7 +276,7 @@ def test_render_query_with_comparisons() -> None:
 
 def test_render_query_with_complex_comparisons() -> None:
     """Test rendering a query with multiple comparison types"""
-    query = select(
+    Model, sql = select(
         MyModel,
         where=and_(
             and_(
@@ -270,7 +286,9 @@ def test_render_query_with_complex_comparisons() -> None:
             ne(MyModel.name, "Test"),
         ),
     )
-    assert render_query(query) == dd("""
+
+    assert Model == MyModel
+    assert sql == dd("""
         SELECT id, name, date
         FROM MyModel
         WHERE (((MyModel.id > 42) AND (MyModel.id < 100)) AND (MyModel.name != Test))
