@@ -127,7 +127,6 @@ If you need to update the precommit hooks, run the following:
 # Bugs
 
 # Tests
-Test registering adapters and converters
 
 # Backlog
 - Optional columns types
