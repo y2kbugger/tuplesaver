@@ -14,10 +14,18 @@ _field_type_map: dict[type, str] = {
 }
 
 
+class UnregisteredFieldTypeError(Exception):
+    def __init__(self, field_type: type) -> None:
+        super().__init__(f"Field Type {field_type} has not been registered with the Persister. Use `register_adapt_convert` to register it")
+
+
 def _column_definition(annotation: tuple[str, type]) -> str:
     field_name, FieldType = annotation
     if field_name == "id":
         return "id [INTEGER] PRIMARY KEY NOT NULL"
+    field_type_name = _field_type_map.get(FieldType)
+    if field_type_name is None:
+        raise UnregisteredFieldTypeError(FieldType)
     return f"{field_name} [{_field_type_map[FieldType]}] NOT NULL"
 
 

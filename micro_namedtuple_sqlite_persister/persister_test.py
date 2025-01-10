@@ -4,7 +4,7 @@ from typing import NamedTuple
 
 import pytest
 
-from .persister import Engine, enable_included_adaptconverters
+from .persister import Engine, UnregisteredFieldTypeError, enable_included_adaptconverters
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -231,3 +231,15 @@ def test_can_insert_and_retrieve_date(engine: Engine) -> None:
 
     assert type(retrieved_row.startdate) is dt.date
     assert retrieved_row.startdate == row.startdate
+
+
+def test_creating_table_including_unknown_type_raises_error(engine: Engine) -> None:
+    class NewType: ...
+
+    class ModelUnknownType(NamedTuple):
+        id: int | None
+        name: str
+        unknown: NewType
+
+    with pytest.raises(UnregisteredFieldTypeError):
+        engine.ensure_table_created(ModelUnknownType)
