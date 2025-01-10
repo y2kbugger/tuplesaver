@@ -4,12 +4,17 @@ from typing import NamedTuple
 
 import pytest
 
-from .persister import Engine
+from .persister import Engine, enable_included_adaptconverters
+
+
+@pytest.fixture(autouse=True, scope="session")
+def enable_adapt_converters() -> None:
+    enable_included_adaptconverters()
 
 
 @pytest.fixture
 def engine() -> Engine:
-    return Engine(":memory:")
+    return Engine(":memory:", echo_sql=False)
 
 
 def test_get_connection(engine: Engine) -> None:
@@ -82,13 +87,13 @@ def test_ensure_table_created(engine: Engine) -> None:
 
     # Startdate Field
     assert columns[5][1] == "startdate"  # Column Name
-    assert columns[5][2] == "TEXT"  # Column Type
+    assert columns[5][2] == "datetime.date"  # Column Type
     assert columns[5][3] == 1  # Not Null
     assert columns[5][5] == 0  # Not Primary Key
 
     # Modified Field
     assert columns[6][1] == "modified"  # Column Name
-    assert columns[6][2] == "TEXT"  # Column Type
+    assert columns[6][2] == "datetime.datetime"  # Column Type
     assert columns[6][3] == 1  # Not Null
     assert columns[6][5] == 0  # Not Primary Key
 
@@ -202,3 +207,27 @@ def test_delete_row_with_id_as_none(engine: Engine) -> None:
     engine.ensure_table_created(T)
     with pytest.raises(ValueError, match="Cannot DELETE, id=None"):
         engine.delete(T, None)
+
+
+def test_can_insert_and_retrieve_datetime(engine: Engine) -> None:
+    engine.ensure_table_created(TblDates)
+    row = TblDates(None, "Alice", 30.0, 30, b"some data", dt.date(2021, 1, 1), dt.datetime(2021, 1, 1, 5, 33))
+    assert type(row.modified) is dt.datetime
+
+    row = engine.insert(row)
+    retrieved_row = engine.get(TblDates, row.id)
+
+    assert type(retrieved_row.modified) is dt.datetime
+    assert retrieved_row.modified == row.modified
+
+
+def test_can_insert_and_retrieve_date(engine: Engine) -> None:
+    engine.ensure_table_created(TblDates)
+    row = TblDates(None, "Alice", 30.0, 30, b"some data", dt.date(2021, 1, 1), dt.datetime(2021, 1, 1, 5, 33))
+    assert type(row.startdate) is dt.date
+
+    row = engine.insert(row)
+    retrieved_row = engine.get(TblDates, row.id)
+
+    assert type(retrieved_row.startdate) is dt.date
+    assert retrieved_row.startdate == row.startdate

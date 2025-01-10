@@ -1,3 +1,67 @@
+# Notes
+
+We want to be as minimal as possible leveraging the python standard library.
+
+https://docs.python.org/3/library/sqlite3.html
+
+https://docs.python.org/3/library/sqlite3.html#sqlite3-placeholders
+I think we will want to use named placeholder when possible
+
+    cur.executemany("INSERT INTO lang VALUES(:name, :year)", data)
+
+
+Use parse DECL types to handle adapting and converting.
+converters always are passed bytes so if we want to support str adapter/converters we need to decode them first.
+
+## Types
+https://docs.python.org/3/library/sqlite3.html#sqlite3-types
+
+These are the only built in type mappings
+
+| Python | SQLite  |
+|--------|---------|
+| None   | NULL    |
+| int    | INTEGER |
+| float  | REAL    |
+| str    | TEXT    |
+| bytes  | BLOB    |
+
+For other types we use a thin wrapper on top of Adapt/Convert api
+https://docs.python.org/3/library/sqlite3.html#sqlite3-adapter-converter-recipes
+
+    def adapt_date_iso(val):
+        """Adapt datetime.date to ISO 8601 date."""
+        return val.isoformat()
+
+    sqlite3.register_adapter(datetime.date, adapt_date_iso)
+
+
+    def convert_date(val):
+        """Convert ISO 8601 date to datetime.date object."""
+        return datetime.date.fromisoformat(val.decode())
+
+    sqlite3.register_converter("date", convert_date)
+
+So our api which wraps the above would look like this:
+
+    def adapt_datetime_iso(val: datetime.datetime) -> bytes:
+        """Adapt datetime.datetime to ISO 8601 date and time."""
+        return val.isoformat().encode()
+
+    def convert_datetime_iso(data: bytes) -> datetime.datetime:
+        """Convert ISO 8601 date and time to datetime.datetime object."""
+        return dt.datetime.fromisoformat(data.decode())
+
+    from micro_namedtuple_sqlite_persister import register_adapt_convert
+
+    register_adapt_convert(datetime.datetime, adapt_datetime_iso, convert_datetime_iso)
+
+
+| Python | SQLite  |
+|--------|---------|
+| None   | NULL    |
+| int    | INTEGER |
+
 # Development
 Use poetry to install the dependencies:
 
@@ -61,17 +125,11 @@ If you need to update the precommit hooks, run the following:
 # WIP
 
 # Bugs
-- If using non-memory db, the file says it is locked when trying to run tests.
-  - Maybe vs code holds a pytest server open or something?
 
 # Tests
 - test persisting unknown types, e.g. Decimal without a known serializer
 
-
-
 # Backlog
-- date, datetime support
-- custom Serializers/Deserializers
 - Optional columns types
 - upsert
 - pull in object from other table as field (1:Many, but on the single side)
@@ -83,6 +141,7 @@ If you need to update the precommit hooks, run the following:
 - Add passthrough for commit? e.g. engine.commit???? or just leave them to use engine.connection.commit()?
 - fetchone, fetchall, fetchmany on the query executer results
   - or queryone, queryall, querymany
+- Allow str serde
 
 ## Engineering
 - refactor out table creation in test fixture
