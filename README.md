@@ -127,9 +127,9 @@ If you need to update the precommit hooks, run the following:
 # Bugs
 
 # Tests
+- Ensure that you can register an adapter/converter for an optional type (this is handled by nullable)
 
 # Backlog
-- Optional columns types
 - upsert
 - pull in object from other table as field (1:Many, but on the single side)
 - verify columns of created tables with option to delete table if mis-matched or fail instead, e.g. force=True
@@ -144,6 +144,8 @@ If you need to update the precommit hooks, run the following:
 
 ## Engineering
 - refactor out table creation in test fixture
+- refactor tests to use test specific Models in a small scope
+- refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
 - benchmark performance
 - make update only update changed fields
 - Use a protocol to fix some weird typing issues
@@ -164,6 +166,8 @@ If you need to update the precommit hooks, run the following:
   - not worth complexity compared to other things to spend time on
 - Can persister.py have to imports from query.py?
   - NO
+- is this suffient for a fully qualified type name?
+    field_type_name = f"{AdaptConvertType.__module__}.{AdaptConvertType.__name__}"
 
 ## QUERYING
 - limit row count

@@ -1,8 +1,10 @@
 import datetime as dt
 import sqlite3
-from typing import NamedTuple
+from typing import NamedTuple, Optional, Union
 
 import pytest
+
+from micro_namedtuple_sqlite_persister.persister import unwrap_optional_type
 
 from .persister import Engine, UnregisteredFieldTypeError, enable_included_adaptconverters, register_adapt_convert
 
@@ -37,6 +39,7 @@ class TblDates(NamedTuple):
     data: bytes
     startdate: dt.date
     modified: dt.datetime
+    serial: int | None
 
 
 def test_ensure_table_created(engine: Engine) -> None:
@@ -96,6 +99,61 @@ def test_ensure_table_created(engine: Engine) -> None:
     assert columns[6][2] == "datetime.datetime"  # Column Type
     assert columns[6][3] == 1  # Not Null
     assert columns[6][5] == 0  # Not Primary Key
+
+    # Serial Field
+    assert columns[7][1] == "serial"  # Column Name
+    assert columns[7][2] == "INTEGER"  # Column Type
+    assert columns[7][3] == 0  # Nullable
+    assert columns[7][5] == 0  # Not Primary Key
+
+
+def test_unwrap_optional_type() -> None:
+    # Non-optional hint
+    assert unwrap_optional_type(int) == (False, int)
+
+    # Show that any pair optional syntaxs are == equivalent
+    assert Union[int, None] == Optional[int]
+    assert Union[int, None] == int | None
+    assert Optional[int] == int | None
+    assert Optional[int] == Union[int, None]
+    assert int | None == Union[int, None]
+    assert int | None == Optional[int]
+
+    # Simple standard optional hints
+    assert unwrap_optional_type(Union[int, None]) == (True, int)
+    assert unwrap_optional_type(Optional[int]) == (True, int)
+    assert unwrap_optional_type(int | None) == (True, int)
+
+    # Unions including more than one type in addition to None
+    assert unwrap_optional_type(Union[int, str, None]) == (True, int | str)
+    assert unwrap_optional_type(int | str | None) == (True, int | str)
+
+    # Unions not including None
+    U = Union[int, str]
+    UT = int | str
+    assert U == UT
+    assert unwrap_optional_type(U) == (False, int | str)
+    assert unwrap_optional_type(UT) == (False, int | str)
+
+    # Types nested within optional
+    assert unwrap_optional_type(Union[U, None]) == (True, int | str)
+    assert unwrap_optional_type(Optional[U]) == (True, int | str)
+    assert unwrap_optional_type((U) | None) == (True, int | str)
+
+    assert unwrap_optional_type(Union[UT, None]) == (True, int | str)
+    assert unwrap_optional_type(Optional[UT]) == (True, int | str)
+    assert unwrap_optional_type((UT) | None) == (True, int | str)
+
+    # Nest unions are flattened and deduped and thus nested optionals are not preserved
+    OU = Optional[Union[int, None]]
+    OUT = Optional[int | None]
+    assert OU == OUT
+    assert unwrap_optional_type(Union[OU, None]) == (True, (int))
+    assert unwrap_optional_type(Optional[OU]) == (True, (int))
+    assert unwrap_optional_type((OU) | None) == (True, (int))
+
+    assert unwrap_optional_type(Union[OUT, None]) == (True, (int))
+    assert unwrap_optional_type(Optional[OUT]) == (True, (int))
 
 
 def test_insert_row(engine: Engine) -> None:
@@ -211,7 +269,7 @@ def test_delete_row_with_id_as_none(engine: Engine) -> None:
 
 def test_can_insert_and_retrieve_datetime(engine: Engine) -> None:
     engine.ensure_table_created(TblDates)
-    row = TblDates(None, "Alice", 30.0, 30, b"some data", dt.date(2021, 1, 1), dt.datetime(2021, 1, 1, 5, 33))
+    row = TblDates(None, "Alice", 30.0, 30, b"some data", dt.date(2021, 1, 1), dt.datetime(2021, 1, 1, 5, 33), None)
     assert type(row.modified) is dt.datetime
 
     row = engine.insert(row)
@@ -223,7 +281,7 @@ def test_can_insert_and_retrieve_datetime(engine: Engine) -> None:
 
 def test_can_insert_and_retrieve_date(engine: Engine) -> None:
     engine.ensure_table_created(TblDates)
-    row = TblDates(None, "Alice", 30.0, 30, b"some data", dt.date(2021, 1, 1), dt.datetime(2021, 1, 1, 5, 33))
+    row = TblDates(None, "Alice", 30.0, 30, b"some data", dt.date(2021, 1, 1), dt.datetime(2021, 1, 1, 5, 33), None)
     assert type(row.startdate) is dt.date
 
     row = engine.insert(row)

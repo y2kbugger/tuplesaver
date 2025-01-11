@@ -1,12 +1,13 @@
 import datetime as dt
 import pickle
 import sqlite3
+import types
 from collections.abc import Callable, Iterable
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Union, get_args, get_origin
 
 type Row = NamedTuple
 
-_field_type_map: dict[type, str] = {
+_columntype: dict[type, str] = {
     str: "TEXT",
     float: "REAL",
     int: "INTEGER",
@@ -19,14 +20,52 @@ class UnregisteredFieldTypeError(Exception):
         super().__init__(f"Field Type {field_type} has not been registered with the Persister. Use `register_adapt_convert` to register it")
 
 
-def _column_definition(annotation: tuple[str, type]) -> str:
+def unwrap_optional_type(type_hint: Any) -> tuple[bool, Any]:
+    """Determine if a given type hint is an Optional type
+
+    Supports the following forms of Optional types:
+    UnionType (e.g., int | None)
+    Optional  (e.g., Optional[int])
+    Union (e.g., Union[int, None])
+
+    Returns
+    - A boolean indicating if it is Optional.
+    - The underlying type if it is Optional, otherwise the original type.
+    """
+
+    # Not any form of Union type
+    if not (isinstance(type_hint, types.UnionType) or get_origin(type_hint) is Union):
+        return False, type_hint
+
+    args = get_args(type_hint)
+    optional = type(None) in args
+
+    underlying_types = tuple(arg for arg in args if arg is not type(None))
+    underlying_type = underlying_types[0]
+    for t in underlying_types[1:]:
+        underlying_type |= t
+
+    return optional, underlying_type
+
+
+def _column_definition(annotation: tuple[str, Any]) -> str:
     field_name, FieldType = annotation
+
+    nullable, FieldType = unwrap_optional_type(FieldType)
+
     if field_name == "id":
         return "id [INTEGER] PRIMARY KEY NOT NULL"
-    field_type_name = _field_type_map.get(FieldType)
-    if field_type_name is None:
+
+    columntype = _columntype.get(FieldType)
+    if columntype is None:
         raise UnregisteredFieldTypeError(FieldType)
-    return f"{field_name} [{_field_type_map[FieldType]}] NOT NULL"
+
+    if nullable:
+        nullable_sql = "NULL"
+    else:
+        nullable_sql = "NOT NULL"
+
+    return f"{field_name} [{columntype}] {nullable_sql}"
 
 
 class Engine:
@@ -100,13 +139,13 @@ class Engine:
 
 ## Adapt/Convert
 def register_adapt_convert[D](AdaptConvertType: type[D], adapt: Callable[[D], bytes], convert: Callable[[bytes], D], overwrite: bool = False) -> None:
-    if AdaptConvertType in _field_type_map and not overwrite:
+    if AdaptConvertType in _columntype and not overwrite:
         raise ValueError(f"Persistance format for {AdaptConvertType} already exists. It is a native type (int, float, str, bytes) or alread has an Adapt Convert registered")
 
     field_type_name = f"{AdaptConvertType.__module__}.{AdaptConvertType.__name__}"
     sqlite3.register_adapter(AdaptConvertType, adapt)
     sqlite3.register_converter(field_type_name, convert)
-    _field_type_map[AdaptConvertType] = field_type_name
+    _columntype[AdaptConvertType] = field_type_name
 
 
 included_adapt_converters: dict[type, tuple[Callable[[Any], bytes], Callable[[bytes], Any]]] = {
