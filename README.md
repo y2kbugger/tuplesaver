@@ -1,17 +1,55 @@
 # Notes
+## Target Applications
+- Single node for app + sqlite db
+- Only your application access the db directly
+  - ETL prefetch for reads of external data
+  - Save, export for external writes
+  - API access for reads from external services
 
-We want to be as minimal as possible leveraging the python standard library.
+This is a niche that viable many web applications, as well as for many enterprise applications.
 
+## Why
+If you meet the above constraints, there are tangible benefits.
+- Simplified application infrastructure, no need for a separate db server
+- If noone else accesses your db directly, you maintain the freedom to refactor the db schema
+- Latency of persistance is negligible
+  - Apps can leverage this and simplify by eliminating unpersisted state.
+- Consistancy between devlocal, test, and production environments
+
+## Library Goals
+- Correct type hinting on both sides of persistance
+- Improve refactorability
+  - Eliminate stringly referenced columns
+  - Migrations distilled to thier essential complexity
+
+## Design Principles
+- Truely simple, not seemingly simple
+- no dependencies
+- minimize boilerplate
+- Between magic and more boilerplate, choose boilerplate
+- Only do what can't be done with the sqlite standard library
+  - Don't wrap if not REQUIRED to acomplish goals
+
+## Outstanding Design Questions
+- Tolerance to out-of-band schema changes
+  1. Be fully compatible out-of-band changes to the db schema
+    - adding indexes, constraints, etc.
+    - interop with handwritten queries to avoid stringly typed column names.
+  2. Narrow scope to allow stonger assumptions
+    - Enhanced predictability of db responses, e.g. contraints allowed or now? triggers?
+    - Simplified migrations, because we know nothing happened out-of-band
+    - Only support querys that can be created from our query builder.
+
+## Reference
 https://docs.python.org/3/library/sqlite3.html
-
 https://docs.python.org/3/library/sqlite3.html#sqlite3-placeholders
 I think we will want to use named placeholder when possible
 
     cur.executemany("INSERT INTO lang VALUES(:name, :year)", data)
 
+think about this for migrations
+https://martinfowler.com/articles/evodb.html
 
-Use parse DECL types to handle adapting and converting.
-converters always are passed bytes so if we want to support str adapter/converters we need to decode them first.
 
 ## Types
 https://docs.python.org/3/library/sqlite3.html#sqlite3-types
@@ -125,29 +163,42 @@ If you need to update the precommit hooks, run the following:
 # WIP
 
 # Bugs
+- string types in queries are not being escaped, this should be handled by parameters anyway
 
 # Tests
-- Ensure that you can register an adapter/converter for an optional type (this is handled by nullable)
+- Ensure that you can't register an adapter/converter for an optional type (this is handled by nullable)
 
 # Backlog
-- upsert
-- pull in object from other table as field (1:Many, but on the single side)
-- verify columns of created tables with option to delete table if mis-matched or fail instead, e.g. force=True
 - Require and check that id is defined as an int and as the first column
+- verify columns of created tables with option to delete table if mis-matched or fail instead, e.g. force=True
 - Overload on delete so you can just pass the whole row
-- Unique constraints
-- pull in list of objects from other table as field (1:Many, but on the many side)
-- Add passthrough for commit? e.g. engine.commit???? or just leave them to use engine.connection.commit()?
 - fetchone, fetchall, fetchmany on the query executer results
   - or queryone, queryall, querymany
-- Allow str serde
+  - Could this be done with a cursor proxy and row factory?
+- replace style api for update
+  ```python
+  engine.update(MyModel, set=(MyModel.name, "Apple"), where=(MyModel.id, 42))
+  ```
+  or
+  ```python
+  engine.update(row, set={MyModel.name: "Apple"})
+  ```
+  or maybe this is all to hyper-specialized.
+  - replace insert and update with `save` method?
+    - if row has an id, update, otherwise insert
+  - maybe the querybuilder should create updates as well?
+  - single get api on id also seems silly, just use query builder
+    - maybe is useful when you have a relationship and want to get the related object
+  - maybe engine should have methods: select, update, delete with query builder interfaces
+    - or should user code grab handles to the model and sql and params and call execute directly?
+- pull in object from other table as field (1:Many, but on the single side)
+- pull in list of objects from other table as field (1:Many, but on the many side)
 
 ## Engineering
 - refactor out table creation in test fixture
 - refactor tests to use test specific Models in a small scope
 - refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
 - benchmark performance
-- make update only update changed fields
 - Use a protocol to fix some weird typing issues
   - row: NamedTuple vs row: ROW
   - self.connection.execute(query, (*row, row[0]))
@@ -168,6 +219,14 @@ If you need to update the precommit hooks, run the following:
   - NO
 - is this suffient for a fully qualified type name?
     field_type_name = f"{AdaptConvertType.__module__}.{AdaptConvertType.__name__}"
+
+## will not implement
+- Add passthrough for commit? e.g. engine.commit
+  - just let the user use the existing connection, engine.connection.commit()?
+  - Violates, only do what can't be done with the sqlite standard library
+- Allow str serde, i.e. in addtion to the bytes api
+  - just explicitly encode/decode to bytes
+  - Violates choose boilerplate over magic
 
 ## QUERYING
 - limit row count
@@ -248,3 +307,63 @@ WHERE id = 42 AND name != "Apple" OR count > 100
 GROUP BY type
 HAVING avg(count) > 50
 ```
+
+## Extra-typical metadata
+Some features requiring metadata than can't expressed in standard typehints
+- unique constraints
+- indexes
+- upsert, true upsert relys on unique constraints in sqlite.
+  - you must define which columns unique constraint you are basing the upsert on
+- check constraints
+
+
+Considerations for extra-typical metadata
+```python
+  class TUnique(NamedTuple):
+      id: int | None
+      name: Annotated[str, UNIQUE]
+      age: int
+  ```
+  and here a simple method for unrapping metadata.
+  ```python
+  def unwrap_metadata(type_hint: Any) -> tuple[tuple[Any], Any]:
+      """Determine if a given type hint is an Annotated type
+
+      Annotated (e.g., Annotated[int, Unique])
+
+      Returns
+      - A list of metadata values
+      - The underlying type if it is Annotated, otherwise the original type.
+      """
+
+      # Not any form of Annotated type
+      if get_origin(type_hint) is not Annotated:
+          return tuple(), type_hint
+
+      metadata = get_args(type_hint)[1:]
+      underlying_type = get_args(type_hint)[0]
+
+      return metadata, underlying_type
+  ```
+  Options for defining UNIQUE
+  ```python
+  UNIQUE = 'UNIQUE'
+  class UNIQUE: pass
+  class UNIQUE:
+    def __init__(self, name:str):
+      '''maybe somthing multiple column described here'''
+  ```
+  There is also the option of using a inner Meta class
+  ```python
+  class TUnique(NamedTuple):
+      id: int | None
+      name: str
+      age: int
+
+      class MNSqlite:
+          unique = ('name','age')
+  ```
+  Or as extra info in the create_table method
+  ```python
+  engine.ensure_table_created(TUnique, unique=('name','age'))
+  ```
