@@ -175,6 +175,18 @@ def test_ensure_table_created_catches_force_recreate(engine: Engine) -> None:
     engine.ensure_table_created(TblAlreadyCreated)  # just a double check for it being recreated.
 
 
+def test_creating_table_including_unknown_type_raises_error(engine: Engine) -> None:
+    class NewType: ...
+
+    class ModelUnknownType(NamedTuple):
+        id: int | None
+        name: str
+        unknown: NewType
+
+    with pytest.raises(UnregisteredFieldTypeError):
+        engine.ensure_table_created(ModelUnknownType)
+
+
 def test_unwrap_optional_type() -> None:
     # Non-optional hint
     assert unwrap_optional_type(int) == (False, int)
@@ -374,18 +386,6 @@ def test_can_insert_and_retrieve_date(engine: Engine) -> None:
 
     assert type(retrieved_row.startdate) is dt.date
     assert retrieved_row.startdate == row.startdate
-
-
-def test_creating_table_including_unknown_type_raises_error(engine: Engine) -> None:
-    class NewType: ...
-
-    class ModelUnknownType(NamedTuple):
-        id: int | None
-        name: str
-        unknown: NewType
-
-    with pytest.raises(UnregisteredFieldTypeError):
-        engine.ensure_table_created(ModelUnknownType)
 
 
 def test_registering_adapt_convert_pair(engine: Engine) -> None:
