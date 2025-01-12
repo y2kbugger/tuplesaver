@@ -150,7 +150,7 @@ def test_render_query_with_where() -> None:
     assert sql == dd("""
         SELECT id, name, date
         FROM MyModel
-        WHERE (MyModel.name = Apple)
+        WHERE (MyModel.name = 'Apple')
     """)
 
 
@@ -170,7 +170,7 @@ def test_render_query_with_complex_where() -> None:
     assert sql == dd("""
         SELECT id, name, date
         FROM MyModel
-        WHERE ((MyModel.name = Apple) OR (MyModel.id = 42))
+        WHERE ((MyModel.name = 'Apple') OR (MyModel.id = 42))
     """)
 
 
@@ -186,7 +186,7 @@ def test_render_query_with_where_and_limit() -> None:
     assert sql == dd("""
         SELECT id, name, date
         FROM MyModel
-        WHERE (MyModel.name = Apple)
+        WHERE (MyModel.name = 'Apple')
         LIMIT 5
     """)
 
@@ -205,7 +205,7 @@ def test_render_query_with_and() -> None:
     assert sql == dd("""
         SELECT id, name, date
         FROM MyModel
-        WHERE ((MyModel.name = Apple) AND (MyModel.id = 42))
+        WHERE ((MyModel.name = 'Apple') AND (MyModel.id = 42))
     """)
 
 
@@ -226,7 +226,7 @@ def test_render_query_with_complex_and_or() -> None:
     assert sql == dd("""
         SELECT id, name, date
         FROM MyModel
-        WHERE (((MyModel.name = Apple) AND (MyModel.id = 42)) OR (MyModel.name = Banana))
+        WHERE (((MyModel.name = 'Apple') AND (MyModel.id = 42)) OR (MyModel.name = 'Banana'))
     """)
 
 
@@ -291,5 +291,5 @@ def test_render_query_with_complex_comparisons() -> None:
     assert sql == dd("""
         SELECT id, name, date
         FROM MyModel
-        WHERE (((MyModel.id > 42) AND (MyModel.id < 100)) AND (MyModel.name != Test))
+        WHERE (((MyModel.id > 42) AND (MyModel.id < 100)) AND (MyModel.name != 'Test'))
     """)

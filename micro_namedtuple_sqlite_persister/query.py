@@ -55,8 +55,16 @@ class SELECT(tuple): pass  # SELECT statement  # noqa: E701
 class CSV(tuple): pass  # command separated values  # noqa: E701
 class WHERE(tuple): pass  # WHERE clause  # noqa: E701
 class LIMIT(tuple): pass  # LIMIT clause  # noqa: E701
-class CMP(tuple): pass  # comparison  # noqa: E701
+class CMP(tuple): # comparison
+    def __new__(cls, args: tuple) -> tuple:
+        l, o, r = args # noqa: E741
+        if isinstance(l, str):
+            l = STRLIT(l) # noqa: E741
+        if isinstance(r, str):
+            r = STRLIT(r)
+        return super().__new__(cls, (l, o, r))
 class LOGIC(tuple): pass  # logical operator # noqa: E701
+class STRLIT(str): pass  # string literal  # noqa: E701
 # fmt: on
 
 type Field = _tuplegetter
@@ -99,6 +107,8 @@ def render(M: type[Row], fg: Fragment) -> str:
             return ' '.join(render(M, f) for f in fg)
         case int() | float():
             return str(fg)
+        case STRLIT():
+            return f"'{fg}'"
         case str():
             return fg
         case _:

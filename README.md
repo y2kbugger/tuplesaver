@@ -163,7 +163,6 @@ If you need to update the precommit hooks, run the following:
 # WIP
 
 # Bugs
-- string types in queries are not being escaped, this should be handled by parameters anyway
 
 # Tests
 - Ensure that you can't register an adapter/converter for an optional type (this is handled by nullable)
@@ -234,16 +233,8 @@ If you need to update the precommit hooks, run the following:
 - Supra-binay logical operators e.g. (a or b or c)
 - Subset of columns query
   - need way to specify which actual table the columns are from
-- Literal str vs keyword str in query builder
-- SQL injection possible, must parameterize queries correctly
-
-- Insure that the query typehints completely and correctly describe the possible queries that can be made
-  e.g.
-  only things that should be tested for equality are tested for equality
-  in summary the expression should have no type error IFF the expression will be valid SQL at runtime.
-- string literal in predicate, vs SQL TEST, how to differentiate while preventing SQL injection?
-- Maybe not allowing sql text literal afterall?
-  - e.g. sql = ('select', 'count(*)', 'from', MyModel, 'where', MyModel.name, '=', 'y2k')
+- Insure that the query typehints have no type errors IF and only IF the query will be valid SQL at runtime
+- SQL injection mitigation, correctly parameterize queries
 
 
 ### Purely functional API
