@@ -68,6 +68,11 @@ def _column_definition(annotation: tuple[str, Any]) -> str:
     return f"{field_name} [{columntype}] {nullable_sql}"
 
 
+class FieldZeroIdRequired(Exception):
+    def __init__(self, Model: type[Row]):
+        super().__init__(self, f"Field 0 of {Model.__name__} is required to be `id: int | None` but instead is `{Model._fields[0]}: {Model.__annotations__[Model._fields[0]]}`")
+
+
 class Engine:
     def __init__(self, db_path: str, echo_sql: bool = False) -> None:
         self.db_path = db_path
@@ -78,6 +83,9 @@ class Engine:
 
     #### Writing
     def ensure_table_created(self, Model: type[Row]) -> None:
+        if Model._fields[0] != "id" or Model.__annotations__[Model._fields[0]] != (int | None):
+            raise FieldZeroIdRequired(Model)
+
         query = f"""
             CREATE TABLE IF NOT EXISTS {Model.__name__} (
             {', '.join(_column_definition(f) for f in Model.__annotations__.items())}

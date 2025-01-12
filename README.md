@@ -167,7 +167,6 @@ If you need to update the precommit hooks, run the following:
 # Tests
 
 # Backlog
-- Require and check that id is defined as an int and as the first column
 - verify columns of created tables with option to delete table if mis-matched or fail instead, e.g. force=True
 - Overload on delete so you can just pass the whole row
 - fetchone, fetchall, fetchmany on the query executer results

@@ -6,7 +6,7 @@ import pytest
 
 from micro_namedtuple_sqlite_persister.persister import unwrap_optional_type
 
-from .persister import Engine, InvalidAdaptConvertType, UnregisteredFieldTypeError, enable_included_adaptconverters, register_adapt_convert
+from .persister import Engine, FieldZeroIdRequired, InvalidAdaptConvertType, UnregisteredFieldTypeError, enable_included_adaptconverters, register_adapt_convert
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -40,6 +40,14 @@ class TblDates(NamedTuple):
     startdate: dt.date
     modified: dt.datetime
     serial: int | None
+
+
+def test_forgetting_id_column_as_first_field_raises(engine: Engine) -> None:
+    class TblNoId(NamedTuple):
+        name: str
+
+    with pytest.raises(FieldZeroIdRequired):
+        engine.ensure_table_created(TblNoId)
 
 
 def test_ensure_table_created(engine: Engine) -> None:
