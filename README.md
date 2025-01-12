@@ -168,7 +168,6 @@ If you need to update the precommit hooks, run the following:
 - overwrite flag on adapt/convert registrations
 
 # Backlog
-- Overload on delete so you can just pass the whole row
 - fetchone, fetchall, fetchmany on the query executer results
   - or queryone, queryall, querymany
   - Could this be done with a cursor proxy and row factory?
@@ -190,6 +189,9 @@ If you need to update the precommit hooks, run the following:
     - or should user code grab handles to the model and sql and params and call execute directly?
 - pull in object from other table as field (1:Many, but on the single side)
 - pull in list of objects from other table as field (1:Many, but on the many side)
+- typed id as part of api, then you can reference a row by a single value, rather than model+id field
+  - could disambiguate forgein key references as well
+  - could simplify delete api to delete(typed_id)
 
 ## Engineering
 - refactor out table creation in test fixture

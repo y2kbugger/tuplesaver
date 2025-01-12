@@ -4,7 +4,7 @@ import re
 import sqlite3
 import types
 from collections.abc import Callable, Iterable
-from typing import Any, NamedTuple, Union, get_args, get_origin
+from typing import Any, NamedTuple, Union, get_args, get_origin, overload
 
 type Row = NamedTuple
 
@@ -148,7 +148,21 @@ class Engine:
         if cur.rowcount == 0:
             raise ValueError(f"Cannot UPDATE, no row with id={row[0]} in table `{row.__class__.__name__}`")
 
-    def delete(self, Model: type[Row], row_id: int | None) -> None:
+    @overload
+    def delete(self, Model: type[Row], row_id: int | None) -> None: ...
+
+    @overload
+    def delete(self, row: Row) -> None: ...
+
+    def delete(self, Model_or_row: type[Row] | Row, row_id: int | None = None) -> None:  # pyright: ignore [reportInconsistentOverload] allow overloads with different parameter names
+        if not isinstance(Model_or_row, type):
+            row = Model_or_row
+            Model = row.__class__
+            assert row_id is None, "Do not provide row_id when passing a row instance."
+            row_id = row[0]
+        else:
+            Model = Model_or_row
+
         if row_id is None:
             raise ValueError("Cannot DELETE, id=None")
         query = f"""
