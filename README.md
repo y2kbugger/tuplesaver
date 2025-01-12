@@ -165,6 +165,7 @@ If you need to update the precommit hooks, run the following:
 # Bugs
 
 # Tests
+- overwrite flag on adapt/convert registrations
 
 # Backlog
 - verify columns of created tables with option to delete table if mis-matched or fail instead, e.g. force=True
