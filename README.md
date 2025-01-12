@@ -165,7 +165,6 @@ If you need to update the precommit hooks, run the following:
 # Bugs
 
 # Tests
-- Ensure that you can't register an adapter/converter for an optional type (this is handled by nullable)
 
 # Backlog
 - Require and check that id is defined as an int and as the first column

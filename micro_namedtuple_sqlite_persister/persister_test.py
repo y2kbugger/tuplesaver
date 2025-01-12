@@ -6,7 +6,7 @@ import pytest
 
 from micro_namedtuple_sqlite_persister.persister import unwrap_optional_type
 
-from .persister import Engine, UnregisteredFieldTypeError, enable_included_adaptconverters, register_adapt_convert
+from .persister import Engine, InvalidAdaptConvertType, UnregisteredFieldTypeError, enable_included_adaptconverters, register_adapt_convert
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -346,3 +346,10 @@ def test_registering_adapt_convert_pair(engine: Engine) -> None:
     retrieved_row = engine.get(ModelUnknownType, row.id)
     assert type(retrieved_row.custom) is NewType
     assert retrieved_row.custom.values == ["a", "b", "c"]
+
+
+def test_attempted_registration_of_an_union_raises() -> None:
+    class NewType: ...
+
+    with pytest.raises(InvalidAdaptConvertType):
+        register_adapt_convert(Optional[NewType], lambda x: x, lambda x: x)  # type: ignore this is part of test

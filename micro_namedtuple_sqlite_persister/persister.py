@@ -137,8 +137,18 @@ class Engine:
         return (Model._make(row) for row in cursor.fetchall())
 
 
+class InvalidAdaptConvertType(Exception):
+    def __init__(self, AdaptConvertType: type) -> None:
+        super().__init__(
+            f"AdaptConvertType {AdaptConvertType} is not a valid type for persisting. `{AdaptConvertType})` must be an instance of `type` but instead is `{type(AdaptConvertType)}`"
+        )
+
+
 ## Adapt/Convert
 def register_adapt_convert[D](AdaptConvertType: type[D], adapt: Callable[[D], bytes], convert: Callable[[bytes], D], overwrite: bool = False) -> None:
+    if type(AdaptConvertType) is not type:
+        raise InvalidAdaptConvertType(AdaptConvertType)
+
     if AdaptConvertType in _columntype and not overwrite:
         raise ValueError(f"Persistance format for {AdaptConvertType} already exists. It is a native type (int, float, str, bytes) or alread has an Adapt Convert registered")
 
