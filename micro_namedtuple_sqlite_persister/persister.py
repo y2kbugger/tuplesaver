@@ -1,5 +1,6 @@
 import datetime as dt
 import pickle
+import re
 import sqlite3
 import types
 from collections.abc import Callable, Iterable
@@ -68,9 +69,17 @@ def _column_definition(annotation: tuple[str, Any]) -> str:
     return f"{field_name} [{columntype}] {nullable_sql}"
 
 
+def normalize_whitespace(s: str) -> str:
+    return re.sub(r'\s+', ' ', s).strip()
+
+
 class FieldZeroIdRequired(Exception):
     def __init__(self, Model: type[Row]):
         super().__init__(self, f"Field 0 of {Model.__name__} is required to be `id: int | None` but instead is `{Model._fields[0]}: {Model.__annotations__[Model._fields[0]]}`")
+
+
+class TableSchemaMismatch(Exception):
+    pass
 
 
 class Engine:
@@ -81,16 +90,41 @@ class Engine:
         if echo_sql:
             self.connection.set_trace_callback(print)
 
+    def _get_sql_for_existing_table(self, Model: type[Row]) -> str:
+        query = f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{Model.__name__}'"
+        cursor = self.connection.execute(query)
+        return normalize_whitespace(cursor.fetchone()[0])
+
     #### Writing
-    def ensure_table_created(self, Model: type[Row]) -> None:
+    def ensure_table_created(self, Model: type[Row], *, force_recreate: bool = False) -> None:
         if Model._fields[0] != "id" or Model.__annotations__[Model._fields[0]] != (int | None):
             raise FieldZeroIdRequired(Model)
 
         query = f"""
-            CREATE TABLE IF NOT EXISTS {Model.__name__} (
+            CREATE TABLE {Model.__name__} (
             {', '.join(_column_definition(f) for f in Model.__annotations__.items())}
             )"""
-        self.connection.execute(query)
+        try:
+            self.connection.execute(query)
+        except sqlite3.OperationalError as e:
+            if f"table {Model.__name__} already exists" in str(e):
+                # Force Recreate
+                if force_recreate:
+                    self.connection.execute(f"DROP TABLE {Model.__name__}")
+                    self.connection.execute(query)
+
+                # Check existing table, it might be ok
+                existing_table_schema = self._get_sql_for_existing_table(Model)
+                new_table_schema = normalize_whitespace(query)
+                if existing_table_schema != new_table_schema:
+                    raise TableSchemaMismatch(
+                        f"Table `{Model.__name__}` already exists but the schema does not match the expected schema."
+                        f"\nExisting schema:\n\t{existing_table_schema}."
+                        f"\nExpected schema:\n\t{new_table_schema}"
+                    ) from e
+            else:
+                # error is not about the table already existing
+                raise
 
     def insert[R: Row](self, row: R) -> R:
         query = f"""

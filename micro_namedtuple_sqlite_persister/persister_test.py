@@ -6,7 +6,7 @@ import pytest
 
 from micro_namedtuple_sqlite_persister.persister import unwrap_optional_type
 
-from .persister import Engine, FieldZeroIdRequired, InvalidAdaptConvertType, UnregisteredFieldTypeError, enable_included_adaptconverters, register_adapt_convert
+from .persister import Engine, FieldZeroIdRequired, InvalidAdaptConvertType, TableSchemaMismatch, UnregisteredFieldTypeError, enable_included_adaptconverters, register_adapt_convert
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -113,6 +113,66 @@ def test_ensure_table_created(engine: Engine) -> None:
     assert columns[7][2] == "INTEGER"  # Column Type
     assert columns[7][3] == 0  # Nullable
     assert columns[7][5] == 0  # Not Primary Key
+
+
+def test_ensure_table_created_with_table_already_created_correct_is_silent(engine: Engine) -> None:
+    class TblAlreadyCreated(NamedTuple):
+        id: int | None
+        name: str
+        age: int
+
+    engine.ensure_table_created(TblAlreadyCreated)
+    engine.ensure_table_created(TblAlreadyCreated)
+
+
+def test_ensure_table_created_with_table_already_created_incorrect_raises(engine: Engine) -> None:
+    class TblAlreadyCreated(NamedTuple):  # type: ignore shadowing is part of the test
+        id: int | None
+        name: str
+        age: int
+
+    engine.ensure_table_created(TblAlreadyCreated)
+
+    class TblAlreadyCreated(NamedTuple):
+        id: int | None
+        name: str
+        age: int
+        data: bytes
+
+    with pytest.raises(TableSchemaMismatch):
+        engine.ensure_table_created(TblAlreadyCreated)
+
+
+def test_ensure_table_created_catches_mismatched_from_out_of_band_alters(engine: Engine) -> None:
+    class TblAlreadyCreated(NamedTuple):
+        id: int | None
+        name: str
+        age: int
+
+    engine.ensure_table_created(TblAlreadyCreated)
+    alter = f"ALTER TABLE {TblAlreadyCreated.__name__} ADD COLUMN out_of_band_edit TEXT"
+    engine.connection.execute(alter)
+
+    with pytest.raises(TableSchemaMismatch):
+        engine.ensure_table_created(TblAlreadyCreated)
+
+
+def test_ensure_table_created_catches_force_recreate(engine: Engine) -> None:
+    class TblAlreadyCreated(NamedTuple):  # type: ignore shadowing is part of the test
+        id: int | None
+        name: str
+        age: int
+
+    engine.ensure_table_created(TblAlreadyCreated)
+
+    class TblAlreadyCreated(NamedTuple):
+        id: int | None
+        name: str
+        age: int
+        data: bytes
+
+    engine.ensure_table_created(TblAlreadyCreated, force_recreate=True)
+    engine.ensure_table_created(TblAlreadyCreated)  # just a double check for it being recreated.
 
 
 def test_unwrap_optional_type() -> None:
