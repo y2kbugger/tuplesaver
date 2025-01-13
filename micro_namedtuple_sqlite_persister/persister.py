@@ -1,10 +1,11 @@
 import datetime as dt
+import inspect
 import pickle
 import re
 import sqlite3
 import types
 from collections.abc import Callable, Iterable
-from typing import Any, NamedTuple, Union, get_args, get_origin, overload
+from typing import Any, NamedTuple, Union, get_args, get_origin, get_type_hints, overload
 
 type Row = NamedTuple
 
@@ -49,6 +50,17 @@ def unwrap_optional_type(type_hint: Any) -> tuple[bool, Any]:
     return optional, underlying_type
 
 
+def get_resolved_annotations(Model: Any) -> dict[str, Any]:
+    """Resolve ForwardRef type hints by combining all local and global namespaces up the call stack."""
+    globalns = getattr(inspect.getmodule(Model), "__dict__", {})
+    localns = {}
+
+    for frame in inspect.stack():
+        localns.update(frame.frame.f_locals)
+
+    return get_type_hints(Model, globalns=globalns, localns=localns)
+
+
 def _column_definition(annotation: tuple[str, Any]) -> str:
     field_name, FieldType = annotation
 
@@ -74,8 +86,8 @@ def normalize_whitespace(s: str) -> str:
 
 
 class FieldZeroIdRequired(Exception):
-    def __init__(self, Model: type[Row]):
-        super().__init__(self, f"Field 0 of {Model.__name__} is required to be `id: int | None` but instead is `{Model._fields[0]}: {Model.__annotations__[Model._fields[0]]}`")
+    def __init__(self, model_name: str, field_zero_name: str, field_zero_typehint: Any) -> None:
+        super().__init__(self, f"Field 0 of {model_name} is required to be `id: int | None` but instead is `{field_zero_name}: {field_zero_typehint}`")
 
 
 class TableSchemaMismatch(Exception):
@@ -97,12 +109,15 @@ class Engine:
 
     #### Writing
     def ensure_table_created(self, Model: type[Row], *, force_recreate: bool = False) -> None:
-        if Model._fields[0] != "id" or Model.__annotations__[Model._fields[0]] != (int | None):
-            raise FieldZeroIdRequired(Model)
+        annotations = get_resolved_annotations(Model)
+        field_zero_name = Model._fields[0]
+        field_zero_typehint = annotations[field_zero_name]
+        if field_zero_name != "id" or field_zero_typehint != (int | None):
+            raise FieldZeroIdRequired(Model.__name__, field_zero_name, field_zero_typehint)
 
         query = f"""
             CREATE TABLE {Model.__name__} (
-            {', '.join(_column_definition(f) for f in Model.__annotations__.items())}
+            {', '.join(_column_definition(f) for f in annotations.items())}
             )"""
         try:
             self.connection.execute(query)
