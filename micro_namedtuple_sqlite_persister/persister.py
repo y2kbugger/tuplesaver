@@ -5,7 +5,7 @@ import re
 import sqlite3
 import types
 from collections.abc import Callable, Iterable
-from typing import Any, NamedTuple, Union, get_args, get_origin, get_type_hints, overload
+from typing import Any, NamedTuple, Union, cast, get_args, get_origin, get_type_hints, overload
 
 type Row = NamedTuple
 
@@ -92,6 +92,28 @@ class FieldZeroIdRequired(Exception):
 
 class TableSchemaMismatch(Exception):
     pass
+
+
+class TypedCursorProxy[R: Row](sqlite3.Cursor):
+    @staticmethod
+    def proxy_cursor(Model: type[R], cursor: sqlite3.Cursor) -> 'TypedCursorProxy':
+        def row_fac(c: sqlite3.Cursor, r: sqlite3.Row) -> R:
+            return Model._make(r)
+
+        cursor.row_factory = row_fac
+        return cast(TypedCursorProxy, cursor)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.cursor, name)
+
+    def fetchone(self) -> R:
+        return self.cursor.fetchone()
+
+    def fetchall(self) -> list[R]:
+        return self.cursor.fetchall()
+
+    def fetchmany(self, size: int | None = 1) -> list[R]:
+        return self.cursor.fetchmany(size)
 
 
 class Engine:
@@ -203,9 +225,9 @@ class Engine:
             raise ValueError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
         return Model._make(row)
 
-    def query[R: Row](self, Model: type[R], sql: str) -> Iterable[R]:
+    def query[R: Row](self, Model: type[R], sql: str) -> TypedCursorProxy[R]:
         cursor = self.connection.execute(sql)
-        return (Model._make(row) for row in cursor.fetchall())
+        return TypedCursorProxy.proxy_cursor(Model, cursor)
 
 
 class InvalidAdaptConvertType(Exception):

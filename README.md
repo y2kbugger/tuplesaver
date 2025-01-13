@@ -168,9 +168,6 @@ If you need to update the precommit hooks, run the following:
 - overwrite flag on adapt/convert registrations
 
 # Backlog
-- fetchone, fetchall, fetchmany on the query executer results
-  - or queryone, queryall, querymany
-  - Could this be done with a cursor proxy and row factory?
 - replace style api for update
   ```python
   engine.update(MyModel, set=(MyModel.name, "Apple"), where=(MyModel.id, 42))
@@ -197,6 +194,8 @@ If you need to update the precommit hooks, run the following:
 - refactor out table creation in test fixture
 - refactor tests to use test specific Models in a small scope
 - refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
+- use the assert_type from typing to check type hints throught all tests
+- Harmonize the def-scoped Model class names in the tests
 - benchmark performance
 - Use a protocol to fix some weird typing issues
   - row: NamedTuple vs row: ROW
@@ -317,6 +316,13 @@ Considerations for extra-typical metadata
   class TUnique(NamedTuple):
       id: int | None
       name: Annotated[str, UNIQUE]
+      last: Annotated[str, UNIQUE]
+      age: int
+```
+```python
+  class TUnique(NamedTuple):
+      id: int | None
+      name: UNIQUE[str]
       age: int
   ```
   and here a simple method for unrapping metadata.
@@ -355,10 +361,11 @@ Considerations for extra-typical metadata
       name: str
       age: int
 
-      class MNSqlite:
-          unique = ('name','age')
+      class Meta:
+          uniques = [('name','age'), ('name',)]
+          check = 'age > 0'
   ```
   Or as extra info in the create_table method
   ```python
-  engine.ensure_table_created(TUnique, unique=('name','age'))
+  engine.ensure_table_created(TUnique, =('name','age'))
   ```

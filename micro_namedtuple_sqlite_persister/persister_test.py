@@ -2,13 +2,22 @@ from __future__ import annotations
 
 import datetime as dt
 import sqlite3
-from typing import NamedTuple, Optional, Union
+from typing import NamedTuple, Optional, Union, assert_type
 
 import pytest
 
 from micro_namedtuple_sqlite_persister.persister import unwrap_optional_type
 
-from .persister import Engine, FieldZeroIdRequired, InvalidAdaptConvertType, TableSchemaMismatch, UnregisteredFieldTypeError, enable_included_adaptconverters, register_adapt_convert
+from .persister import (
+    Engine,
+    FieldZeroIdRequired,
+    InvalidAdaptConvertType,
+    TableSchemaMismatch,
+    TypedCursorProxy,
+    UnregisteredFieldTypeError,
+    enable_included_adaptconverters,
+    register_adapt_convert,
+)
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -388,6 +397,77 @@ def test_can_insert_and_retrieve_date(engine: Engine) -> None:
 
     assert type(retrieved_row.startdate) is dt.date
     assert retrieved_row.startdate == row.startdate
+
+
+def test_engine_query_fetchone(engine: Engine) -> None:
+    class ModelX(NamedTuple):
+        id: int | None
+        name: str
+        age: int
+
+    engine.ensure_table_created(ModelX)
+    sql = "SELECT 1 as id, 'Alice' as name, 30 as age;"
+
+    cur = engine.query(ModelX, sql)
+    row = cur.fetchone()
+
+    assert row == ModelX(1, "Alice", 30)
+
+    assert_type(cur, TypedCursorProxy[ModelX])
+    assert_type(row, ModelX)
+
+
+def test_engine_query_fetchall(engine: Engine) -> None:
+    class ModelX(NamedTuple):
+        id: int | None
+        name: str
+        age: int
+
+    engine.ensure_table_created(ModelX)
+    sql = "SELECT 1 as id, 'Alice' as name, 30 as age UNION SELECT 2, 'Bob', 40;"
+
+    cur = engine.query(ModelX, sql)
+    rows = cur.fetchall()
+
+    assert rows == [ModelX(1, "Alice", 30), ModelX(2, "Bob", 40)]
+
+    assert_type(cur, TypedCursorProxy[ModelX])
+    assert_type(rows, list[ModelX])
+
+
+def test_engine_query_fetchmany(engine: Engine) -> None:
+    class ModelX(NamedTuple):
+        id: int | None
+        name: str
+        age: int
+
+    engine.ensure_table_created(ModelX)
+    sql = "SELECT 1 as id, 'Alice' as name, 30 as age UNION SELECT 2, 'Bob', 40;"
+
+    cur = engine.query(ModelX, sql)
+    rows = cur.fetchmany(1)
+
+    assert rows == [ModelX(1, "Alice", 30)]
+
+    assert_type(cur, TypedCursorProxy[ModelX])
+    assert_type(rows, list[ModelX])
+
+
+def test_engine_query_cursorproxy_getattr_maintains_typehints(engine: Engine) -> None:
+    class ModelX(NamedTuple):
+        id: int | None
+        name: str
+        age: int
+
+    engine.ensure_table_created(ModelX)
+    sql = "SELECT 1 as id, 'Alice' as name, 30 as age;"
+
+    cur = engine.query(ModelX, sql)
+    assert_type(cur.fetchone(), ModelX)
+    assert_type(cur.fetchall(), list[ModelX])
+    assert_type(cur.fetchmany(1), list[ModelX])
+    assert_type(cur.rowcount, int)
+    assert_type(cur.connection, sqlite3.Connection)
 
 
 def test_registering_adapt_convert_pair(engine: Engine) -> None:
