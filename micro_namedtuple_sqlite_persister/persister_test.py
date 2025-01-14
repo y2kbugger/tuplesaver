@@ -58,69 +58,45 @@ def test_forgetting_id_column_as_first_field_raises(engine: Engine) -> None:
         engine.ensure_table_created(TblNoId)
 
 
-def test_ensure_table_created(engine: Engine) -> None:
+class TableInfo(NamedTuple):
+    cid: int
+    name: str
+    type: str
+    notnull: int
+    dflt_value: Any
+    pk: int
+
+
+class SqliteSchema(NamedTuple):
+    type: str
+    name: str
+    tbl_name: str
+    rootpage: int
+    sql: str
+
+
+def test_ensure_table_created_using_table_info(engine: Engine) -> None:
     engine.ensure_table_created(TblDates)
 
-    # Check that a table was created
-    cursor = engine.connection.cursor()
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-    tables = cursor.fetchall()
-    assert isinstance(tables, list)
+    # Table as a whole
+    tables = engine.query(SqliteSchema, "SELECT * FROM sqlite_schema WHERE type='table'").fetchall()
     assert len(tables) == 1
+    table = tables[0]
+    assert table.name == TblDates.__name__
 
-    # Table Name
-    assert tables[0][0] == TblDates.__name__
+    # Columns
+    cols = engine.query(TableInfo, f"PRAGMA table_info({TblDates.__name__})").fetchall()
 
-    # Primary Key
-    cursor.execute(f"PRAGMA table_info({TblDates.__name__});")
-    columns = cursor.fetchall()
-    assert len(columns) == len(TblDates._fields)
-    assert columns[0][1] == "id"  # Column Name
-    assert columns[0][2] == "INTEGER"  # Column Type
-    assert columns[0][3] == 1  # Not Null
-    assert columns[0][5] == 1  # Primary Key
+    assert len(cols) == len(TblDates._fields)
 
-    # Name Field
-    assert columns[1][1] == "name"  # Column Name
-    assert columns[1][2] == "TEXT"  # Column Type
-    assert columns[1][3] == 1  # Not Null
-    assert columns[1][5] == 0  # Not Primary Key
-
-    # Score Field
-    assert columns[2][1] == "score"  # Column Name
-    assert columns[2][2] == "REAL"  # Column Type
-    assert columns[2][3] == 1  # Not Null
-    assert columns[2][5] == 0  # Not Primary Key
-
-    # Age Field
-    assert columns[3][1] == "age"  # Column Name
-    assert columns[3][2] == "INTEGER"  # Column Type
-    assert columns[3][3] == 1  # Not Null
-    assert columns[3][5] == 0  # Not Primary Key
-
-    # Data Field
-    assert columns[4][1] == "data"  # Column Name
-    assert columns[4][2] == "BLOB"  # Column Type
-    assert columns[4][3] == 1  # Not Null
-    assert columns[4][5] == 0  # Not Primary Key
-
-    # Startdate Field
-    assert columns[5][1] == "startdate"  # Column Name
-    assert columns[5][2] == "datetime.date"  # Column Type
-    assert columns[5][3] == 1  # Not Null
-    assert columns[5][5] == 0  # Not Primary Key
-
-    # Modified Field
-    assert columns[6][1] == "modified"  # Column Name
-    assert columns[6][2] == "datetime.datetime"  # Column Type
-    assert columns[6][3] == 1  # Not Null
-    assert columns[6][5] == 0  # Not Primary Key
-
-    # Serial Field
-    assert columns[7][1] == "serial"  # Column Name
-    assert columns[7][2] == "INTEGER"  # Column Type
-    assert columns[7][3] == 0  # Nullable
-    assert columns[7][5] == 0  # Not Primary Key
+    assert cols[0] == TableInfo(0, "id", "INTEGER", 1, None, 1)
+    assert cols[1] == TableInfo(1, "name", "TEXT", 1, None, 0)
+    assert cols[2] == TableInfo(2, "score", "REAL", 1, None, 0)
+    assert cols[3] == TableInfo(3, "age", "INTEGER", 1, None, 0)
+    assert cols[4] == TableInfo(4, "data", "BLOB", 1, None, 0)
+    assert cols[5] == TableInfo(5, "startdate", "datetime.date", 1, None, 0)
+    assert cols[6] == TableInfo(6, "modified", "datetime.datetime", 1, None, 0)
+    assert cols[7] == TableInfo(7, "serial", "INTEGER", 0, None, 0)
 
 
 def test_ensure_table_created_with_table_already_created_correct_is_silent(engine: Engine) -> None:
