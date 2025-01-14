@@ -99,6 +99,28 @@ def test_ensure_table_created_using_table_info(engine: Engine) -> None:
     assert cols[7] == TableInfo(7, "serial", "INTEGER", 0, None, 0)
 
 
+def test_ensure_table_created_with_related_table(engine: Engine) -> None:
+    class Team(NamedTuple):
+        id: int | None
+        name: str
+
+    class Person(NamedTuple):
+        id: int | None
+        name: str
+        team: Team
+
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(Person)
+
+    cols = engine.query(TableInfo, f"PRAGMA table_info({Person.__name__})").fetchall()
+
+    assert len(cols) == len(Person._fields)
+
+    assert cols[0] == TableInfo(0, "id", "INTEGER", 1, None, 1)
+    assert cols[1] == TableInfo(1, "name", "TEXT", 1, None, 0)
+    assert cols[2] == TableInfo(2, "team", "Team_ID", 1, None, 0)
+
+
 def test_ensure_table_created_with_table_already_created_correct_is_silent(engine: Engine) -> None:
     class TblAlreadyCreated(NamedTuple):
         id: int | None

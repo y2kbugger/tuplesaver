@@ -172,6 +172,8 @@ class Engine:
                 # error is not about the table already existing
                 raise
 
+        _columntype[Model] = f"{Model.__name__}_ID"  # Register to table to be a possible foreign key
+
     def insert[R: Row](self, row: R) -> R:
         query = f"""
             INSERT INTO {row.__class__.__name__} (
