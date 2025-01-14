@@ -9,12 +9,21 @@ from typing import Any, NamedTuple, Union, cast, get_args, get_origin, get_type_
 
 type Row = NamedTuple
 
-_columntype: dict[type, str] = {
-    str: "TEXT",
-    float: "REAL",
-    int: "INTEGER",
-    bytes: "BLOB",
-}
+_columntype: dict[type, str] = {}
+
+
+def reset_to_native_columntypes() -> None:
+    native_columntype = {
+        str: "TEXT",
+        float: "REAL",
+        int: "INTEGER",
+        bytes: "BLOB",
+    }
+    _columntype.clear()
+    _columntype.update(native_columntype)
+
+
+reset_to_native_columntypes()
 
 
 class UnregisteredFieldTypeError(Exception):
@@ -237,15 +246,20 @@ class InvalidAdaptConvertType(Exception):
         )
 
 
+class AdaptConvertTypeAlreadyRegistered(Exception):
+    def __init__(self, AdaptConvertType: type) -> None:
+        super().__init__(f"Persistance format for {AdaptConvertType} already exists. It is a native type (int, float, str, bytes) or already has an Adapt Convert registered")
+
+
 ## Adapt/Convert
 def register_adapt_convert[D](AdaptConvertType: type[D], adapt: Callable[[D], bytes], convert: Callable[[bytes], D], overwrite: bool = False) -> None:
     if type(AdaptConvertType) is not type:
         raise InvalidAdaptConvertType(AdaptConvertType)
 
     if AdaptConvertType in _columntype and not overwrite:
-        raise ValueError(f"Persistance format for {AdaptConvertType} already exists. It is a native type (int, float, str, bytes) or alread has an Adapt Convert registered")
+        raise AdaptConvertTypeAlreadyRegistered(AdaptConvertType)
 
-    field_type_name = f"{AdaptConvertType.__module__}.{AdaptConvertType.__name__}"
+    field_type_name = f"{AdaptConvertType.__module__}.{AdaptConvertType.__qualname__}"
     sqlite3.register_adapter(AdaptConvertType, adapt)
     sqlite3.register_converter(field_type_name, convert)
     _columntype[AdaptConvertType] = field_type_name

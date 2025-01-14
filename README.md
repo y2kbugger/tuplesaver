@@ -165,7 +165,6 @@ If you need to update the precommit hooks, run the following:
 # Bugs
 
 # Tests
-- overwrite flag on adapt/convert registrations
 - cursors outside of query are not modified by the row factory injection
 
 # Backlog
@@ -218,8 +217,6 @@ If you need to update the precommit hooks, run the following:
   - not worth complexity compared to other things to spend time on
 - Can persister.py have to imports from query.py?
   - NO
-- is this suffient for a fully qualified type name?
-    field_type_name = f"{AdaptConvertType.__module__}.{AdaptConvertType.__name__}"
 
 ## will not implement
 - Add passthrough for commit? e.g. engine.commit
