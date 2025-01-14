@@ -163,6 +163,37 @@ If you need to update the precommit hooks, run the following:
     pre-commit autoupdate
 
 # WIP
+- pull in object from other table as field (1:Many, but on the single side)
+  - Need to be able to create tables with foreign keys if it detects model as field
+  - Update error message about unknown type to include possibility of unregistered table in addition to unregistered adapter/converter type
+  - need to test handle circular references of tables
+  - Add foreign key constraints to the table creation
+    - through the metadata system?? appending to meta during ensure_table_created?
+  - likely get need to use query under the hood, so that relations come in
+
+```python
+class Team(NamedTuple):
+    id: int | None
+    name: str
+
+class Person(NamedTuple):
+    id: int | None
+    name: str
+    team: Team
+```
+```sql
+create table Team (
+    id integer primary key,
+    name text
+);
+
+create table Person (
+    id integer primary key,
+    name text,
+    team_id integer,
+    foreign key (team_id) references Team(id)
+);
+```
 
 # Bugs
 
@@ -170,7 +201,6 @@ If you need to update the precommit hooks, run the following:
 - Test what happens when you have two adapters, one more specific than the other
 
 # Backlog
-- pull in object from other table as field (1:Many, but on the single side)
 - pull in list of objects from other table as field (1:Many, but on the many side)
 - expanded api for update/delete
 - extra-typical metadata
