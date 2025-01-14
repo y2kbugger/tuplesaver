@@ -166,6 +166,7 @@ If you need to update the precommit hooks, run the following:
 
 # Tests
 - overwrite flag on adapt/convert registrations
+- cursors outside of query are not modified by the row factory injection
 
 # Backlog
 - replace style api for update
@@ -205,6 +206,8 @@ If you need to update the precommit hooks, run the following:
 - Consider connection/transaction management
   - context manager?
   - how long is sqlite connection good for? application lifetime?
+  - closing cursors? commit? difference between?
+    - Context manager on cursor?
 - Consider Concurrentcy in both read and write
   - what happens if two threads try to write to the same table at the same time?
   - How to actually test this?
