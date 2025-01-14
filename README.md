@@ -23,12 +23,12 @@ If you meet the above constraints, there are tangible benefits.
   - Migrations distilled to thier essential complexity
 
 ## Design Principles
-- Truely simple, not seemingly simple
-- no dependencies
+- truely simple, not seemingly simple
+- minimize library specific knowledge requirements, use standard types, type hints, and features
 - minimize boilerplate
-- Between magic and more boilerplate, choose boilerplate
-- Only do what can't be done with the sqlite standard library
-  - Don't wrap if not REQUIRED to acomplish goals
+- between "more magic" and "more boilerplate", choose "more boilerplate"
+- principle of least surprise
+- no dependencies
 
 ## Outstanding Design Questions
 - Tolerance to out-of-band schema changes
@@ -167,9 +167,6 @@ If you need to update the precommit hooks, run the following:
 # Tests
 
 # Backlog
-- typed id as part of api, then you can reference a row by a single value, rather than model+id field
-  - could disambiguate forgein key references as well
-  - could simplify delete api to delete(typed_id)
 - pull in object from other table as field (1:Many, but on the single side)
 - pull in list of objects from other table as field (1:Many, but on the many side)
 - replace style api for update
@@ -227,6 +224,54 @@ If you need to update the precommit hooks, run the following:
   - just use the query builder directly
   - Violates choose boilerplate over magic
   - better to use Model, sql, params as a stable and interoperable intermediate representation
+- A TypedId as primary key of base models, see `typedid` tag for exploratory implementation
+  - Reason for investigating
+    - Reference a row by a single value, rather than Model+id
+    - could simplify delete/update/get api
+    - could make fetching a relationship row simpler
+      Honors: minimize boilerplate
+  - How
+    - return TypedId replaced during insert
+    - Add adapters for TypedId -> int (only need one, because we are losing the type info)
+    - Add converters for int -> TypedId (need one for each model/table, as we need to add the type info)
+      - One problem here was that you needed use "parse column names" to make the convert recognized.
+        this means there are two different return types to the query, one when you do the converter name in column hint way:
+        `select id as "id [TypedId_MyModel]"`
+        and the normal way:
+        `select id, name`
+        This to me could causes surprises, and also makes types lie if you do a manual query and "forget" to add the type info.
+        It also just makes all the queries noisy to look at.
+        violates
+          - minimize boilerplate
+          - minimize library specific knowledge requirements
+          - actually simple vs seemingly simple
+          - principle of least surprise
+
+  - It is also annoying that you have to repeat the Model name in the Model def:
+    ```python
+    class MyModel(NamedTuple):
+        id: Id[MyModel]
+        name: str
+        date: dt.datetime
+    ```
+    Violates minimize boilerplate
+  - The supposed benefit of simpler delete api actually hurts readability.
+    ```python
+    engine.delete(some_id)
+    ```
+    is less clear than
+    ```python
+    engine.delete(MyModel, some_id)
+    ```
+    and we already have an overload for deleting a row which fixes possibility of mixing id with wrong model
+    ```python
+    engine.delete(row)
+    ```
+    This violates choose boilerplate over magic
+  - The typed ID is just another think to know, understand, and is a failure point.
+    - violates actually simple vs seemingly simple
+    - violates minimize library specific knowledge requirements
+
 
 ## Migration
 - Auto add column(s) to table if they don't exist
