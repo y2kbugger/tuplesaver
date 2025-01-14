@@ -28,6 +28,8 @@ If you meet the above constraints, there are tangible benefits.
 - minimize boilerplate
 - between "more magic" and "more boilerplate", choose "more boilerplate"
 - principle of least surprise
+- all options are discoverable
+  - e.g. through args of def: select(Model, where, limit, etc.)
 - no dependencies
 
 ## Outstanding Design Questions
@@ -165,27 +167,26 @@ If you need to update the precommit hooks, run the following:
 # Bugs
 
 # Tests
+- Test what happens when you have two adapters, one more specific than the other
 
 # Backlog
 - pull in object from other table as field (1:Many, but on the single side)
 - pull in list of objects from other table as field (1:Many, but on the many side)
-- replace style api for update
-  Allow for optimization of updates, only update the fields that have changed
-  ```python
-  engine.update(row, set={MyModel.name: "Apple"})
-  #or
-  engine.update(rowId, set={MyModel.name: "Apple"}) # typed id
-  ```
-  and
-  if you pass a model instead of a row, it won't have implicit id==row.id in where, but you can add your own where clause
-  ```python
-  engine.update(MyModel, set=(MyModel.name, "Apple"), where=gt(MyModel.score, 42))
-  ```
+- expanded api for update/delete
+- extra-typical metadata
+- unique contraints
+  - requires extra-typical metadata
+- upsert
+  - engine.upsert(MyModel, row)
+  - requires unique constraints
+  - requires a way to specify which columns the unique constraint is on
 
 ## Engineering
+- split persister.py into schema.py adaptconvert.py and engine.py
 - refactor out table creation in test fixture
 - refactor tests to use test specific Models in a small scope
 - refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
+  - group tests, and promote _some_ model reuse if it makes sense
 - use the assert_type from typing to check type hints throught all tests
 - Harmonize the def-scoped Model class names in the tests
 - benchmark performance
@@ -276,6 +277,11 @@ If you need to update the precommit hooks, run the following:
 ## Migration
 - Auto add column(s) to table if they don't exist
   - or maybe just let this be the easy way to teach people to use explicit migrations
+- Maybe store all versions of models in the db in additions to migrations script.
+  - What about when "blowing away" the db?
+  - what value does this add?
+    - Could it help generate scripts?
+    - could it just give insight to recent changes during dev?
 
 ## QUERYING
 - limit row count
@@ -416,3 +422,108 @@ Considerations for extra-typical metadata
   ```python
   engine.ensure_table_created(TUnique, =('name','age'))
   ```
+
+  This is even nicer because it don't rely on "class def" magic. it is just an instance of a config.
+  I have tested that if you don't provide a type, it just becomes a class attribute, so it is not a problem to have it in the class def of our models. it doesn't become part of the named tuple, and it shares a single instance of the Meta config for all instances of the named tuple rows, so you aren't copying the metadata all around.
+  ```python
+  # this is part of ibrary
+  class Meta(NamedTuple):
+      unique_contraints: list[tuple[str,...]]
+      indexes: list[tuple[str,...]]
+      ...
+
+  # this is the user code
+  class XXX(NamedTuple):
+      id: int | None
+      name: str
+      place: str
+      score: float
+
+      _meta = Meta(
+          unique_contraints=[('name','place')]
+      )
+  ```
+
+  ## Upsert
+```sql
+create table XXX (
+    id integer primary key,
+    name text,
+    place text,
+    value int
+);
+-- the obligate unique constraint
+CREATE UNIQUE INDEX IF NOT EXISTS XXX_name_place ON XXX (name, place);
+
+-- make upsert on name,place combo
+insert into XXX (name, place, value) values ('a', 'b', 777)
+on conflict(name, place) do update set value = excluded.value;
+-- or even just allow it to happen on any conflict (just set all non-id fields)
+-- This gets a little tricky with existing data, but if we follow api of insert
+--   and up, this makes sense, all fields are persisted (in either case insert or
+--   update)
+insert into XXX (name, place, value) values ('a', 'b', 888)
+on conflict
+    do update
+        set name = excluded.name, place = excluded.place, value = excluded.value;
+```
+
+This is the user code
+```python
+class XXX(NamedTuple):
+    id: int | None
+    name: str
+    place: str
+    value: int
+
+    _meta = Meta(
+        unique_contraints=[('name','place')]
+    )
+
+engine.ensure_table_created(XXX)
+engine.upsert(XXX(name='a', place='b', value=777))
+engine.upsert(XXX(name='a', place='c', value=888))
+```
+
+
+## expanded api for update/delete
+
+### Delete
+To delete on id
+```sql
+delete from XXX where id = 42;
+```
+we already two ways
+```python
+engine.delete(row)
+# and
+engine.delete(XXX, 42)
+```
+
+To delete on multiple columns or for multiple rows, e.g..
+```sql
+delete from xxx where name = 'a' and place = 'b';
+```
+we could add
+```python
+engine.delete(XXX, where=and_(eq(XXX.name == 'a'), eq(XXX.place,'b')))
+# or
+engine.delete
+```
+
+### Update
+To only some fields, on a single existing row, pull id from row:
+```python
+engine.update(row, set={MyModel.name: "Apple"})
+```
+```sql
+update MyModel set name = 'Apple' where id = 42;
+```
+
+To update muliple rows, pass a Type[Row], it won't use an implicit id==row.id in where
+```python
+engine.update(MyModel, set=(MyModel.name, "Apple"), where=gt(MyModel.score, 42))
+```
+```sql
+update MyModel set name = 'Apple' where score > 42;
+```
