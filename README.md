@@ -167,27 +167,23 @@ If you need to update the precommit hooks, run the following:
 # Tests
 
 # Backlog
-- replace style api for update
-  ```python
-  engine.update(MyModel, set=(MyModel.name, "Apple"), where=(MyModel.id, 42))
-  ```
-  or
-  ```python
-  engine.update(row, set={MyModel.name: "Apple"})
-  ```
-  or maybe this is all to hyper-specialized.
-  - replace insert and update with `save` method?
-    - if row has an id, update, otherwise insert
-  - maybe the querybuilder should create updates as well?
-  - single get api on id also seems silly, just use query builder
-    - maybe is useful when you have a relationship and want to get the related object
-  - maybe engine should have methods: select, update, delete with query builder interfaces
-    - or should user code grab handles to the model and sql and params and call execute directly?
-- pull in object from other table as field (1:Many, but on the single side)
-- pull in list of objects from other table as field (1:Many, but on the many side)
 - typed id as part of api, then you can reference a row by a single value, rather than model+id field
   - could disambiguate forgein key references as well
   - could simplify delete api to delete(typed_id)
+- pull in object from other table as field (1:Many, but on the single side)
+- pull in list of objects from other table as field (1:Many, but on the many side)
+- replace style api for update
+  Allow for optimization of updates, only update the fields that have changed
+  ```python
+  engine.update(row, set={MyModel.name: "Apple"})
+  #or
+  engine.update(rowId, set={MyModel.name: "Apple"}) # typed id
+  ```
+  and
+  if you pass a model instead of a row, it won't have implicit id==row.id in where, but you can add your own where clause
+  ```python
+  engine.update(MyModel, set=(MyModel.name, "Apple"), where=gt(MyModel.score, 42))
+  ```
 
 ## Engineering
 - refactor out table creation in test fixture
@@ -224,6 +220,13 @@ If you need to update the precommit hooks, run the following:
 - Allow str serde, i.e. in addtion to the bytes api
   - just explicitly encode/decode to bytes
   - Violates choose boilerplate over magic
+- save (e.g. upsert on id) instead of insert/update
+  - just use insert and update
+  - Violates choose boilerplate over magic
+- Query builder on engine
+  - just use the query builder directly
+  - Violates choose boilerplate over magic
+  - better to use Model, sql, params as a stable and interoperable intermediate representation
 
 ## Migration
 - Auto add column(s) to table if they don't exist
