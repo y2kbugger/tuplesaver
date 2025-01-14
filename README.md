@@ -165,7 +165,6 @@ If you need to update the precommit hooks, run the following:
 # Bugs
 
 # Tests
-- cursors outside of query are not modified by the row factory injection
 
 # Backlog
 - replace style api for update

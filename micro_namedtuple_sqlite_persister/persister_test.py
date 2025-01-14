@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import sqlite3
 from collections.abc import Iterable
-from typing import NamedTuple, Optional, Union, assert_type
+from typing import Any, NamedTuple, Optional, Union, assert_type
 
 import pytest
 
@@ -465,6 +465,27 @@ def test_engine_query_cursorproxy_getattr_maintains_typehints(engine: Engine) ->
     assert_type(cur.fetchmany(1), list[ModelX])
     assert_type(cur.rowcount, int)
     assert_type(cur.connection, sqlite3.Connection)
+
+
+def test_that_row_factory_doesnt_leak_to_other_cursors(engine: Engine) -> None:
+    class ModelX(NamedTuple):
+        id: int | None
+        name: str
+
+    sql = "SELECT 1 as id, 'Alice' as name"
+
+    # Engine.query gives back Model typed rows
+    cur = engine.query(ModelX, sql)
+    row = cur.fetchone()
+    assert_type(row, ModelX)
+    assert isinstance(row, ModelX)
+
+    # Engine.connection.cursor still gives back raw rows
+    cur = engine.connection.cursor()
+    cur.execute(sql)
+    row = cur.fetchone()
+    assert_type(row, Any)
+    assert not isinstance(row, ModelX)
 
 
 @pytest.fixture(autouse=True)
