@@ -108,14 +108,14 @@ class TableSchemaMismatch(Exception):
 def make_model[R: Row](Model: type[R], c: sqlite3.Cursor, r: sqlite3.Row) -> R:
     # Non-recursive depth-first stack approach.
 
-    fields = list(Model.__annotations__.items())
-    values = [None] * len(fields)
+    values = [None] * len(Model._fields)
 
-    # Stack items: (ModelClass, sqlite_row, field_index, field_specs, result_list, parent_result_list, parent_field_index)
-    stack: list[tuple[Any, ...]] = [(Model, r, 0, fields, values, None, None)]
+    # Stack items: (ModelClass, sqlite_row, field_index, result_list, parent_result_list, parent_field_index)
+    stack: list[tuple[Any, ...]] = [(Model, r, 0, values, None, None)]
 
     while stack:
-        Model_, row_, idx, fields_, rr, parent_rr, parent_idx = stack.pop()
+        Model_, row_, idx, rr, parent_rr, parent_idx = stack.pop()
+        fields_ = list(Model_.__annotations__.items())
 
         while idx < len(fields_):
             field_name, FieldType = fields_[idx]
@@ -134,12 +134,11 @@ def make_model[R: Row](Model: type[R], c: sqlite3.Cursor, r: sqlite3.Row) -> R:
                 inner_row = c.execute(f"SELECT * FROM {InnerModel.__name__} WHERE id = ?", (field_value,)).fetchone()
 
                 # Defer remainder of current model
-                stack.append((Model_, row_, idx + 1, fields_, rr, parent_rr, parent_idx))
+                stack.append((Model_, row_, idx + 1, rr, parent_rr, parent_idx))
 
                 # Push sub-model onto stack
-                inner_fields = list(InnerModel.__annotations__.items())
-                sub_rr = [None] * len(inner_fields)
-                stack.append((InnerModel, inner_row, 0, inner_fields, sub_rr, rr, idx))
+                sub_rr = [None] * len(InnerModel._fields)
+                stack.append((InnerModel, inner_row, 0, sub_rr, rr, idx))
                 break
             else:
                 rr[idx] = field_value
