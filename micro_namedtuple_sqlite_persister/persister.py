@@ -7,7 +7,7 @@ import re
 import sqlite3
 import types
 from collections.abc import Callable, Iterable, Sequence
-from typing import Any, ForwardRef, NamedTuple, Union, cast, get_args, get_origin, get_type_hints, overload
+from typing import Any, NamedTuple, Union, cast, get_args, get_origin, get_type_hints, overload
 
 type Row = NamedTuple
 
@@ -105,49 +105,36 @@ class TableSchemaMismatch(Exception):
     pass
 
 
-def make_model[R: Row](Model: type[R], c: sqlite3.Cursor, r: sqlite3.Row) -> R:
+def make_model[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.Row) -> R:
     # Non-recursive depth-first stack approach.
 
-    values = [None] * len(Model._fields)
-
-    # Stack items: (ModelClass, sqlite_row, field_index, result_list, parent_result_list, parent_field_index)
-    stack: list[tuple[Any, ...]] = [(Model, r, 0, values, None, None)]
+    # Stack items: (Model, values, field_index, parent_values, parent_field_index)
+    stack: list[tuple[Any, ...]] = [(RootModel, list(root_row), 0, None, None)]
 
     while stack:
-        Model_, row_, idx, rr, parent_rr, parent_idx = stack.pop()
-        fields_ = list(Model_.__annotations__.items())
+        M, values, idx, parent_values, parent_idx = stack.pop()
+        fields_ = list(M.__annotations__.items())
 
         while idx < len(fields_):
-            field_name, FieldType = fields_[idx]
+            _field_name, FieldType = fields_[idx]
             _nullable, FieldType = unwrap_optional_type(FieldType)
-            field_value = row_[idx]
+            field_value = values[idx]
 
-            if field_value is None:
-                rr[idx] = None
-                idx += 1
-            elif type(FieldType) is ForwardRef:
-                rr[idx] = field_value
-                idx += 1
-            elif _columntype.get(FieldType) == f"{FieldType.__name__}_ID":
+            if type(FieldType) is type and _columntype.get(FieldType) == f"{FieldType.__name__}_ID":
                 # Sub-model fetch
                 InnerModel = FieldType
-                inner_row = c.execute(f"SELECT * FROM {InnerModel.__name__} WHERE id = ?", (field_value,)).fetchone()
+                inner_values = list(c.execute(f"SELECT * FROM {InnerModel.__name__} WHERE id = ?", (field_value,)).fetchone())
 
                 # Defer remainder of current model
-                stack.append((Model_, row_, idx + 1, rr, parent_rr, parent_idx))
-
-                # Push sub-model onto stack
-                sub_rr = [None] * len(InnerModel._fields)
-                stack.append((InnerModel, inner_row, 0, sub_rr, rr, idx))
+                stack.append((M, values, idx + 1, parent_values, parent_idx))
+                stack.append((InnerModel, inner_values, 0, values, idx))
                 break
-            else:
-                rr[idx] = field_value
-                idx += 1
+            idx += 1
         else:
             # All fields processed; finalize current model
-            built = Model_._make(rr)
-            if parent_rr is not None:
-                parent_rr[parent_idx] = built
+            built = M._make(values)
+            if parent_values is not None:
+                parent_values[parent_idx] = built
             else:
                 return built
 
