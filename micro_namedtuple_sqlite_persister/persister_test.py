@@ -498,6 +498,11 @@ class TestRelatedTable:
         name: str
         team: TestRelatedTable.Team
 
+    class Arm(NamedTuple):
+        id: int | None
+        length: float
+        person: TestRelatedTable.Person
+
     def test_ensure_table_created_with_related_table(self, engine: Engine) -> None:
         engine.ensure_table_created(self.Team)
         engine.ensure_table_created(self.Person)
@@ -521,6 +526,20 @@ class TestRelatedTable:
         row = engine.query(self.Person, "SELECT * FROM Person;").fetchone()
         assert row == self.Person(1, "Alice", self.Team(1, "Team A"))
         assert person == self.Person(*row)
+
+    def test_three_model_relation_chain(self, engine: Engine) -> None:
+        engine.ensure_table_created(self.Team)
+        engine.ensure_table_created(self.Person)
+        engine.ensure_table_created(self.Arm)
+
+        team = self.Team(None, "Team A")
+        person = self.Person(None, "Alice", team)
+        arm = self.Arm(None, 30.0, person)
+        arm = engine.insert(arm)
+
+        row = engine.query(self.Arm, "SELECT * FROM Arm;").fetchone()
+
+        assert row == self.Arm(1, 30.0, self.Person(1, "Alice", self.Team(1, "Team A")))
 
 
 @pytest.fixture(autouse=True)

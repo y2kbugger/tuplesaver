@@ -105,22 +105,55 @@ class TableSchemaMismatch(Exception):
     pass
 
 
-def make_model[R: Row](MMM: type[R], c: sqlite3.Cursor, r: sqlite3.Row) -> R:
-    rr = []
-    for field_value, (_field_name, FieldType) in zip(r, MMM.__annotations__.items()):
-        _nullable, FieldType = unwrap_optional_type(FieldType)
-        # ForwardRefs here are only from non-tables TODO: maybe we need to resolve annotations anyway (do view joins need this?)
-        if field_value is None:
-            rr.append(None)
-        elif type(FieldType) is ForwardRef:
-            rr.append(field_value)
-        elif _columntype.get(FieldType) == f"{FieldType.__name__}_ID":
-            InnerModel = FieldType
-            inner_r = c.execute(f"SELECT * FROM {InnerModel.__name__} WHERE id = ?", (field_value,)).fetchone()
-            rr.append(make_model(InnerModel, c, inner_r))
+def make_model[R: Row](Model: type[R], c: sqlite3.Cursor, r: sqlite3.Row) -> R:
+    # Non-recursive depth-first stack approach.
+
+    fields = list(Model.__annotations__.items())
+    values = [None] * len(fields)
+
+    # Stack items: (ModelClass, sqlite_row, field_index, field_specs, result_list, parent_result_list, parent_field_index)
+    stack: list[tuple[Any, ...]] = [(Model, r, 0, fields, values, None, None)]
+
+    while stack:
+        Model_, row_, idx, fields_, rr, parent_rr, parent_idx = stack.pop()
+
+        while idx < len(fields_):
+            field_name, FieldType = fields_[idx]
+            _nullable, FieldType = unwrap_optional_type(FieldType)
+            field_value = row_[idx]
+
+            if field_value is None:
+                rr[idx] = None
+                idx += 1
+            elif type(FieldType) is ForwardRef:
+                rr[idx] = field_value
+                idx += 1
+            elif _columntype.get(FieldType) == f"{FieldType.__name__}_ID":
+                # Sub-model fetch
+                InnerModel = FieldType
+                inner_row = c.execute(f"SELECT * FROM {InnerModel.__name__} WHERE id = ?", (field_value,)).fetchone()
+
+                # Defer remainder of current model
+                stack.append((Model_, row_, idx + 1, fields_, rr, parent_rr, parent_idx))
+
+                # Push sub-model onto stack
+                inner_fields = list(InnerModel.__annotations__.items())
+                sub_rr = [None] * len(inner_fields)
+                stack.append((InnerModel, inner_row, 0, inner_fields, sub_rr, rr, idx))
+                break
+            else:
+                rr[idx] = field_value
+                idx += 1
         else:
-            rr.append(field_value)
-    return MMM._make(rr)
+            # All fields processed; finalize current model
+            built = Model_._make(rr)
+            if parent_rr is not None:
+                parent_rr[parent_idx] = built
+            else:
+                return built
+
+    # Should never reach here if input data is valid
+    raise RuntimeError("Stack unexpectedly empty before returning the root model.")
 
 
 class TypedCursorProxy[R: Row](sqlite3.Cursor):
