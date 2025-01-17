@@ -24,7 +24,7 @@ from .persister import (
 
 @pytest.fixture
 def engine() -> Engine:
-    return Engine(":memory:", echo_sql=False)
+    return Engine(":memory:", echo_sql=True)
 
 
 def test_get_connection(engine: Engine) -> None:
