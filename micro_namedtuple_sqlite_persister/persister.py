@@ -112,27 +112,29 @@ def make_model[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.
     stack: list[tuple[Any, ...]] = [(RootModel, list(root_row), 0, None, None)]
 
     while stack:
-        M, values, idx, parent_values, parent_idx = stack.pop()
-        fields_ = list(M.__annotations__.items())
+        Model, values, idx, parent_values, parent_idx = stack.pop()
+        fields_ = list(Model.__annotations__.items())
 
         while idx < len(fields_):
             _field_name, FieldType = fields_[idx]
             _nullable, FieldType = unwrap_optional_type(FieldType)
             field_value = values[idx]
 
+            # only check FieldType.__name__ if the FieldType is a type itself, e.g. possible a Sub-model
             if type(FieldType) is type and _columntype.get(FieldType) == f"{FieldType.__name__}_ID":
                 # Sub-model fetch
                 InnerModel = FieldType
                 inner_values = list(c.execute(f"SELECT * FROM {InnerModel.__name__} WHERE id = ?", (field_value,)).fetchone())
 
                 # Defer remainder of current model
-                stack.append((M, values, idx + 1, parent_values, parent_idx))
+                stack.append((Model, values, idx + 1, parent_values, parent_idx))
                 stack.append((InnerModel, inner_values, 0, values, idx))
                 break
+
             idx += 1
         else:
             # All fields processed; finalize current model
-            built = M._make(values)
+            built = Model._make(values)
             if parent_values is not None:
                 parent_values[parent_idx] = built
             else:
