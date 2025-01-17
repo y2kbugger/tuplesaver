@@ -97,11 +97,6 @@ So our api which wraps the above would look like this:
     register_adapt_convert(datetime.datetime, adapt_datetime_iso, convert_datetime_iso)
 
 
-| Python | SQLite  |
-|--------|---------|
-| None   | NULL    |
-| int    | INTEGER |
-
 # Development
 Use poetry to install the dependencies:
 
@@ -165,12 +160,27 @@ If you need to update the precommit hooks, run the following:
 # WIP
 - pull in object from other table as field (1:Many, but on the single side)
   - Need to be able to create tables with foreign keys if it detects model as field
+  - register adapter for the fk type
+    - row -> row.id
+  - test insert of composed models
+    - brute force it, just dump it in anyway. trading perf for simplicity.
+      - This is actually super fast anyway 65k round trips/second
+  - test get of composed models
+    - naively use round trips to just get the id, then get the row
   - Update error message about unknown type to include possibility of unregistered table in addition to unregistered adapter/converter type
-  - need to test handle circular references of tables
   - Add foreign key constraints to the table creation
     - through the metadata system?? appending to meta during ensure_table_created?
   - likely get need to use query under the hood, so that relations come in
+  - optional foreign keys (nullable) e.g. Team | None
+    - test null fks in insert, update, and select
+  - test insert and get with same and different Model  e.g. normal and tree
+    - self references
+  - Test using model with int as foreign key rather than model to prevent recursion
+      e.g. int instead of Node
+  - Test forward disambiguation of two FKs of same type
+  - Test the forgein key may only be a union with None and not say, int or something else
 
+one to many
 ```python
 class Team(NamedTuple):
     id: int | None
@@ -180,6 +190,19 @@ class Person(NamedTuple):
     id: int | None
     name: str
     team: Team
+
+# Use this model to query without recursion
+class Person_Node(NamedTuple):
+    id: int | None
+    name: str
+    team: id
+
+# forward direction should be easy
+class Person(NamedTuple):
+    id: int | None
+    name: str
+    primary_team: Team
+    secondary_team: Team
 ```
 ```sql
 create table Team (
@@ -199,9 +222,93 @@ create table Person (
 
 # Tests
 - Test what happens when you have two adapters, one more specific than the other
+- test for fetchone returning none
 
 # Backlog
-- pull in list of objects from other table as field (1:Many, but on the many side)
+- backpop
+  ```python
+  class Team(NamedTuple):
+      id: int | None
+      name: str
+      teams: list[Person] # Backpop
+
+  class Person(NamedTuple):
+      id: int | None
+      name: str
+      team: Team # Forward
+  ```
+
+  Need a way to differentiate between two different backpop of same type
+  - backprop must include the full name of the forward reference as the prefix of it's name
+  - if this is not specified or not unique, raise an `AmbiguousBackpopError`
+  - not FK is allowed to be a subset of another FK on the same model. `AmbiguousForwardReferenceError`
+  ```python
+  # Ex 1. disambiguating backpop
+  class Team(NamedTuple):
+      id: int | None
+      name: str
+      primary_teams: list[Person]
+      secondary_teams: list[Person]
+
+  class Person(NamedTuple):
+      id: int | None
+      name: str
+      primary_team: Team
+      secondary_team: Team
+
+  # Ex 2. disambiguating backpop
+  class Employee(NamedTuple):
+      id: int | None
+      name: str
+      manager_of: List[Project]
+      lead_developer_of: List[Project]
+      lead_maintainer_of: List[Project]
+
+  class Project(NamedTuple):
+      id: int | None
+      name: str
+      manager: Employee
+      lead_developer: Employee
+      lead_maintainer: Employee
+      lead: Employee # not allowed, because it is an ambiguous subset of lead_developer
+  ```
+
+  - Backpop without a forward reference, should just be `AmbiguousBackpopError` because it is ambiguous if you cannot find a forward reference that is a complete prefixed subset of the backpop name.
+    ```python
+    class Team(NamedTuple):
+        id: int | None
+        name: str
+        teams: list[Person]
+    class Person(NamedTuple):
+        id: int | None
+        name: str
+    ```
+  - Many-to-Many shall just fall out of two 1:1, is not really a concept
+  - Here is a test case with complex relations
+  try and figure out if this is ambiguous or not
+  ```python
+  class Employee(NamedTuple):
+      id: int | None
+      name: str
+      manager_of: List[Project]
+      lead_developer_of: List[Project]
+      contributor_roles: List[ProjectEmployee]
+
+  class Project(NamedTuple):
+      id: int | None
+      name: str
+      manager: Employee
+      lead_developer: Employee
+      contributors: List[ProjectEmployee]
+
+  class ProjectEmployee(NamedTuple):
+      project: Project
+      employee: Employee
+      role: str
+  ```
+
+
+
 - expanded api for update/delete
 - extra-typical metadata
 - unique contraints
@@ -220,11 +327,8 @@ create table Person (
 - use the assert_type from typing to check type hints throught all tests
 - Harmonize the def-scoped Model class names in the tests
 - benchmark performance
-- Use a protocol to fix some weird typing issues
-  - row: NamedTuple vs row: ROW
-  - self.connection.execute(query, (*row, row[0]))
-  - etc.
-  - maybe also address: def is_namedtuple_table_model(cls: object) -> bool:
+- Use extra-typical metadata to cache forward and backpop relation for a model
+  - eliminate traversal of the Model every time we go to create an instance
 - Consider connection/transaction management
   - context manager?
   - how long is sqlite connection good for? application lifetime?
@@ -238,6 +342,10 @@ create table Person (
 - All exceptions raised to client api should have a custom exception type
 - approx 20% perf boost for execute many on 20k rows
   - not worth complexity compared to other things to spend time on
+- Minimize stack depth of engine.query
+  - Can we minimize stack depth of engine.query do recursive creation of BOM trees without actual stack recursion
+    - e.g. a while loop that creates the tree, rather than stack recursion
+    - Use a really deep BOM self ref to test this, easy to hit recursion limit
 - Can persister.py have to imports from query.py?
   - NO
 
