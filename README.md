@@ -159,26 +159,16 @@ If you need to update the precommit hooks, run the following:
 
 # WIP
 - pull in object from other table as field (1:Many, but on the single side)
-  - Need to be able to create tables with foreign keys if it detects model as field
-  - register adapter for the fk type
-    - row -> row.id
-  - test insert of composed models
-    - brute force it, just dump it in anyway. trading perf for simplicity.
-      - This is actually super fast anyway 65k round trips/second
-  - test get of composed models
-    - naively use round trips to just get the id, then get the row
   - Update error message about unknown type to include possibility of unregistered table in addition to unregistered adapter/converter type
   - Add foreign key constraints to the table creation
     - through the metadata system?? appending to meta during ensure_table_created?
-  - likely get need to use query under the hood, so that relations come in
   - optional foreign keys (nullable) e.g. Team | None
     - test null fks in insert, update, and select
-  - test insert and get with same and different Model  e.g. normal and tree
-    - self references
+  - test insert with self references
   - Test using model with int as foreign key rather than model to prevent recursion
       e.g. int instead of Node
   - Test forward disambiguation of two FKs of same type
-  - Test the forgein key may only be a union with None and not say, int or something else
+  - Test the forgein key may only be a union with None i.e. Optional BUT NOT with int or something else
 
 one to many
 ```python
