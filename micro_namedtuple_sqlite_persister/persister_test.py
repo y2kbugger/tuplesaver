@@ -542,6 +542,52 @@ class TestRelatedTable:
         assert row == self.Arm(1, 30.0, self.Person(1, "Alice", self.Team(1, "Team A")))
 
 
+class TestOptionalRelatedTable:
+    class Team(NamedTuple):
+        id: int | None
+        name: str
+
+    class Person(NamedTuple):
+        id: int | None
+        name: str
+        team: TestOptionalRelatedTable.Team | None
+
+    def test_ensure_table_created_with_related_table(self, engine: Engine) -> None:
+        engine.ensure_table_created(self.Team)
+        engine.ensure_table_created(self.Person)
+
+        cols = engine.query(TableInfo, f"PRAGMA table_info({self.Person.__name__})").fetchall()
+
+        assert len(cols) == len(self.Person._fields)
+
+        assert cols[0] == TableInfo(0, "id", "INTEGER", 1, None, 1)
+        assert cols[1] == TableInfo(1, "name", "TEXT", 1, None, 0)
+        assert cols[2] == TableInfo(2, "team", "Team_ID", 0, None, 0)
+
+    def test_insert_row_with_related_table(self, engine: Engine) -> None:
+        engine.ensure_table_created(self.Team)
+        engine.ensure_table_created(self.Person)
+
+        team = self.Team(None, "Team A")
+        person = self.Person(None, "Alice", team)
+        person = engine.insert(person)
+
+        row = engine.query(self.Person, "SELECT * FROM Person;").fetchone()
+        assert row == self.Person(1, "Alice", self.Team(1, "Team A"))
+        assert person == self.Person(*row)
+
+    def test_insert_row_with_null_relation(self, engine: Engine) -> None:
+        engine.ensure_table_created(self.Team)
+        engine.ensure_table_created(self.Person)
+
+        person = self.Person(None, "Alice", None)
+        person = engine.insert(person)
+
+        row = engine.query(self.Person, "SELECT * FROM Person;").fetchone()
+        assert row == self.Person(1, "Alice", None)
+        assert person == self.Person(*row)
+
+
 @pytest.fixture(autouse=True)
 def init_and_reset_adapterconverters() -> Iterable[None]:
     enable_included_adaptconverters()

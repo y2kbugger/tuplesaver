@@ -162,8 +162,6 @@ If you need to update the precommit hooks, run the following:
   - Update error message about unknown type to include possibility of unregistered table in addition to unregistered adapter/converter type
   - Add foreign key constraints to the table creation
     - through the metadata system?? appending to meta during ensure_table_created?
-  - optional foreign keys (nullable) e.g. Team | None
-    - test null fks in insert, update, and select
   - test insert with self references
   - Test using model with int as foreign key rather than model to prevent recursion
       e.g. int instead of Node
@@ -317,8 +315,21 @@ create table Person (
 - use the assert_type from typing to check type hints throught all tests
 - Harmonize the def-scoped Model class names in the tests
 - benchmark performance
-- Use extra-typical metadata to cache forward and backpop relation for a model
-  - eliminate traversal of the Model every time we go to create an instance
+- Use extra-typical metadata to cache forward and backpop relation for a model\
+  Eliminate traversal of the Model every time we go to create an instance
+  ```python
+  _field_name, FieldType = fields_[idx]
+  _nullable, FieldType = unwrap_optional_type(FieldType)
+  field_value = values[idx]
+
+  # only check FieldType.__name__ if the FieldType is a type itself, e.g. possible a Sub-model
+  if type(FieldType) is type and _columntype.get(FieldType) == f"{FieldType.__name__}_ID":
+  ```
+- Use extra-typical metadata to cache (and also therefore single source of truthfy) the queries for get, insert, update, delete by id\
+  e.g. the select is repeated in sub-model loader row_factory
+  ```python
+  inner_values = list(c.execute(f"SELECT * FROM {InnerModel.__name__} WHERE id = ?", (field_value,)).fetchone())
+  ```
 - Consider connection/transaction management
   - context manager?
   - how long is sqlite connection good for? application lifetime?

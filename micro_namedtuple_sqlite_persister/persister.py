@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import datetime as dt
 import inspect
+import logging
 import pickle
 import re
 import sqlite3
 import types
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any, NamedTuple, Union, cast, get_args, get_origin, get_type_hints, overload
+
+logger = logging.getLogger(__name__)
 
 type Row = NamedTuple
 
@@ -119,9 +122,12 @@ def make_model[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.
             _field_name, FieldType = fields_[idx]
             _nullable, FieldType = unwrap_optional_type(FieldType)
             field_value = values[idx]
-
-            # only check FieldType.__name__ if the FieldType is a type itself, e.g. possible a Sub-model
-            if type(FieldType) is type and _columntype.get(FieldType) == f"{FieldType.__name__}_ID":
+            if field_value is None:
+                # we could assert _nullable here, but we are not in the business of validating data
+                # external edits to the database could cause mismatches types in any field, this isn't a special case, but we do need
+                # to avoid trying to fetch a model with a id=None.
+                pass
+            elif type(FieldType) is type and _columntype.get(FieldType) == f"{FieldType.__name__}_ID":
                 # Sub-model fetch
                 InnerModel = FieldType
                 inner_values = list(c.execute(f"SELECT * FROM {InnerModel.__name__} WHERE id = ?", (field_value,)).fetchone())
