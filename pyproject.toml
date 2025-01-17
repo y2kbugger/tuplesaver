@@ -14,11 +14,16 @@ build-backend = "poetry.core.masonry.api"
 python = "^3.13"
 
 [tool.poetry.group.dev.dependencies]
-ipykernel = "*"
 pytest = "*"
 ruff = "*"
 pre-commit = "*"
+
+[tool.poetry.group.examplenotebook.dependencies]
+ipykernel = "*"
 pandas = "*"
+matplotlib = "^3.10.0"
+networkx = "^3.4.2"
+pygraphviz = "^1.14"
 
 [tool.pytest.ini_options]
 minversion = "8.0"
