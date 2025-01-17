@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import datetime as dt
 import inspect
 import pickle
@@ -5,7 +7,7 @@ import re
 import sqlite3
 import types
 from collections.abc import Callable, Iterable, Sequence
-from typing import Any, NamedTuple, Union, cast, get_args, get_origin, get_type_hints, overload
+from typing import Any, ForwardRef, NamedTuple, Union, cast, get_args, get_origin, get_type_hints, overload
 
 type Row = NamedTuple
 
@@ -105,8 +107,19 @@ class TableSchemaMismatch(Exception):
 
 class TypedCursorProxy[R: Row](sqlite3.Cursor):
     @staticmethod
-    def proxy_cursor(Model: type[R], cursor: sqlite3.Cursor) -> 'TypedCursorProxy':
+    def proxy_cursor(Model: type[R], cursor: sqlite3.Cursor, engine: Engine) -> TypedCursorProxy:
         def row_fac(c: sqlite3.Cursor, r: sqlite3.Row) -> R:
+            rr = []
+            for field_value, (_field_name, FieldType) in zip(r, Model.__annotations__.items()):
+                _nullable, FieldType = unwrap_optional_type(FieldType)
+                # ForwardRefs here are only from non-tables TODO: maybe we need to resolve annotations anyway (do view joins need this?)
+                if field_value is not None and type(FieldType) is not ForwardRef and _columntype.get(FieldType) == f"{FieldType.__name__}_ID":
+                    # inner_r = c.execute(f"SELECT * FROM {FieldType.__name__} WHERE id = ?", (field_value,)).fetchone()  # noqa: ERA001
+                    inner_r = engine.get(FieldType, field_value)
+                    rr.append(inner_r)
+                else:
+                    rr.append(field_value)
+            return Model._make(rr)
             return Model._make(r)
 
         cursor.row_factory = row_fac
@@ -141,10 +154,16 @@ class Engine:
     #### Writing
     def ensure_table_created(self, Model: type[Row], *, force_recreate: bool = False) -> None:
         annotations = get_resolved_annotations(Model)
+        Model.__annotations__ = annotations  # TODO: this might not be good, but maybe it is, move to Meta later
         field_zero_name = Model._fields[0]
         field_zero_typehint = annotations[field_zero_name]
         if field_zero_name != "id" or field_zero_typehint != (int | None):
             raise FieldZeroIdRequired(Model.__name__, field_zero_name, field_zero_typehint)
+
+        # TODO: not alot of harm doing this before knowing if the table ends up being created
+        # but I wanna do self joins and am afraid of manually cleaning up right now.
+        _columntype[Model] = f"{Model.__name__}_ID"  # Register to table to be a possible foreign key
+        sqlite3.register_adapter(Model, lambda row: row[0])  # Register to be able to insert Model instances as foreign keys
 
         query = f"""
             CREATE TABLE {Model.__name__} (
@@ -172,9 +191,16 @@ class Engine:
                 # error is not about the table already existing
                 raise
 
-        _columntype[Model] = f"{Model.__name__}_ID"  # Register to table to be a possible foreign key
+    def _insert_if_is_model(self, field: Any) -> None:
+        if _columntype.get(type(field)) == f"{field.__class__.__name__}_ID":
+            return self.insert(field)
+        else:
+            return field
 
     def insert[R: Row](self, row: R) -> R:
+        # recursively save
+        row = row._make(self._insert_if_is_model(f) for f in row)
+
         query = f"""
             INSERT INTO {row.__class__.__name__} (
             {', '.join(row._fields)}
@@ -238,7 +264,7 @@ class Engine:
 
     def query[R: Row](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple()) -> TypedCursorProxy[R]:
         cursor = self.connection.execute(sql, parameters)
-        return TypedCursorProxy.proxy_cursor(Model, cursor)
+        return TypedCursorProxy.proxy_cursor(Model, cursor, self)
 
 
 class InvalidAdaptConvertType(Exception):
