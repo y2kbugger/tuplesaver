@@ -105,22 +105,34 @@ class TableSchemaMismatch(Exception):
     pass
 
 
+def make_model[R: Row](MMM: type[R], c: sqlite3.Cursor, r: sqlite3.Row) -> R:
+    rr = []
+    for field_value, (_field_name, FieldType) in zip(r, MMM.__annotations__.items()):
+        _nullable, FieldType = unwrap_optional_type(FieldType)
+        # ForwardRefs here are only from non-tables TODO: maybe we need to resolve annotations anyway (do view joins need this?)
+        if field_value is None:
+            rr.append(None)
+        elif type(FieldType) is ForwardRef:
+            rr.append(field_value)
+        elif _columntype.get(FieldType) == f"{FieldType.__name__}_ID":
+            InnerModel = FieldType
+            inner_r = c.execute(f"SELECT * FROM {InnerModel.__name__} WHERE id = ?", (field_value,)).fetchone()
+            rr.append(make_model(InnerModel, c, inner_r))
+        else:
+            rr.append(field_value)
+    return MMM._make(rr)
+
+
 class TypedCursorProxy[R: Row](sqlite3.Cursor):
     @staticmethod
-    def proxy_cursor(Model: type[R], cursor: sqlite3.Cursor, engine: Engine) -> TypedCursorProxy:
+    def proxy_cursor(Model: type[R], cursor: sqlite3.Cursor) -> TypedCursorProxy:
         def row_fac(c: sqlite3.Cursor, r: sqlite3.Row) -> R:
-            rr = []
-            for field_value, (_field_name, FieldType) in zip(r, Model.__annotations__.items()):
-                _nullable, FieldType = unwrap_optional_type(FieldType)
-                # ForwardRefs here are only from non-tables TODO: maybe we need to resolve annotations anyway (do view joins need this?)
-                if field_value is not None and type(FieldType) is not ForwardRef and _columntype.get(FieldType) == f"{FieldType.__name__}_ID":
-                    # inner_r = c.execute(f"SELECT * FROM {FieldType.__name__} WHERE id = ?", (field_value,)).fetchone()  # noqa: ERA001
-                    inner_r = engine.get(FieldType, field_value)
-                    rr.append(inner_r)
-                else:
-                    rr.append(field_value)
-            return Model._make(rr)
-            return Model._make(r)
+            # Disable the row factory to let us handle making the inner models ourselves
+            root_row_factory = c.row_factory
+            c.row_factory = None
+            m = make_model(Model, c, r)
+            c.row_factory = root_row_factory
+            return m
 
         cursor.row_factory = row_fac
         return cast(TypedCursorProxy, cursor)
@@ -264,7 +276,7 @@ class Engine:
 
     def query[R: Row](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple()) -> TypedCursorProxy[R]:
         cursor = self.connection.execute(sql, parameters)
-        return TypedCursorProxy.proxy_cursor(Model, cursor, self)
+        return TypedCursorProxy.proxy_cursor(Model, cursor)
 
 
 class InvalidAdaptConvertType(Exception):

@@ -242,6 +242,7 @@ def test_get_row(engine: Engine) -> None:
     retrieved_row = engine.get(T, 1)
 
     assert retrieved_row == row
+    assert type(retrieved_row) is T
 
 
 def test_get_row_with_id_as_none(engine: Engine) -> None:
@@ -385,6 +386,7 @@ def test_engine_query_fetchone(engine: Engine) -> None:
     row = cur.fetchone()
 
     assert row == ModelX(1, "Alice", 30)
+    assert type(row) is ModelX
 
     assert_type(cur, TypedCursorProxy[ModelX])
     assert_type(row, ModelX)
@@ -403,6 +405,7 @@ def test_engine_query_fetchall(engine: Engine) -> None:
     rows = cur.fetchall()
 
     assert rows == [ModelX(1, "Alice", 30), ModelX(2, "Bob", 40)]
+    assert type(rows[0]) is ModelX
 
     assert_type(cur, TypedCursorProxy[ModelX])
     assert_type(rows, list[ModelX])
@@ -421,9 +424,30 @@ def test_engine_query_fetchmany(engine: Engine) -> None:
     rows = cur.fetchmany(1)
 
     assert rows == [ModelX(1, "Alice", 30)]
+    assert type(rows[0]) is ModelX
 
     assert_type(cur, TypedCursorProxy[ModelX])
     assert_type(rows, list[ModelX])
+
+
+def test_engine_query_row_factory_persists_after_usage(engine: Engine) -> None:
+    class ModelX(NamedTuple):
+        id: int | None
+        name: str
+        age: int
+
+    engine.ensure_table_created(ModelX)
+    sql = "SELECT 1 as id, 'Alice' as name, 30 as age UNION SELECT 2, 'Bob', 40;"
+
+    cur = engine.query(ModelX, sql)
+
+    rows = cur.fetchmany(1)
+    assert rows == [ModelX(1, "Alice", 30)]
+    assert type(rows[0]) is ModelX
+
+    rows = cur.fetchmany(1)
+    assert rows == [ModelX(2, "Bob", 40)]
+    assert type(rows[0]) is ModelX
 
 
 def test_engine_query_cursorproxy_getattr_maintains_typehints(engine: Engine) -> None:
