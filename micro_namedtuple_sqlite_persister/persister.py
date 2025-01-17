@@ -4,7 +4,7 @@ import pickle
 import re
 import sqlite3
 import types
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from typing import Any, NamedTuple, Union, cast, get_args, get_origin, get_type_hints, overload
 
 type Row = NamedTuple
@@ -225,19 +225,19 @@ class Engine:
     def get[R: Row](self, Model: type[R], row_id: int | None) -> R:
         if row_id is None:
             raise ValueError("Cannot SELECT, id=None")
-        query = f"""
+        sql = f"""
             SELECT {', '.join(Model._fields)}
             FROM {Model.__name__}
             WHERE id = ?
             """
-        cursor = self.connection.execute(query, (row_id,))
-        row = cursor.fetchone()
+        row = self.query(Model, sql, (row_id,)).fetchone()
         if row is None:
             raise ValueError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
+
         return Model._make(row)
 
-    def query[R: Row](self, Model: type[R], sql: str) -> TypedCursorProxy[R]:
-        cursor = self.connection.execute(sql)
+    def query[R: Row](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple()) -> TypedCursorProxy[R]:
+        cursor = self.connection.execute(sql, parameters)
         return TypedCursorProxy.proxy_cursor(Model, cursor)
 
 
