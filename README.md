@@ -111,6 +111,14 @@ then activate and run the tests via vscode or the cli:
     $ poetry shell
     $ pytest
 
+to run perf regression tests, (should be same as precommit hook)
+
+    pytest  --benchmark-enable --benchmark-autosave --benchmark-compare --benchmark-compare-fail=min:3%
+
+to profile the benchmarks:
+
+    pytest --benchmark-enable --benchmark-cprofile=tottime  --benchmark-cprofile-dump --benchmark-only
+
 There is a test Task setup in vscode that, you can add a keybinding to run it, e.g.
 
     [Ctrl]+[Shift]+G
@@ -314,7 +322,6 @@ create table Person (
   - group tests, and promote _some_ model reuse if it makes sense
 - use the assert_type from typing to check type hints throught all tests
 - Harmonize the def-scoped Model class names in the tests
-- benchmark performance
 - Use extra-typical metadata to cache forward and backpop relation for a model\
   Eliminate traversal of the Model every time we go to create an instance
   ```python

@@ -3,9 +3,11 @@ from __future__ import annotations
 import datetime as dt
 import sqlite3
 from collections.abc import Iterable
+from random import choice, random
 from typing import Any, NamedTuple, Optional, Union, assert_type
 
 import pytest
+from pytest_benchmark.plugin import BenchmarkFixture
 
 from .persister import (
     AdaptConvertTypeAlreadyRegistered,
@@ -249,6 +251,27 @@ def test_get_row_with_id_as_none(engine: Engine) -> None:
     engine.ensure_table_created(T)
     with pytest.raises(ValueError, match="Cannot SELECT, id=None"):
         engine.get(T, None)
+
+
+def test_insert_row_benchmark(engine: Engine, benchmark: BenchmarkFixture) -> None:
+    engine.ensure_table_created(T)
+    row = T(None, "Alice", 30)
+
+    def insert_row():
+        engine.insert(row)
+
+    benchmark(insert_row)
+
+
+def test_get_row_benchmark(engine: Engine, benchmark: BenchmarkFixture) -> None:
+    engine.ensure_table_created(T)
+    row = T(None, "Alice", 30)
+    engine.insert(row)
+
+    def get_row():
+        engine.get(T, 1)
+
+    benchmark(get_row)
 
 
 def test_get_row_with_non_existent_id(engine: Engine) -> None:
@@ -586,6 +609,73 @@ class TestOptionalRelatedTable:
         row = engine.query(self.Person, "SELECT * FROM Person;").fetchone()
         assert row == self.Person(1, "Alice", None)
         assert person == self.Person(*row)
+
+
+class TestBomSelfJoin:
+    class BOM(NamedTuple):
+        id: int | None
+        name: str
+        value: float
+        child_a: TestBomSelfJoin.BOM | None
+        child_b: TestBomSelfJoin.BOM | None
+
+    @staticmethod
+    def generate_node_name_node(depth: int) -> str:
+        alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        return f"{choice(alphabet)}{choice(alphabet)}{choice(alphabet)}{depth:05d}"
+
+    @staticmethod
+    def create_bom(depth: int) -> BOM:
+        if depth == 1:
+            child_a = None
+            child_b = None
+        else:
+            child_a = TestBomSelfJoin.create_bom(depth - 1)
+            child_b = TestBomSelfJoin.create_bom(depth - 1)
+
+        return TestBomSelfJoin.BOM(
+            None,
+            TestBomSelfJoin.generate_node_name_node(depth),
+            random() * 1000 - 500,
+            child_a,
+            child_b,
+        )
+
+    def test_insert_bom(self, engine: Engine) -> None:
+        engine.ensure_table_created(self.BOM)
+        root = self.create_bom(3)
+        _inserted_root = engine.insert(root)
+        engine.connection.commit()
+
+    def test_get_bom(self, engine: Engine) -> None:
+        engine.ensure_table_created(self.BOM)
+        root = self.create_bom(3)
+        inserted_root = engine.insert(root)
+        engine.connection.commit()
+
+        retrieved_root = engine.get(self.BOM, inserted_root.id)
+        assert retrieved_root == inserted_root
+
+    def test_benchmark_insert_bom(self, engine: Engine, benchmark: BenchmarkFixture) -> None:
+        engine.ensure_table_created(self.BOM)
+        root = self.create_bom(7)
+
+        @benchmark
+        def insert_bom():
+            _inserted_root = engine.insert(root)
+            engine.connection.commit()
+
+    def test_benchmark_get_bom(self, engine: Engine, benchmark: BenchmarkFixture) -> None:
+        engine.ensure_table_created(self.BOM)
+        root = self.create_bom(7)
+
+        inserted_root = engine.insert(root)
+        engine.connection.commit()
+
+        @benchmark
+        def get_bom():
+            assert inserted_root is not None
+            _retrieved_root = engine.get(self.BOM, inserted_root.id)
 
 
 @pytest.fixture(autouse=True)

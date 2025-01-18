@@ -1,5 +1,5 @@
 __pycache__
-test.db
-example.db
-example.db-shm
-example.db-wal
+.benchmarks
+*.db
+*.db*
+*.prof

@@ -17,6 +17,7 @@ python = "^3.13"
 pytest = "*"
 ruff = "*"
 pre-commit = "*"
+pytest-benchmark = "^5.1.0"
 
 [tool.poetry.group.examplenotebook.dependencies]
 ipykernel = "*"
@@ -25,10 +26,17 @@ matplotlib = "^3.10.0"
 networkx = "^3.4.2"
 pygraphviz = "^1.14"
 
+
+[tool.poetry.group.profiling.dependencies]
+snakeviz = "^2.2.2"
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 python_files = "*_test.py"
 addopts = [
+    "--benchmark-columns=min,median,iqr,iterations,rounds,ops",
+    "--benchmark-max-time=2",
+    "--benchmark-disable",
     ]
 testpaths = ["micro_namedtuple_sqlite_persister"]
 
