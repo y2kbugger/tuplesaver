@@ -35,8 +35,12 @@ minversion = "8.0"
 python_files = "*_test.py"
 addopts = [
     "--benchmark-columns=min,median,iqr,iterations,rounds,ops",
-    "--benchmark-max-time=2",
-    "--benchmark-disable",
+    "--benchmark-max-time=0.25",
+    "--benchmark-enable",
+    "--benchmark-compare",
+    "--benchmark-group-by=name",
+    "--benchmark-sort=fullname",
+    "--benchmark-name=short",
     ]
 testpaths = ["micro_namedtuple_sqlite_persister"]
 

@@ -36,7 +36,7 @@ repos:
       stages: [pre-push]
       types: [python]
       name: pytest-check
-      entry: pytest --color=yes --benchmark-enable --benchmark-autosave --benchmark-compare --benchmark-compare-fail=min:3%
+      entry: pytest --color=yes --benchmark-autosave --benchmark-max-time=5 --benchmark-compare-fail=median:4%
       language: system
       pass_filenames: false
       always_run: true

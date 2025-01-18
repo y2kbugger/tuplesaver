@@ -111,13 +111,13 @@ then activate and run the tests via vscode or the cli:
     $ poetry shell
     $ pytest
 
-to run perf regression tests, (should be same as precommit hook)
+to run perf regression tests like they will on commit, extend the time and add a compare fail:
 
-    pytest  --benchmark-enable --benchmark-autosave --benchmark-compare --benchmark-compare-fail=min:3%
+    pytest  --benchmark-max-time=5 --benchmark-compare-fail=median:4%
 
 to profile the benchmarks:
 
-    pytest --benchmark-enable --benchmark-cprofile=tottime  --benchmark-cprofile-dump --benchmark-only
+    pytest --benchmark-cprofile=tottime  --benchmark-cprofile-dump --benchmark-only
 
 There is a test Task setup in vscode that, you can add a keybinding to run it, e.g.
 
