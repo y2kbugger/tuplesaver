@@ -26,9 +26,9 @@ matplotlib = "^3.10.0"
 networkx = "^3.4.2"
 pygraphviz = "^1.14"
 
-
 [tool.poetry.group.profiling.dependencies]
 snakeviz = "^2.2.2"
+scalene = "^1.5.49"
 
 [tool.pytest.ini_options]
 minversion = "8.0"
