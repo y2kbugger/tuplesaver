@@ -34,7 +34,7 @@ repos:
 - repo: local
   hooks:
     - id: pytest-check
-      types: [python]
+      stages: [pre-commit]
       name: pytest-check
       entry: pytest --color=yes --benchmark-max-time=5 --benchmark-compare-fail=median:4%
       language: system
