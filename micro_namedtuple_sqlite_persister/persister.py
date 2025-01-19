@@ -12,6 +12,13 @@ from typing import Any, NamedTuple, Union, cast, get_args, get_origin, get_type_
 
 logger = logging.getLogger(__name__)
 
+
+class Meta(NamedTuple):
+    annotations: dict[str, Any]
+    unwrapped_annotations: dict[str, Any]
+    unwrapped_field_types: tuple[type, ...]
+
+
 type Row = NamedTuple
 
 _columntype: dict[type, str] = {}
@@ -116,11 +123,10 @@ def make_model[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.
 
     while stack:
         Model, values, idx, parent_values, parent_idx = stack.pop()
-        fields_ = list(Model.__annotations__.items())
+        fields_types = meta(Model).unwrapped_field_types
 
-        while idx < len(fields_):
-            _field_name, FieldType = fields_[idx]
-            _nullable, FieldType = unwrap_optional_type(FieldType)
+        while idx < len(fields_types):
+            FieldType = fields_types[idx]
             field_value = values[idx]
             if field_value is None:
                 # we could assert _nullable here, but we are not in the business of validating data
@@ -177,6 +183,24 @@ class TypedCursorProxy[R: Row](sqlite3.Cursor):
         return self.cursor.fetchmany(size)
 
 
+_meta: dict[type[Row], Meta] = {}
+
+
+def meta(Model: type[Row]) -> Meta:
+    try:
+        return _meta[Model]
+    except KeyError:
+        annotations = get_resolved_annotations(Model)
+        unwapped_annotations = {k: unwrap_optional_type(v)[1] for k, v in annotations.items()}
+        unwrapped_field_types = tuple(unwapped_annotations.values())
+        _meta[Model] = Meta(
+            annotations,
+            unwapped_annotations,
+            unwrapped_field_types,
+        )
+        return _meta[Model]
+
+
 class Engine:
     def __init__(self, db_path: str, echo_sql: bool = False) -> None:
         self.db_path = db_path
@@ -192,10 +216,8 @@ class Engine:
 
     #### Writing
     def ensure_table_created(self, Model: type[Row], *, force_recreate: bool = False) -> None:
-        annotations = get_resolved_annotations(Model)
-        Model.__annotations__ = annotations  # TODO: this might not be good, but maybe it is, move to Meta later
         field_zero_name = Model._fields[0]
-        field_zero_typehint = annotations[field_zero_name]
+        field_zero_typehint = meta(Model).annotations[field_zero_name]
         if field_zero_name != "id" or field_zero_typehint != (int | None):
             raise FieldZeroIdRequired(Model.__name__, field_zero_name, field_zero_typehint)
 
@@ -206,7 +228,7 @@ class Engine:
 
         query = f"""
             CREATE TABLE {Model.__name__} (
-            {', '.join(_column_definition(f) for f in annotations.items())}
+            {', '.join(_column_definition(f) for f in meta(Model).annotations.items())}
             )"""
         try:
             self.connection.execute(query)

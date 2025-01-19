@@ -322,7 +322,9 @@ create table Person (
   - group tests, and promote _some_ model reuse if it makes sense
 - use the assert_type from typing to check type hints throught all tests
 - Harmonize the def-scoped Model class names in the tests
-- Use extra-typical metadata to cache forward and backpop relation for a model\
+- Use Meta to cache the SQL COLTYPE for each field (use in column def)
+- Use Meta to cache bool of whether a field is a FK (use in column def, and make_model)
+- Use Meta to cache forward and backpop relation for a model\
   Eliminate traversal of the Model every time we go to create an instance
   ```python
   _field_name, FieldType = fields_[idx]
