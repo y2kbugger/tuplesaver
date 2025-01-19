@@ -326,6 +326,8 @@ create table Person (
 - use the assert_type from typing to check type hints throught all tests
 - Harmonize the def-scoped Model class names in the tests
 - leverage meta (and add registered_only=False flage to it) to eliminated _model_columntypes
+- column definition into Meta
+- slice Meta row-wise into FieldMeta?? maybe, depends on tight loops usage
 - Use Meta to cache the SQL COLTYPE for each field (use in column def)
 - Use Meta to cache bool of whether a field is a FK (use in column def, and make_model)
 - Use Meta to cache forward and backpop relation for a model\

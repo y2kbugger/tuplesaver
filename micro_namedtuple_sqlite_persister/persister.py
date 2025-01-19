@@ -1,57 +1,28 @@
 from __future__ import annotations
 
-import inspect
 import logging
 import re
 import sqlite3
-import types
 from collections.abc import Sequence
-from typing import Any, NamedTuple, Union, cast, get_args, get_origin, get_type_hints, overload
+from typing import Any, cast, overload
 
-from .adaptconvert import adaptconvert_columntypes
+from .model import Row, _model_columntypes, column_definition, get_sqltypename, is_registered_row_model, is_row_model, meta
 
 logger = logging.getLogger(__name__)
 
 
-type Row = NamedTuple
+class FieldZeroIdRequired(Exception):
+    def __init__(self, model_name: str, field_zero_name: str, field_zero_typehint: Any) -> None:
+        super().__init__(self, f"Field 0 of {model_name} is required to be `id: int | None` but instead is `{field_zero_name}: {field_zero_typehint}`")
 
 
-def is_row_model(cls: object) -> bool:
-    # Test at runtime whether an object is a Row, e.g. a NamedTuple model
-    if not isinstance(cls, type):
-        return False
-
-    if not issubclass(cls, tuple):
-        return False
-
-    try:
-        if object.__getattribute__(cls, '_fields')[0] == 'id':
-            return True
-        else:
-            return False
-    except Exception:
-        return False
-
-
-_native_columntypes: dict[type, str] = {
-    str: "TEXT",
-    float: "REAL",
-    int: "INTEGER",
-    bytes: "BLOB",
-}
-_model_columntypes: dict[type, str] = {}
-
-
-def get_columntype(FieldType: type, registered_only: bool) -> str | None:
-    if FieldType in _native_columntypes:
-        return _native_columntypes[FieldType]
-    elif FieldType in _model_columntypes:
-        return _model_columntypes[FieldType]
-    elif FieldType in adaptconvert_columntypes:
-        return adaptconvert_columntypes[FieldType]
-    elif not registered_only and is_row_model(FieldType):
-        # a yet unregistered foreign key
-        return f"{FieldType.__name__}_ID"
+class TableSchemaMismatch(Exception):
+    def __init__(self, Model: type[Row], existing_table_schema: str, new_table_schema: str) -> None:
+        super().__init__(
+            f"Table `{Model.__name__}` already exists but the schema does not match the expected schema.\nj"
+            f"Existing schema:\n\t{existing_table_schema}.\n"
+            f"Expected schema:\n\t{new_table_schema}"
+        )
 
 
 class UnregisteredFieldTypeError(Exception):
@@ -66,175 +37,6 @@ class UnregisteredFieldTypeError(Exception):
         super().__init__(msg)
 
 
-def unwrap_optional_type(type_hint: Any) -> tuple[bool, Any]:
-    """Determine if a given type hint is an Optional type
-
-    Supports the following forms of Optional types:
-    UnionType (e.g., int | None)
-    Optional  (e.g., Optional[int])
-    Union (e.g., Union[int, None])
-
-    Returns
-    - A boolean indicating if it is Optional.
-    - The underlying type if it is Optional, otherwise the original type.
-    """
-
-    # Not any form of Union type
-    if not (isinstance(type_hint, types.UnionType) or get_origin(type_hint) is Union):
-        return False, type_hint
-
-    args = get_args(type_hint)
-    optional = type(None) in args
-
-    underlying_types = tuple(arg for arg in args if arg is not type(None))
-    underlying_type = underlying_types[0]
-    for t in underlying_types[1:]:
-        underlying_type |= t
-
-    return optional, underlying_type
-
-
-def get_resolved_annotations(Model: Any) -> dict[str, Any]:
-    """Resolve ForwardRef type hints by combining all local and global namespaces up the call stack."""
-    globalns = getattr(inspect.getmodule(Model), "__dict__", {})
-    localns = {}
-
-    for frame in inspect.stack():
-        localns.update(frame.frame.f_locals)
-
-    return get_type_hints(Model, globalns=globalns, localns=localns)
-
-
-def _column_definition(annotation: tuple[str, Any]) -> str:
-    field_name, FieldType = annotation
-
-    nullable, FieldType = unwrap_optional_type(FieldType)
-
-    if field_name == "id":
-        return "id [INTEGER] PRIMARY KEY NOT NULL"
-
-    columntype = get_columntype(FieldType, registered_only=False)
-    if columntype is None:
-        raise UnregisteredFieldTypeError(FieldType)
-
-    if nullable:
-        nullable_sql = "NULL"
-    else:
-        nullable_sql = "NOT NULL"
-
-    return f"{field_name} [{columntype}] {nullable_sql}"
-
-
-def normalize_whitespace(s: str) -> str:
-    return re.sub(r'\s+', ' ', s).strip()
-
-
-class FieldZeroIdRequired(Exception):
-    def __init__(self, model_name: str, field_zero_name: str, field_zero_typehint: Any) -> None:
-        super().__init__(self, f"Field 0 of {model_name} is required to be `id: int | None` but instead is `{field_zero_name}: {field_zero_typehint}`")
-
-
-class TableSchemaMismatch(Exception):
-    pass
-
-
-def make_model[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.Row) -> R:
-    # Non-recursive depth-first stack approach.
-
-    # Stack items: (Model, values, field_index, parent_values, parent_field_index)
-    stack: list[tuple[Any, ...]] = [(RootModel, list(root_row), 0, None, None)]
-
-    while stack:
-        Model, values, idx, parent_values, parent_idx = stack.pop()
-        metadata = meta(Model)
-        fields_types = metadata.unwrapped_field_types
-
-        while idx < len(fields_types):
-            FieldType = fields_types[idx]
-            field_value = values[idx]
-            if field_value is None:
-                # we could assert _nullable here, but we are not in the business of validating data
-                # external edits to the database could cause mismatches types in any field, this isn't a special case, but we do need
-                # to avoid trying to fetch a model with a id=None.
-                pass
-            elif FieldType in _model_columntypes:
-                # Sub-model fetch
-                InnerModel = FieldType
-                inner_metadata = meta(InnerModel)
-                inner_values = list(c.execute(inner_metadata.select, (field_value,)).fetchone())
-
-                # Defer remainder of current model
-                stack.append((Model, values, idx + 1, parent_values, parent_idx))
-                stack.append((InnerModel, inner_values, 0, values, idx))
-                break
-
-            idx += 1
-        else:
-            # All fields processed; finalize current model
-            built = Model._make(values)
-            if parent_values is not None:
-                parent_values[parent_idx] = built
-            else:
-                return built
-
-    # Should never reach here if input data is valid
-    raise RuntimeError("Stack unexpectedly empty before returning the root model.")
-
-
-class TypedCursorProxy[R: Row](sqlite3.Cursor):
-    @staticmethod
-    def proxy_cursor(Model: type[R], cursor: sqlite3.Cursor) -> TypedCursorProxy:
-        def row_fac(c: sqlite3.Cursor, r: sqlite3.Row) -> R:
-            # Disable the row factory to let us handle making the inner models ourselves
-            root_row_factory = c.row_factory
-            c.row_factory = None
-            m = make_model(Model, c, r)
-            c.row_factory = root_row_factory
-            return m
-
-        cursor.row_factory = row_fac
-        return cast(TypedCursorProxy, cursor)
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self.cursor, name)
-
-    def fetchone(self) -> R:
-        return self.cursor.fetchone()
-
-    def fetchall(self) -> list[R]:
-        return self.cursor.fetchall()
-
-    def fetchmany(self, size: int | None = 1) -> list[R]:
-        return self.cursor.fetchmany(size)
-
-
-class Meta(NamedTuple):
-    annotations: dict[str, Any]
-    unwrapped_annotations: dict[str, Any]
-    unwrapped_field_types: tuple[type, ...]
-    select: str
-
-
-_meta: dict[type[Row], Meta] = {}
-
-
-def meta(Model: type[Row]) -> Meta:
-    try:
-        return _meta[Model]
-    except KeyError:
-        annotations = get_resolved_annotations(Model)
-        unwapped_annotations = {k: unwrap_optional_type(v)[1] for k, v in annotations.items()}
-        unwrapped_field_types = tuple(unwapped_annotations.values())
-        select = f"SELECT {', '.join(Model._fields)} FROM {Model.__name__} WHERE id = ?"
-        _meta[Model] = Meta(
-            annotations,
-            unwapped_annotations,
-            unwrapped_field_types,
-            select,
-        )
-        return _meta[Model]
-
-
 class Engine:
     def __init__(self, db_path: str, echo_sql: bool = False) -> None:
         self.db_path = db_path
@@ -246,9 +48,8 @@ class Engine:
     def _get_sql_for_existing_table(self, Model: type[Row]) -> str:
         query = f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{Model.__name__}'"
         cursor = self.connection.execute(query)
-        return normalize_whitespace(cursor.fetchone()[0])
+        return cursor.fetchone()[0]
 
-    #### Writing
     def ensure_table_created(self, Model: type[Row], *, force_recreate: bool = False) -> None:
         field_zero_name = Model._fields[0]
         field_zero_typehint = meta(Model).annotations[field_zero_name]
@@ -260,13 +61,14 @@ class Engine:
             # skipping self reference, it will be registered later
             if FieldType is Model:
                 continue
-            if get_columntype(FieldType, registered_only=True) is None:
+            if get_sqltypename(FieldType, registered_only=True) is None:
                 raise UnregisteredFieldTypeError(FieldType)
 
         query = f"""
             CREATE TABLE {Model.__name__} (
-            {', '.join(_column_definition(f) for f in meta(Model).annotations.items())}
+            {', '.join(column_definition(f) for f in meta(Model).annotations.items())}
             )"""
+
         try:
             self.connection.execute(query)
         except sqlite3.OperationalError as e:
@@ -277,23 +79,24 @@ class Engine:
                     self.connection.execute(query)
 
                 # Check existing table, it might be ok
-                existing_table_schema = self._get_sql_for_existing_table(Model)
+                def normalize_whitespace(s: str) -> str:
+                    return re.sub(r'\s+', ' ', s).strip()
+
+                existing_table_schema = normalize_whitespace(self._get_sql_for_existing_table(Model))
                 new_table_schema = normalize_whitespace(query)
+
                 if existing_table_schema != new_table_schema:
-                    raise TableSchemaMismatch(
-                        f"Table `{Model.__name__}` already exists but the schema does not match the expected schema."
-                        f"\nExisting schema:\n\t{existing_table_schema}."
-                        f"\nExpected schema:\n\t{new_table_schema}"
-                    ) from e
+                    raise TableSchemaMismatch(Model, existing_table_schema, new_table_schema) from e
             else:
                 # error is not about the table already existing
                 raise
 
-        _model_columntypes[Model] = cast(str, get_columntype(Model, registered_only=False))  # Register to table to be a possible foreign key
+        _model_columntypes[Model] = cast(str, get_sqltypename(Model, registered_only=False))  # Register to table to be a possible foreign key
         sqlite3.register_adapter(Model, lambda row: row[0])  # Register to be able to insert Model instances as foreign keys
 
+    #### Writing
     def _insert_if_is_model(self, field: Any) -> None:
-        if type(field) in _model_columntypes:
+        if is_registered_row_model(type(field)):
             return self.insert(field)
         else:
             return field
@@ -352,12 +155,84 @@ class Engine:
     def get[R: Row](self, Model: type[R], row_id: int | None) -> R:
         if row_id is None:
             raise ValueError("Cannot SELECT, id=None")
+
         row = self.query(Model, meta(Model).select, (row_id,)).fetchone()
+
         if row is None:
             raise ValueError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
 
-        return Model._make(row)
+        return row
 
     def query[R: Row](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple()) -> TypedCursorProxy[R]:
         cursor = self.connection.execute(sql, parameters)
         return TypedCursorProxy.proxy_cursor(Model, cursor)
+
+
+def make_model[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.Row) -> R:
+    # Non-recursive depth-first stack approach.
+
+    # Stack items: (Model, values, field_index, parent_values, parent_field_index)
+    stack: list[tuple[Any, ...]] = [(RootModel, list(root_row), 0, None, None)]
+
+    while stack:
+        Model, values, idx, parent_values, parent_idx = stack.pop()
+        metadata = meta(Model)
+        fields_types = metadata.unwrapped_field_types
+
+        while idx < len(fields_types):
+            FieldType = fields_types[idx]
+            field_value = values[idx]
+            if field_value is None:
+                # we could assert _nullable here, but we are not in the business of validating data
+                # external edits to the database could cause mismatches types in any field, this isn't a special case, but we do need
+                # to avoid trying to fetch a model with a id=None.
+                pass
+            elif is_registered_row_model(FieldType):
+                # Sub-model fetch
+                InnerModel = FieldType
+                inner_metadata = meta(InnerModel)
+                inner_values = list(c.execute(inner_metadata.select, (field_value,)).fetchone())
+
+                # Defer remainder of current model
+                stack.append((Model, values, idx + 1, parent_values, parent_idx))
+                stack.append((InnerModel, inner_values, 0, values, idx))
+                break
+
+            idx += 1
+        else:
+            # All fields processed; finalize current model
+            built = Model._make(values)
+            if parent_values is not None:
+                parent_values[parent_idx] = built
+            else:
+                return built
+
+    # Should never reach here if input data is valid
+    raise RuntimeError("Stack unexpectedly empty before returning the root model.")
+
+
+class TypedCursorProxy[R: Row](sqlite3.Cursor):
+    @staticmethod
+    def proxy_cursor(Model: type[R], cursor: sqlite3.Cursor) -> TypedCursorProxy:
+        def row_fac(c: sqlite3.Cursor, r: sqlite3.Row) -> R:
+            # Disable the row factory to let us handle making the inner models ourselves
+            root_row_factory = c.row_factory
+            c.row_factory = None
+            m = make_model(Model, c, r)
+            c.row_factory = root_row_factory
+            return m
+
+        cursor.row_factory = row_fac
+        return cast(TypedCursorProxy, cursor)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.cursor, name)
+
+    def fetchone(self) -> R:
+        return self.cursor.fetchone()
+
+    def fetchall(self) -> list[R]:
+        return self.cursor.fetchall()
+
+    def fetchmany(self, size: int | None = 1) -> list[R]:
+        return self.cursor.fetchmany(size)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import sqlite3
 from random import choice, random
-from typing import Any, NamedTuple, Optional, Union, assert_type
+from typing import Any, NamedTuple, assert_type
 
 import pytest
 from pytest_benchmark.plugin import BenchmarkFixture
@@ -14,7 +14,6 @@ from .persister import (
     TableSchemaMismatch,
     TypedCursorProxy,
     UnregisteredFieldTypeError,
-    unwrap_optional_type,
 )
 
 
@@ -215,58 +214,9 @@ def test_table_model_only_registered_when_successful(engine: Engine) -> None:
     with pytest.raises(UnregisteredFieldTypeError, match="is a NamedTuple Row Model"):
         engine.ensure_table_created(Model)
 
-    from .persister import get_columntype
+    from .persister import get_sqltypename
 
-    assert get_columntype(ModelUnknownType, registered_only=True) is None
-
-
-def test_unwrap_optional_type() -> None:
-    # Non-optional hint
-    assert unwrap_optional_type(int) == (False, int)
-
-    # Show that any pair optional syntaxs are == equivalent
-    assert Union[int, None] == Optional[int]
-    assert Union[int, None] == int | None
-    assert Optional[int] == int | None
-    assert Optional[int] == Union[int, None]
-    assert int | None == Union[int, None]
-    assert int | None == Optional[int]
-
-    # Simple standard optional hints
-    assert unwrap_optional_type(Union[int, None]) == (True, int)
-    assert unwrap_optional_type(Optional[int]) == (True, int)
-    assert unwrap_optional_type(int | None) == (True, int)
-
-    # Unions including more than one type in addition to None
-    assert unwrap_optional_type(Union[int, str, None]) == (True, int | str)
-    assert unwrap_optional_type(int | str | None) == (True, int | str)
-
-    # Unions not including None
-    U = Union[int, str]
-    UT = int | str
-    assert U == UT
-    assert unwrap_optional_type(U) == (False, int | str)
-    assert unwrap_optional_type(UT) == (False, int | str)
-
-    # Types nested within optional
-    assert unwrap_optional_type(Union[U, None]) == (True, int | str)
-    assert unwrap_optional_type(Optional[U]) == (True, int | str)
-    assert unwrap_optional_type((U) | None) == (True, int | str)
-
-    assert unwrap_optional_type(Union[UT, None]) == (True, int | str)
-    assert unwrap_optional_type(Optional[UT]) == (True, int | str)
-    assert unwrap_optional_type((UT) | None) == (True, int | str)
-
-    # Nest unions are flattened and deduped and thus nested optionals are not preserved
-    OU = Optional[Union[int, None]]
-    OUT = Optional[int | None]
-    assert OU == OUT
-    assert unwrap_optional_type(Union[OU, None]) == (True, (int))
-    assert unwrap_optional_type(Optional[OU]) == (True, (int))
-    assert unwrap_optional_type((OU) | None) == (True, (int))
-
-    assert unwrap_optional_type(Union[OUT, None]) == (True, (int))
-    assert unwrap_optional_type(Optional[OUT]) == (True, (int))
+    assert get_sqltypename(ModelUnknownType, registered_only=True) is None
 
 
 def test_insert_row(engine: Engine) -> None:
