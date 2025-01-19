@@ -13,12 +13,6 @@ from typing import Any, NamedTuple, Union, cast, get_args, get_origin, get_type_
 logger = logging.getLogger(__name__)
 
 
-class Meta(NamedTuple):
-    annotations: dict[str, Any]
-    unwrapped_annotations: dict[str, Any]
-    unwrapped_field_types: tuple[type, ...]
-
-
 type Row = NamedTuple
 
 _columntype: dict[type, str] = {}
@@ -123,7 +117,8 @@ def make_model[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.
 
     while stack:
         Model, values, idx, parent_values, parent_idx = stack.pop()
-        fields_types = meta(Model).unwrapped_field_types
+        metadata = meta(Model)
+        fields_types = metadata.unwrapped_field_types
 
         while idx < len(fields_types):
             FieldType = fields_types[idx]
@@ -136,7 +131,8 @@ def make_model[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.
             elif type(FieldType) is type and _columntype.get(FieldType) == f"{FieldType.__name__}_ID":
                 # Sub-model fetch
                 InnerModel = FieldType
-                inner_values = list(c.execute(f"SELECT * FROM {InnerModel.__name__} WHERE id = ?", (field_value,)).fetchone())
+                inner_metadata = meta(InnerModel)
+                inner_values = list(c.execute(inner_metadata.select, (field_value,)).fetchone())
 
                 # Defer remainder of current model
                 stack.append((Model, values, idx + 1, parent_values, parent_idx))
@@ -183,6 +179,13 @@ class TypedCursorProxy[R: Row](sqlite3.Cursor):
         return self.cursor.fetchmany(size)
 
 
+class Meta(NamedTuple):
+    annotations: dict[str, Any]
+    unwrapped_annotations: dict[str, Any]
+    unwrapped_field_types: tuple[type, ...]
+    select: str
+
+
 _meta: dict[type[Row], Meta] = {}
 
 
@@ -193,10 +196,12 @@ def meta(Model: type[Row]) -> Meta:
         annotations = get_resolved_annotations(Model)
         unwapped_annotations = {k: unwrap_optional_type(v)[1] for k, v in annotations.items()}
         unwrapped_field_types = tuple(unwapped_annotations.values())
+        select = f"SELECT {', '.join(Model._fields)} FROM {Model.__name__} WHERE id = ?"
         _meta[Model] = Meta(
             annotations,
             unwapped_annotations,
             unwrapped_field_types,
+            select,
         )
         return _meta[Model]
 
@@ -312,12 +317,7 @@ class Engine:
     def get[R: Row](self, Model: type[R], row_id: int | None) -> R:
         if row_id is None:
             raise ValueError("Cannot SELECT, id=None")
-        sql = f"""
-            SELECT {', '.join(Model._fields)}
-            FROM {Model.__name__}
-            WHERE id = ?
-            """
-        row = self.query(Model, sql, (row_id,)).fetchone()
+        row = self.query(Model, meta(Model).select, (row_id,)).fetchone()
         if row is None:
             raise ValueError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
 
