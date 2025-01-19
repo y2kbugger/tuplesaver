@@ -33,7 +33,6 @@ repos:
 - repo: local
   hooks:
     - id: pytest-check
-      stages: [pre-push]
       types: [python]
       name: pytest-check
       entry: pytest --color=yes --benchmark-autosave --benchmark-max-time=5 --benchmark-compare-fail=median:4%
