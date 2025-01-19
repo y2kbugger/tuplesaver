@@ -15,6 +15,23 @@ logger = logging.getLogger(__name__)
 
 type Row = NamedTuple
 
+
+def is_row_model(cls: object) -> bool:
+    if not isinstance(cls, type):
+        return False
+
+    if not issubclass(cls, tuple):
+        return False
+
+    try:
+        if object.__getattribute__(cls, '_fields')[0] == 'id':
+            return True
+        else:
+            return False
+    except Exception:
+        return False
+
+
 _columntype: dict[type, str] = {}
 
 
@@ -34,7 +51,14 @@ reset_to_native_columntypes()
 
 class UnregisteredFieldTypeError(Exception):
     def __init__(self, field_type: type) -> None:
-        super().__init__(f"Field Type {field_type} has not been registered with the Persister. Use `register_adapt_convert` to register it")
+        if is_row_model(field_type):
+            msg = (
+                f"Field Type {field_type} is a NamedTuple Row Model, but it has not been registered with the Persister Engine.\n"
+                "Use `engine.ensure_table_created({field_type.__name__})` to register it"
+            )
+        else:
+            msg = f"Field Type {field_type} has not been registered with an adapter and converter.\n `register_adapt_convert` to register it"
+        super().__init__(msg)
 
 
 def unwrap_optional_type(type_hint: Any) -> tuple[bool, Any]:

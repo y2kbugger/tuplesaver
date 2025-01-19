@@ -167,13 +167,10 @@ If you need to update the precommit hooks, run the following:
 
 # WIP
 - pull in object from other table as field (1:Many, but on the single side)
-  - Update error message about unknown type to include possibility of unregistered table in addition to unregistered adapter/converter type
   - Add foreign key constraints to the table creation
     - through the metadata system?? appending to meta during ensure_table_created?
-  - test insert with self references
   - Test using model with int as foreign key rather than model to prevent recursion
       e.g. int instead of Node
-  - Test forward disambiguation of two FKs of same type
   - Test the forgein key may only be a union with None i.e. Optional BUT NOT with int or something else
 
 one to many
@@ -356,6 +353,7 @@ create table Person (
   - Can we minimize stack depth of engine.query do recursive creation of BOM trees without actual stack recursion
     - e.g. a while loop that creates the tree, rather than stack recursion
     - Use a really deep BOM self ref to test this, easy to hit recursion limit
+- figure out why the benchmark warns about different system specs EVERY run.
 - Can persister.py have to imports from query.py?
   - NO
 

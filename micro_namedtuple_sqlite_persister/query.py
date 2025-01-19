@@ -2,7 +2,7 @@ from _collections import _tuplegetter  # type: ignore
 from collections.abc import Sequence
 from typing import Any, NamedTuple
 
-from .persister import Row
+from .persister import Row, is_row_model
 
 
 def get_field_idx(field: Any) -> int:
@@ -32,22 +32,6 @@ def get_column_name(Model: type[NamedTuple], idx: int) -> str:
 
 def get_table_name(Model: type[NamedTuple]) -> str:
     return Model.__name__
-
-
-def is_namedtuple_table_model(cls: object) -> bool:
-    if not isinstance(cls, type):
-        return False
-
-    if not issubclass(cls, tuple):
-        return False
-
-    try:
-        if object.__getattribute__(cls, '_fields')[0] == 'id':
-            return True
-        else:
-            return False
-    except Exception:
-        return False
 
 
 # fmt: off
@@ -101,7 +85,7 @@ def render(M: type[Row], fg: Fragment) -> str:
         case _tuplegetter():
             assert M is not None
             return get_column_name(M, get_field_idx(fg))
-        case _ if is_namedtuple_table_model(fg):
+        case _ if is_row_model(fg):
             return M.__name__
         case tuple():  # Match any tuple and deconstruct into elements
             return ' '.join(render(M, f) for f in fg)

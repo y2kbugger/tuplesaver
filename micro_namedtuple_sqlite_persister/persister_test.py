@@ -161,7 +161,7 @@ def test_ensure_table_created_catches_force_recreate(engine: Engine) -> None:
     engine.ensure_table_created(TblAlreadyCreated)  # just a double check for it being recreated.
 
 
-def test_creating_table_including_unknown_type_raises_error(engine: Engine) -> None:
+def test_creating_table_with_unknown_type_raises_error(engine: Engine) -> None:
     class NewType: ...
 
     class ModelUnknownType(NamedTuple):
@@ -169,8 +169,48 @@ def test_creating_table_including_unknown_type_raises_error(engine: Engine) -> N
         name: str
         unknown: NewType
 
-    with pytest.raises(UnregisteredFieldTypeError):
+    with pytest.raises(UnregisteredFieldTypeError, match="has not been registered with an adapter and converter"):
         engine.ensure_table_created(ModelUnknownType)
+
+
+def test_creating_table_with_optional_unknown_type_raises_error(engine: Engine) -> None:
+    class NewType: ...
+
+    class ModelUnknownType(NamedTuple):
+        id: int | None
+        name: str
+        unknown: NewType | None
+
+    with pytest.raises(UnregisteredFieldTypeError, match="has not been registered with an adapter and converter"):
+        engine.ensure_table_created(ModelUnknownType)
+
+
+def test_creating_table_including_unknown_model_type_raises_error(engine: Engine) -> None:
+    class ModelUnknownType(NamedTuple):
+        id: int | None
+        name: str
+
+    class Model(NamedTuple):
+        id: int | None
+        name: str
+        unknown: ModelUnknownType
+
+    with pytest.raises(UnregisteredFieldTypeError, match="is a NamedTuple Row Model"):
+        engine.ensure_table_created(Model)
+
+
+def test_creating_table_including_optional_unknown_model_type_raises_error(engine: Engine) -> None:
+    class ModelUnknownType(NamedTuple):
+        id: int | None
+        name: str
+
+    class Model(NamedTuple):
+        id: int | None
+        name: str
+        unknown: ModelUnknownType | None
+
+    with pytest.raises(UnregisteredFieldTypeError, match="is a NamedTuple Row Model"):
+        engine.ensure_table_created(Model)
 
 
 def test_unwrap_optional_type() -> None:
