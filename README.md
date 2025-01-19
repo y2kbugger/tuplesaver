@@ -104,7 +104,7 @@ Use poetry to install the dependencies:
 
 Install pre-commit hooks:
 
-    $ pre-commit install --hook-type pre-commit --hook-type pre-push
+    $ pre-commit install --hook-type pre-commit --hook-type pre-push --hook-type post-commit
 
 then activate and run the tests via vscode or the cli:
 

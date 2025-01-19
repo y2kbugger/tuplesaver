@@ -1,5 +1,6 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
+default_install_hook_types: [pre-commit, pre-push, post-commit]
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -35,7 +36,15 @@ repos:
     - id: pytest-check
       types: [python]
       name: pytest-check
-      entry: pytest --color=yes --benchmark-autosave --benchmark-max-time=5 --benchmark-compare-fail=median:4%
+      entry: pytest --color=yes --benchmark-max-time=5 --benchmark-compare-fail=median:4%
+      language: system
+      pass_filenames: false
+      always_run: true
+      verbose: true
+    - id: pytest-save-benchmarks
+      stages: [post-commit]
+      name: pytest-save-benchmarks
+      entry: pytest --color=yes --benchmark-autosave --benchmark-max-time=5 --benchmark-only
       language: system
       pass_filenames: false
       always_run: true
