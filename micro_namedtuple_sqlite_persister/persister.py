@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import datetime as dt
 import inspect
 import logging
-import pickle
 import re
 import sqlite3
 import types
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Sequence
 from typing import Any, NamedTuple, Union, cast, get_args, get_origin, get_type_hints, overload
+
+from .adaptconvert import adaptconvert_columntypes
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,7 @@ type Row = NamedTuple
 
 
 def is_row_model(cls: object) -> bool:
+    # Test at runtime whether an object is a Row, e.g. a NamedTuple model
     if not isinstance(cls, type):
         return False
 
@@ -32,21 +33,25 @@ def is_row_model(cls: object) -> bool:
         return False
 
 
-_columntype: dict[type, str] = {}
+_native_columntypes: dict[type, str] = {
+    str: "TEXT",
+    float: "REAL",
+    int: "INTEGER",
+    bytes: "BLOB",
+}
+_model_columntypes: dict[type, str] = {}
 
 
-def reset_to_native_columntypes() -> None:
-    native_columntype = {
-        str: "TEXT",
-        float: "REAL",
-        int: "INTEGER",
-        bytes: "BLOB",
-    }
-    _columntype.clear()
-    _columntype.update(native_columntype)
-
-
-reset_to_native_columntypes()
+def get_columntype(FieldType: type, registered_only: bool) -> str | None:
+    if FieldType in _native_columntypes:
+        return _native_columntypes[FieldType]
+    elif FieldType in _model_columntypes:
+        return _model_columntypes[FieldType]
+    elif FieldType in adaptconvert_columntypes:
+        return adaptconvert_columntypes[FieldType]
+    elif not registered_only and is_row_model(FieldType):
+        # a yet unregistered foreign key
+        return f"{FieldType.__name__}_ID"
 
 
 class UnregisteredFieldTypeError(Exception):
@@ -108,7 +113,7 @@ def _column_definition(annotation: tuple[str, Any]) -> str:
     if field_name == "id":
         return "id [INTEGER] PRIMARY KEY NOT NULL"
 
-    columntype = _columntype.get(FieldType)
+    columntype = get_columntype(FieldType, registered_only=False)
     if columntype is None:
         raise UnregisteredFieldTypeError(FieldType)
 
@@ -152,7 +157,7 @@ def make_model[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.
                 # external edits to the database could cause mismatches types in any field, this isn't a special case, but we do need
                 # to avoid trying to fetch a model with a id=None.
                 pass
-            elif type(FieldType) is type and _columntype.get(FieldType) == f"{FieldType.__name__}_ID":
+            elif FieldType in _model_columntypes:
                 # Sub-model fetch
                 InnerModel = FieldType
                 inner_metadata = meta(InnerModel)
@@ -250,10 +255,13 @@ class Engine:
         if field_zero_name != "id" or field_zero_typehint != (int | None):
             raise FieldZeroIdRequired(Model.__name__, field_zero_name, field_zero_typehint)
 
-        # TODO: not alot of harm doing this before knowing if the table ends up being created
-        # but I wanna do self joins and am afraid of manually cleaning up right now.
-        _columntype[Model] = f"{Model.__name__}_ID"  # Register to table to be a possible foreign key
-        sqlite3.register_adapter(Model, lambda row: row[0])  # Register to be able to insert Model instances as foreign keys
+        # Check that all field are registered
+        for FieldType in meta(Model).unwrapped_field_types:
+            # skipping self reference, it will be registered later
+            if FieldType is Model:
+                continue
+            if get_columntype(FieldType, registered_only=True) is None:
+                raise UnregisteredFieldTypeError(FieldType)
 
         query = f"""
             CREATE TABLE {Model.__name__} (
@@ -281,8 +289,11 @@ class Engine:
                 # error is not about the table already existing
                 raise
 
+        _model_columntypes[Model] = cast(str, get_columntype(Model, registered_only=False))  # Register to table to be a possible foreign key
+        sqlite3.register_adapter(Model, lambda row: row[0])  # Register to be able to insert Model instances as foreign keys
+
     def _insert_if_is_model(self, field: Any) -> None:
-        if _columntype.get(type(field)) == f"{field.__class__.__name__}_ID":
+        if type(field) in _model_columntypes:
             return self.insert(field)
         else:
             return field
@@ -350,67 +361,3 @@ class Engine:
     def query[R: Row](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple()) -> TypedCursorProxy[R]:
         cursor = self.connection.execute(sql, parameters)
         return TypedCursorProxy.proxy_cursor(Model, cursor)
-
-
-class InvalidAdaptConvertType(Exception):
-    def __init__(self, AdaptConvertType: type) -> None:
-        super().__init__(
-            f"AdaptConvertType {AdaptConvertType} is not a valid type for persisting. `{AdaptConvertType})` must be an instance of `type` but instead is `{type(AdaptConvertType)}`"
-        )
-
-
-class AdaptConvertTypeAlreadyRegistered(Exception):
-    def __init__(self, AdaptConvertType: type) -> None:
-        super().__init__(f"Persistance format for {AdaptConvertType} already exists. It is a native type (int, float, str, bytes) or already has an Adapt Convert registered")
-
-
-## Adapt/Convert
-def register_adapt_convert[D](AdaptConvertType: type[D], adapt: Callable[[D], bytes], convert: Callable[[bytes], D], overwrite: bool = False) -> None:
-    if type(AdaptConvertType) is not type:
-        raise InvalidAdaptConvertType(AdaptConvertType)
-
-    if AdaptConvertType in _columntype and not overwrite:
-        raise AdaptConvertTypeAlreadyRegistered(AdaptConvertType)
-
-    field_type_name = f"{AdaptConvertType.__module__}.{AdaptConvertType.__qualname__}"
-    sqlite3.register_adapter(AdaptConvertType, adapt)
-    sqlite3.register_converter(field_type_name, convert)
-    _columntype[AdaptConvertType] = field_type_name
-
-
-included_adapt_converters: dict[type, tuple[Callable[[Any], bytes], Callable[[bytes], Any]]] = {
-    dt.datetime: (
-        lambda datetime: datetime.isoformat().encode(),
-        lambda data: dt.datetime.fromisoformat(data.decode()),
-    ),
-    dt.date: (
-        lambda date: date.isoformat().encode(),
-        lambda data: dt.date.fromisoformat(data.decode()),
-    ),
-}
-
-try:
-    import pandas as pd
-
-    def adapt_df(obj: pd.DataFrame) -> bytes:
-        return pickle.dumps(obj)
-
-    def convert_df(data: bytes) -> pd.DataFrame:
-        return pickle.loads(data)
-
-    included_adapt_converters[pd.DataFrame] = (adapt_df, convert_df)
-except ImportError:
-    pass
-
-
-def enable_included_adaptconverters(Types: Iterable[type] | None = None) -> None:
-    """Enable the included adapt/converters for the given types
-
-    If no types are given, all included adapt/converters will be enabled
-    """
-    if Types is None:
-        Types = included_adapt_converters.keys()
-
-    for Type in Types:
-        adapt, convert = included_adapt_converters[Type]
-        register_adapt_convert(Type, adapt, convert)
