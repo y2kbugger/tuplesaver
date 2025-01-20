@@ -312,8 +312,6 @@ create table Person (
   - requires a way to specify which columns the unique constraint is on
 
 ## Engineering
-- verify that all resetting is working
-  - meta registry
 - refactor tests to use test specific Models in a small scope
 - refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
   - group tests, and promote _some_ model reuse if it makes sense
@@ -324,6 +322,8 @@ create table Person (
 - leverage meta (and add registered_only=False flage to it) to eliminated _model_columntypes
 - column definition into Meta
 - slice Meta row-wise into FieldMeta?? maybe, depends on tight loops usage
+- Use meta to differentiate between tables and views, update uses of is_registered_row_model and uses accordingly
+  - e.g foreign key type in creeate table must be table, view in query doesn't
 - Use Meta to cache the SQL COLTYPE for each field (use in column def)
 - Use Meta to cache bool of whether a field is a FK (use in column def, and make_model)
 - Use Meta to cache forward and backpop relation for a model\

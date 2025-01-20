@@ -4,7 +4,7 @@ from typing import NamedTuple, Optional, Union
 
 import pytest
 
-from .model import column_definition, get_sqltypename, is_registered_row_model, is_row_model, unwrap_optional_type
+from .model import clear_modelmeta_registrations, column_definition, get_meta, get_sqltypename, is_registered_row_model, is_row_model, unwrap_optional_type
 from .persister import Engine
 
 
@@ -111,6 +111,44 @@ def test_get_sqltypename_registered_only(engine: Engine) -> None:
     engine.ensure_table_created(ModelA)
 
     assert get_sqltypename(ModelA, registered_only=True) == "ModelA_ID"
+
+
+def test_get_meta() -> None:
+    class ModelA(NamedTuple):
+        id: int | None
+        name: str
+
+    meta = get_meta(ModelA)
+    assert meta is not None
+    assert meta.annotations == {"id": int | None, "name": str}
+    assert meta.unwrapped_field_types == (int, str)
+    assert meta.select == "SELECT id, name FROM ModelA WHERE id = ?"
+
+
+def test_clear_modelmeta_registrations(engine: Engine) -> None:
+    class ModelA(NamedTuple):
+        id: int | None
+        name: str
+
+    assert is_registered_row_model(ModelA) is False
+    _meta = get_meta(ModelA)
+    assert is_registered_row_model(ModelA) is True
+
+    clear_modelmeta_registrations()
+
+    assert is_registered_row_model(ModelA) is False
+
+
+def test_meta_registers_row_model() -> None:
+    class Model(NamedTuple):
+        id: int | None
+        name: str
+
+    assert is_registered_row_model(Model) is False
+
+    _meta = get_meta(Model)
+
+    assert is_registered_row_model(Model) is True
 
 
 def test_column_definition() -> None:

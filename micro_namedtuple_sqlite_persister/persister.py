@@ -6,7 +6,7 @@ import sqlite3
 from collections.abc import Sequence
 from typing import Any, cast, overload
 
-from .model import Row, _model_columntypes, column_definition, get_sqltypename, is_registered_row_model, is_row_model, meta
+from .model import Row, _model_columntypes, column_definition, get_meta, get_sqltypename, is_registered_row_model, is_row_model
 
 logger = logging.getLogger(__name__)
 
@@ -51,13 +51,14 @@ class Engine:
         return cursor.fetchone()[0]
 
     def ensure_table_created(self, Model: type[Row], *, force_recreate: bool = False) -> None:
+        meta = get_meta(Model)
         field_zero_name = Model._fields[0]
-        field_zero_typehint = meta(Model).annotations[field_zero_name]
+        field_zero_typehint = meta.annotations[field_zero_name]
         if field_zero_name != "id" or field_zero_typehint != (int | None):
             raise FieldZeroIdRequired(Model.__name__, field_zero_name, field_zero_typehint)
 
         # Check that all field are registered
-        for FieldType in meta(Model).unwrapped_field_types:
+        for FieldType in meta.unwrapped_field_types:
             # skipping self reference, it will be registered later
             if FieldType is Model:
                 continue
@@ -66,7 +67,7 @@ class Engine:
 
         query = f"""
             CREATE TABLE {Model.__name__} (
-            {', '.join(column_definition(f) for f in meta(Model).annotations.items())}
+            {', '.join(column_definition(f) for f in get_meta(Model).annotations.items())}
             )"""
 
         try:
@@ -156,7 +157,7 @@ class Engine:
         if row_id is None:
             raise ValueError("Cannot SELECT, id=None")
 
-        row = self.query(Model, meta(Model).select, (row_id,)).fetchone()
+        row = self.query(Model, get_meta(Model).select, (row_id,)).fetchone()
 
         if row is None:
             raise ValueError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
@@ -176,11 +177,10 @@ def make_model[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.
 
     while stack:
         Model, values, idx, parent_values, parent_idx = stack.pop()
-        metadata = meta(Model)
-        fields_types = metadata.unwrapped_field_types
+        meta = get_meta(Model)
 
-        while idx < len(fields_types):
-            FieldType = fields_types[idx]
+        while idx < len(meta.unwrapped_field_types):
+            FieldType = meta.unwrapped_field_types[idx]
             field_value = values[idx]
             if field_value is None:
                 # we could assert _nullable here, but we are not in the business of validating data
@@ -190,7 +190,7 @@ def make_model[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.
             elif is_registered_row_model(FieldType):
                 # Sub-model fetch
                 InnerModel = FieldType
-                inner_metadata = meta(InnerModel)
+                inner_metadata = get_meta(InnerModel)
                 inner_values = list(c.execute(inner_metadata.select, (field_value,)).fetchone())
 
                 # Defer remainder of current model

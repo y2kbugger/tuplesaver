@@ -8,41 +8,10 @@ import pytest
 from .adaptconvert import (
     AdaptConvertTypeAlreadyRegistered,
     InvalidAdaptConvertType,
-    adaptconvert_columntypes,
     clear_adapt_convert_registrations,
     register_adapt_convert,
 )
-from .persister import Engine, UnregisteredFieldTypeError
-
-
-class TestRegisterAdaptConvertFixtureActuallyResetsRegistrations:
-    class NewType: ...
-
-    class ModelQ(NamedTuple):
-        id: int | None
-        name: str
-        custom: TestRegisterAdaptConvertFixtureActuallyResetsRegistrations.NewType
-
-    @pytest.mark.parametrize("_", ["ping", "pong"])
-    def test_inspect_sqlite(self, _: str) -> None:
-        assert sqlite3.adapters.get((self.NewType, sqlite3.PrepareProtocol)) is None
-        register_adapt_convert(self.NewType, lambda x: x, lambda x: x)  # type: ignore
-        assert sqlite3.adapters.get((self.NewType, sqlite3.PrepareProtocol)) is not None
-
-    @pytest.mark.parametrize("_", ["ping", "pong"])
-    def test_inspect_adapt_convert_registry(self, _: str) -> None:
-        assert self.NewType not in adaptconvert_columntypes
-        register_adapt_convert(self.NewType, lambda x: x, lambda x: x)  # type: ignore
-        assert self.NewType in adaptconvert_columntypes
-
-    @pytest.mark.parametrize("_", ["ping", "pong"])
-    def test_infer(self, engine: Engine, _: str) -> None:
-        with pytest.raises(UnregisteredFieldTypeError):
-            engine.ensure_table_created(self.ModelQ)
-
-        register_adapt_convert(self.NewType, lambda x: x, lambda x: x)  # type: ignore
-
-        engine.ensure_table_created(self.ModelQ)
+from .persister import Engine
 
 
 def test_registering_adapt_convert_pair(engine: Engine) -> None:

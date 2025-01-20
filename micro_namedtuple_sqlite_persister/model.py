@@ -31,12 +31,11 @@ def is_row_model(cls: object) -> bool:
 
 
 def is_registered_row_model(cls: object) -> bool:
-    return cls in _model_columntypes
+    return cls in _meta
 
 
 class Meta(NamedTuple):
     annotations: dict[str, Any]
-    unwrapped_annotations: dict[str, Any]
     unwrapped_field_types: tuple[type, ...]
     select: str
 
@@ -44,7 +43,12 @@ class Meta(NamedTuple):
 _meta: dict[type[Row], Meta] = {}
 
 
-def meta(Model: type[Row]) -> Meta:
+def clear_modelmeta_registrations() -> None:
+    _meta.clear()
+    _model_columntypes.clear()
+
+
+def get_meta(Model: type[Row]) -> Meta:
     try:
         return _meta[Model]
     except KeyError:
@@ -54,7 +58,6 @@ def meta(Model: type[Row]) -> Meta:
         select = f"SELECT {', '.join(Model._fields)} FROM {Model.__name__} WHERE id = ?"
         _meta[Model] = Meta(
             annotations,
-            unwapped_annotations,
             unwrapped_field_types,
             select,
         )
