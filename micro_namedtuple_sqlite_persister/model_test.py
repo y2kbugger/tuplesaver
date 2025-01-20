@@ -123,6 +123,7 @@ def test_get_meta() -> None:
     assert meta.annotations == {"id": int | None, "name": str}
     assert meta.unwrapped_field_types == (int, str)
     assert meta.select == "SELECT id, name FROM ModelA WHERE id = ?"
+    assert meta.Model == ModelA
 
 
 def test_clear_modelmeta_registrations(engine: Engine) -> None:

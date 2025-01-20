@@ -35,6 +35,7 @@ def is_registered_row_model(cls: object) -> bool:
 
 
 class Meta(NamedTuple):
+    Model: type[Row]
     annotations: dict[str, Any]
     unwrapped_field_types: tuple[type, ...]
     select: str
@@ -57,6 +58,7 @@ def get_meta(Model: type[Row]) -> Meta:
         unwrapped_field_types = tuple(unwapped_annotations.values())
         select = f"SELECT {', '.join(Model._fields)} FROM {Model.__name__} WHERE id = ?"
         _meta[Model] = Meta(
+            Model,
             annotations,
             unwrapped_field_types,
             select,
