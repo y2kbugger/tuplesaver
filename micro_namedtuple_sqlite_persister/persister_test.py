@@ -651,6 +651,16 @@ class TestBomSelfJoin:
             child_b,
         )
 
+    @staticmethod
+    def create_linear_bom(depth: int) -> BOM:
+        return TestBomSelfJoin.BOM(
+            None,
+            TestBomSelfJoin.generate_node_name_node(depth),
+            random() * 1000 - 500,
+            None,
+            None if depth == 1 else TestBomSelfJoin.create_bom(depth - 1),
+        )
+
     def test_insert_bom(self, engine: Engine) -> None:
         engine.ensure_table_created(self.BOM)
         root = self.create_bom(3)
@@ -660,6 +670,16 @@ class TestBomSelfJoin:
     def test_get_bom(self, engine: Engine) -> None:
         engine.ensure_table_created(self.BOM)
         root = self.create_bom(3)
+        inserted_root = engine.insert(root)
+        engine.connection.commit()
+
+        retrieved_root = engine.get(self.BOM, inserted_root.id)
+        assert retrieved_root == inserted_root
+
+    @pytest.mark.xfail(reason="Insert still uses recursion")
+    def test_for_stack_overflow(self, engine: Engine) -> None:
+        engine.ensure_table_created(self.BOM)
+        root = self.create_linear_bom(1500)
         inserted_root = engine.insert(root)
         engine.connection.commit()
 

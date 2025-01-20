@@ -230,13 +230,13 @@ def test_render_query_with_complex_and_or() -> None:
     """)
 
 
-@pytest.mark.skip(reason="Not implemented yet")
+@pytest.mark.xfail(reason="Not implemented yet")
 def test_supra_binary_logical_operators() -> None:
     """Test all supra binary logical operators"""
     assert or_(1, 2, 3) == (1, 'OR', 2, 'OR', 3)  # type: ignore
 
 
-@pytest.mark.skip(reason="Agg Not implmenented yet")
+@pytest.mark.xfail(reason="Agg Not implmenented yet")
 def test_render_query_with_agg_functions() -> None:
     M, q = select((avg(MyModel.score), count(MyModel)))  # type: ignore  # noqa: F821
     assert MyModel == M

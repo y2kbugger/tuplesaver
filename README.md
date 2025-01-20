@@ -335,10 +335,7 @@ create table Person (
 - All exceptions raised to client api should have a custom exception type
 - approx 20% perf boost for execute many on 20k rows
   - not worth complexity compared to other things to spend time on
-- Minimize stack depth of engine.query
-  - Can we minimize stack depth of engine.query do recursive creation of BOM trees without actual stack recursion
-    - e.g. a while loop that creates the tree, rather than stack recursion
-    - Use a really deep BOM self ref to test this, easy to hit recursion limit
+- Minimize stack depth of engine.insert for deep recursive models e.g. depth=2000 BOM
 - figure out why the benchmark warns about different system specs EVERY run.
 - Can persister.py have to imports from query.py?
   - NO
