@@ -7,9 +7,13 @@ repos:
     rev: v5.0.0
     hooks:
     -   id: trailing-whitespace
+        fail_fast: true
     -   id: end-of-file-fixer
+        fail_fast: true
     -   id: check-yaml
+        fail_fast: true
     -   id: check-added-large-files
+        fail_fast: true
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: 'v0.8.4'
   hooks:
@@ -22,6 +26,7 @@ repos:
   rev: 'v1.1.391'
   hooks:
     - id: pyright
+      fail_fast: true
 - repo: https://github.com/kynan/nbstripout
   rev: '0.8.1'
   hooks:

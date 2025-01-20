@@ -218,90 +218,6 @@ create table Person (
 - test for fetchone returning none
 
 # Backlog
-- backpop
-  ```python
-  class Team(NamedTuple):
-      id: int | None
-      name: str
-      teams: list[Person] # Backpop
-
-  class Person(NamedTuple):
-      id: int | None
-      name: str
-      team: Team # Forward
-  ```
-
-  Need a way to differentiate between two different backpop of same type
-  - backprop must include the full name of the forward reference as the prefix of it's name
-  - if this is not specified or not unique, raise an `AmbiguousBackpopError`
-  - not FK is allowed to be a subset of another FK on the same model. `AmbiguousForwardReferenceError`
-  ```python
-  # Ex 1. disambiguating backpop
-  class Team(NamedTuple):
-      id: int | None
-      name: str
-      primary_teams: list[Person]
-      secondary_teams: list[Person]
-
-  class Person(NamedTuple):
-      id: int | None
-      name: str
-      primary_team: Team
-      secondary_team: Team
-
-  # Ex 2. disambiguating backpop
-  class Employee(NamedTuple):
-      id: int | None
-      name: str
-      manager_of: List[Project]
-      lead_developer_of: List[Project]
-      lead_maintainer_of: List[Project]
-
-  class Project(NamedTuple):
-      id: int | None
-      name: str
-      manager: Employee
-      lead_developer: Employee
-      lead_maintainer: Employee
-      lead: Employee # not allowed, because it is an ambiguous subset of lead_developer
-  ```
-
-  - Backpop without a forward reference, should just be `AmbiguousBackpopError` because it is ambiguous if you cannot find a forward reference that is a complete prefixed subset of the backpop name.
-    ```python
-    class Team(NamedTuple):
-        id: int | None
-        name: str
-        teams: list[Person]
-    class Person(NamedTuple):
-        id: int | None
-        name: str
-    ```
-  - Many-to-Many shall just fall out of two 1:1, is not really a concept
-  - Here is a test case with complex relations
-  try and figure out if this is ambiguous or not
-  ```python
-  class Employee(NamedTuple):
-      id: int | None
-      name: str
-      manager_of: List[Project]
-      lead_developer_of: List[Project]
-      contributor_roles: List[ProjectEmployee]
-
-  class Project(NamedTuple):
-      id: int | None
-      name: str
-      manager: Employee
-      lead_developer: Employee
-      contributors: List[ProjectEmployee]
-
-  class ProjectEmployee(NamedTuple):
-      project: Project
-      employee: Employee
-      role: str
-  ```
-
-
-
 - expanded api for update/delete
 - extra-typical metadata
 - unique contraints
@@ -312,13 +228,15 @@ create table Person (
   - requires a way to specify which columns the unique constraint is on
 
 ## Engineering
-- refactor tests to use test specific Models in a small scope
-- refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
+- Extract TODO from README.md
+- Test cleanup
+  - Harmonize the def-scoped Model class names in the tests
+  - use test specific Models in a small scope
+  - refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
   - group tests, and promote _some_ model reuse if it makes sense
 - maybe simplify "included adapters" to not be dict, but just a function with defs
   - maybe put in own file?
 - use the assert_type from typing to check type hints throught all tests
-- Harmonize the def-scoped Model class names in the tests
 - Store tablename in meta
 - Use extra-typical metadata to store standard queries\
   - delete, update by id, insert
@@ -494,74 +412,7 @@ Some features requiring metadata than can't expressed in standard typehints
 
 
 Considerations for extra-typical metadata
-```python
-  class TUnique(NamedTuple):
-      id: int | None
-      name: Annotated[str, UNIQUE]
-      last: Annotated[str, UNIQUE]
-      age: int
-```
-```python
-  class TUnique(NamedTuple):
-      id: int | None
-      name: UNIQUE[str]
-      age: int
-  ```
-  and here a simple method for unrapping metadata.
   ```python
-  def unwrap_metadata(type_hint: Any) -> tuple[tuple[Any], Any]:
-      """Determine if a given type hint is an Annotated type
-
-      Annotated (e.g., Annotated[int, Unique])
-
-      Returns
-      - A list of metadata values
-      - The underlying type if it is Annotated, otherwise the original type.
-      """
-
-      # Not any form of Annotated type
-      if get_origin(type_hint) is not Annotated:
-          return tuple(), type_hint
-
-      metadata = get_args(type_hint)[1:]
-      underlying_type = get_args(type_hint)[0]
-
-      return metadata, underlying_type
-  ```
-  Options for defining UNIQUE
-  ```python
-  UNIQUE = 'UNIQUE'
-  class UNIQUE: pass
-  class UNIQUE:
-    def __init__(self, name:str):
-      '''maybe somthing multiple column described here'''
-  ```
-  There is also the option of using a inner Meta class
-  ```python
-  class TUnique(NamedTuple):
-      id: int | None
-      name: str
-      age: int
-
-      class Meta:
-          uniques = [('name','age'), ('name',)]
-          check = 'age > 0'
-  ```
-  Or as extra info in the create_table method
-  ```python
-  engine.ensure_table_created(TUnique, =('name','age'))
-  ```
-
-  This is even nicer because it don't rely on "class def" magic. it is just an instance of a config.
-  I have tested that if you don't provide a type, it just becomes a class attribute, so it is not a problem to have it in the class def of our models. it doesn't become part of the named tuple, and it shares a single instance of the Meta config for all instances of the named tuple rows, so you aren't copying the metadata all around.
-  ```python
-  # this is part of ibrary
-  class Meta(NamedTuple):
-      unique_contraints: list[tuple[str,...]]
-      indexes: list[tuple[str,...]]
-      ...
-
-  # this is the user code
   class XXX(NamedTuple):
       id: int | None
       name: str
@@ -656,3 +507,86 @@ engine.update(MyModel, set=(MyModel.name, "Apple"), where=gt(MyModel.score, 42))
 ```sql
 update MyModel set name = 'Apple' where score > 42;
 ```
+### Backpop
+Thinking to not do this, circular references might make it impossible anyway. just make it easy to fetch.
+- backpop
+  ```python
+  class Team(NamedTuple):
+      id: int | None
+      name: str
+      teams: list[Person] # Backpop
+
+  class Person(NamedTuple):
+      id: int | None
+      name: str
+      team: Team # Forward
+  ```
+
+  Need a way to differentiate between two different backpop of same type
+  - backprop must include the full name of the forward reference as the prefix of it's name
+  - if this is not specified or not unique, raise an `AmbiguousBackpopError`
+  - not FK is allowed to be a subset of another FK on the same model. `AmbiguousForwardReferenceError`
+  ```python
+  # Ex 1. disambiguating backpop
+  class Team(NamedTuple):
+      id: int | None
+      name: str
+      primary_teams: list[Person]
+      secondary_teams: list[Person]
+
+  class Person(NamedTuple):
+      id: int | None
+      name: str
+      primary_team: Team
+      secondary_team: Team
+
+  # Ex 2. disambiguating backpop
+  class Employee(NamedTuple):
+      id: int | None
+      name: str
+      manager_of: List[Project]
+      lead_developer_of: List[Project]
+      lead_maintainer_of: List[Project]
+
+  class Project(NamedTuple):
+      id: int | None
+      name: str
+      manager: Employee
+      lead_developer: Employee
+      lead_maintainer: Employee
+      lead: Employee # not allowed, because it is an ambiguous subset of lead_developer
+  ```
+
+  - Backpop without a forward reference, should just be `AmbiguousBackpopError` because it is ambiguous if you cannot find a forward reference that is a complete prefixed subset of the backpop name.
+    ```python
+    class Team(NamedTuple):
+        id: int | None
+        name: str
+        teams: list[Person]
+    class Person(NamedTuple):
+        id: int | None
+        name: str
+    ```
+  - Many-to-Many shall just fall out of two 1:1, is not really a concept
+  - Here is a test case with complex relations
+  try and figure out if this is ambiguous or not
+  ```python
+  class Employee(NamedTuple):
+      id: int | None
+      name: str
+      manager_of: List[Project]
+      lead_developer_of: List[Project]
+      contributor_roles: List[ProjectEmployee]
+
+  class Project(NamedTuple):
+      id: int | None
+      name: str
+      manager: Employee
+      lead_developer: Employee
+      contributors: List[ProjectEmployee]
+
+  class ProjectEmployee(NamedTuple):
+      project: Project
+      employee: Employee
+      role: str
+  ```
