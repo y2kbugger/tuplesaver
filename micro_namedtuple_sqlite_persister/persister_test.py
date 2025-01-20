@@ -706,3 +706,23 @@ class TestBomSelfJoin:
         def get_bom():
             assert inserted_root is not None
             _retrieved_root = engine.get(self.BOM, inserted_root.id)
+
+
+def test_query_registers_row_but_not_table(engine: Engine) -> None:
+    class ModelA(NamedTuple):
+        id: int | None
+        name: str
+
+    assert is_registered_row_model(ModelA) is False
+    assert is_registered_table_model(ModelA) is False
+
+    cur = engine.query(ModelA, "SELECT 1 as id, 'Alice' as name;")
+
+    # I don't care either way, just documenring current behavior
+    assert is_registered_row_model(ModelA) is False
+    assert is_registered_table_model(ModelA) is False
+
+    cur.fetchone()
+
+    assert is_registered_row_model(ModelA) is True
+    assert is_registered_table_model(ModelA) is False
