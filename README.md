@@ -312,12 +312,8 @@ create table Person (
   - requires a way to specify which columns the unique constraint is on
 
 ## Engineering
-- extract table metadata to it's own file
 - verify that all resetting is working
-  - sqlite converters and adapters (actually try and query)
-  - adapter and converter registration
   - meta registry
-- refactor out table creation in test fixture
 - refactor tests to use test specific Models in a small scope
 - refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
   - group tests, and promote _some_ model reuse if it makes sense

@@ -8,24 +8,41 @@ import pytest
 from .adaptconvert import (
     AdaptConvertTypeAlreadyRegistered,
     InvalidAdaptConvertType,
+    adaptconvert_columntypes,
+    clear_adapt_convert_registrations,
     register_adapt_convert,
 )
-from .persister import Engine
+from .persister import Engine, UnregisteredFieldTypeError
 
 
 class TestRegisterAdaptConvertFixtureActuallyResetsRegistrations:
     class NewType: ...
 
-    def _(self) -> None:
+    class ModelQ(NamedTuple):
+        id: int | None
+        name: str
+        custom: TestRegisterAdaptConvertFixtureActuallyResetsRegistrations.NewType
+
+    @pytest.mark.parametrize("_", ["ping", "pong"])
+    def test_inspect_sqlite(self, _: str) -> None:
         assert sqlite3.adapters.get((self.NewType, sqlite3.PrepareProtocol)) is None
         register_adapt_convert(self.NewType, lambda x: x, lambda x: x)  # type: ignore
         assert sqlite3.adapters.get((self.NewType, sqlite3.PrepareProtocol)) is not None
 
-    def test_ping(self) -> None:
-        self._()
+    @pytest.mark.parametrize("_", ["ping", "pong"])
+    def test_inspect_adapt_convert_registry(self, _: str) -> None:
+        assert self.NewType not in adaptconvert_columntypes
+        register_adapt_convert(self.NewType, lambda x: x, lambda x: x)  # type: ignore
+        assert self.NewType in adaptconvert_columntypes
 
-    def test_pong(self) -> None:
-        self._()
+    @pytest.mark.parametrize("_", ["ping", "pong"])
+    def test_infer(self, engine: Engine, _: str) -> None:
+        with pytest.raises(UnregisteredFieldTypeError):
+            engine.ensure_table_created(self.ModelQ)
+
+        register_adapt_convert(self.NewType, lambda x: x, lambda x: x)  # type: ignore
+
+        engine.ensure_table_created(self.ModelQ)
 
 
 def test_registering_adapt_convert_pair(engine: Engine) -> None:
@@ -118,3 +135,21 @@ def test_attempted_registration_of_already_registered_type() -> None:
     # verify that the registration was overwritten
     assert sqlite3.adapters[(NewType, sqlite3.PrepareProtocol)] is adapt_newtype2
     assert sqlite3.converters['MICRO_NAMEDTUPLE_SQLITE_PERSISTER.ADAPTCONVERT_TEST.TEST_ATTEMPTED_REGISTRATION_OF_ALREADY_REGISTERED_TYPE.<LOCALS>.NEWTYPE'] is convert_newtype2
+
+
+def test_adapter_converter_reset_only_affects_what_we_registered() -> None:
+    class NewType: ...
+
+    assert (NewType, sqlite3.PrepareProtocol) not in sqlite3.adapters
+    assert 'NEWTYPE' not in sqlite3.converters
+
+    sqlite3.register_adapter(NewType, lambda x: 'x')
+    sqlite3.register_converter("NewType", lambda x: 'x')
+
+    assert (NewType, sqlite3.PrepareProtocol) in sqlite3.adapters
+    assert 'NEWTYPE' in sqlite3.converters
+
+    clear_adapt_convert_registrations()
+
+    assert (NewType, sqlite3.PrepareProtocol) in sqlite3.adapters
+    assert 'NEWTYPE' in sqlite3.converters
