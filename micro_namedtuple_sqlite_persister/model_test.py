@@ -4,13 +4,24 @@ from typing import NamedTuple, Optional, Union
 
 import pytest
 
-from .model import clear_modelmeta_registrations, column_definition, get_meta, get_sqltypename, is_registered_row_model, is_row_model, unwrap_optional_type
-from .persister import Engine
+from .model import (
+    Meta,
+    MetaField,
+    _sql_columndef,
+    _sql_typename,
+    _unwrap_optional_type,
+    clear_modelmeta_registrations,
+    get_meta,
+    is_registered_row_model,
+    is_registered_table_model,
+    is_row_model,
+    register_table_model,
+)
 
 
 def test_unwrap_optional_type() -> None:
     # Non-optional hint
-    assert unwrap_optional_type(int) == (False, int)
+    assert _unwrap_optional_type(int) == (False, int)
 
     # Show that any pair optional syntaxs are == equivalent
     assert Union[int, None] == Optional[int]
@@ -21,40 +32,40 @@ def test_unwrap_optional_type() -> None:
     assert int | None == Optional[int]
 
     # Simple standard optional hints
-    assert unwrap_optional_type(Union[int, None]) == (True, int)
-    assert unwrap_optional_type(Optional[int]) == (True, int)
-    assert unwrap_optional_type(int | None) == (True, int)
+    assert _unwrap_optional_type(Union[int, None]) == (True, int)
+    assert _unwrap_optional_type(Optional[int]) == (True, int)
+    assert _unwrap_optional_type(int | None) == (True, int)
 
     # Unions including more than one type in addition to None
-    assert unwrap_optional_type(Union[int, str, None]) == (True, int | str)
-    assert unwrap_optional_type(int | str | None) == (True, int | str)
+    assert _unwrap_optional_type(Union[int, str, None]) == (True, int | str)
+    assert _unwrap_optional_type(int | str | None) == (True, int | str)
 
     # Unions not including None
     U = Union[int, str]
     UT = int | str
     assert U == UT
-    assert unwrap_optional_type(U) == (False, int | str)
-    assert unwrap_optional_type(UT) == (False, int | str)
+    assert _unwrap_optional_type(U) == (False, int | str)
+    assert _unwrap_optional_type(UT) == (False, int | str)
 
     # Types nested within optional
-    assert unwrap_optional_type(Union[U, None]) == (True, int | str)
-    assert unwrap_optional_type(Optional[U]) == (True, int | str)
-    assert unwrap_optional_type((U) | None) == (True, int | str)
+    assert _unwrap_optional_type(Union[U, None]) == (True, int | str)
+    assert _unwrap_optional_type(Optional[U]) == (True, int | str)
+    assert _unwrap_optional_type((U) | None) == (True, int | str)
 
-    assert unwrap_optional_type(Union[UT, None]) == (True, int | str)
-    assert unwrap_optional_type(Optional[UT]) == (True, int | str)
-    assert unwrap_optional_type((UT) | None) == (True, int | str)
+    assert _unwrap_optional_type(Union[UT, None]) == (True, int | str)
+    assert _unwrap_optional_type(Optional[UT]) == (True, int | str)
+    assert _unwrap_optional_type((UT) | None) == (True, int | str)
 
     # Nest unions are flattened and deduped and thus nested optionals are not preserved
     OU = Optional[Union[int, None]]
     OUT = Optional[int | None]
     assert OU == OUT
-    assert unwrap_optional_type(Union[OU, None]) == (True, (int))
-    assert unwrap_optional_type(Optional[OU]) == (True, (int))
-    assert unwrap_optional_type((OU) | None) == (True, (int))
+    assert _unwrap_optional_type(Union[OU, None]) == (True, (int))
+    assert _unwrap_optional_type(Optional[OU]) == (True, (int))
+    assert _unwrap_optional_type((OU) | None) == (True, (int))
 
-    assert unwrap_optional_type(Union[OUT, None]) == (True, (int))
-    assert unwrap_optional_type(Optional[OUT]) == (True, (int))
+    assert _unwrap_optional_type(Union[OUT, None]) == (True, (int))
+    assert _unwrap_optional_type(Optional[OUT]) == (True, (int))
 
 
 def test_is_row_model() -> None:
@@ -76,41 +87,29 @@ def test_is_row_model() -> None:
     assert is_row_model(Model | int) is False  # invalid
 
 
-def test_is_registered_row_model(engine: Engine) -> None:
+def test_is_registered_row_model() -> None:
     class Model(NamedTuple):
         id: int | None
         name: str
 
     assert is_registered_row_model(Model) is False
 
-    engine.ensure_table_created(Model)
+    _meta = get_meta(Model)
 
     assert is_registered_row_model(Model) is True
 
 
 def test_get_sqltypename() -> None:
-    assert get_sqltypename(int) == "INTEGER"
-    assert get_sqltypename(str) == "TEXT"
-    assert get_sqltypename(float) == "REAL"
-    assert get_sqltypename(bytes) == "BLOB"
+    assert _sql_typename(int) == "INTEGER"
+    assert _sql_typename(str) == "TEXT"
+    assert _sql_typename(float) == "REAL"
+    assert _sql_typename(bytes) == "BLOB"
 
     class ModelA(NamedTuple):
         id: int | None
         name: str
 
-    assert get_sqltypename(ModelA) == "ModelA_ID"
-
-
-def test_get_sqltypename_registered_only(engine: Engine) -> None:
-    class ModelA(NamedTuple):
-        id: int | None
-        name: str
-
-    assert get_sqltypename(ModelA, registered_only=True) is None
-
-    engine.ensure_table_created(ModelA)
-
-    assert get_sqltypename(ModelA, registered_only=True) == "ModelA_ID"
+    assert _sql_typename(ModelA) == "ModelA_ID"
 
 
 def test_get_meta() -> None:
@@ -118,15 +117,37 @@ def test_get_meta() -> None:
         id: int | None
         name: str
 
-    meta = get_meta(ModelA)
-    assert meta is not None
-    assert meta.annotations == {"id": int | None, "name": str}
-    assert meta.unwrapped_field_types == (int, str)
-    assert meta.select == "SELECT id, name FROM ModelA WHERE id = ?"
-    assert meta.Model == ModelA
+    assert get_meta(ModelA) == Meta(
+        Model=ModelA,
+        is_table=False,
+        select="SELECT id, name FROM ModelA WHERE id = ?",
+        fields=(
+            MetaField(name="id", type=int, full_type=int | None, nullable=True, is_fk=False, is_pk=True, sql_typename="INTEGER", sql_columndef="id [INTEGER] PRIMARY KEY NOT NULL"),
+            MetaField(name="name", type=str, full_type=str, nullable=False, is_fk=False, is_pk=False, sql_typename="TEXT", sql_columndef="name [TEXT] NOT NULL"),
+        ),
+    )
 
 
-def test_clear_modelmeta_registrations(engine: Engine) -> None:
+def test_register_table_model() -> None:
+    class ModelA(NamedTuple):
+        id: int | None
+        name: str
+
+    assert is_registered_row_model(ModelA) is False
+    assert is_registered_table_model(ModelA) is False
+
+    _meta = get_meta(ModelA)
+
+    assert is_registered_row_model(ModelA) is True
+    assert is_registered_table_model(ModelA) is False
+
+    register_table_model(ModelA)
+
+    assert is_registered_row_model(ModelA) is True
+    assert is_registered_table_model(ModelA) is True
+
+
+def test_clear_modelmeta_registrations() -> None:
     class ModelA(NamedTuple):
         id: int | None
         name: str
@@ -140,38 +161,17 @@ def test_clear_modelmeta_registrations(engine: Engine) -> None:
     assert is_registered_row_model(ModelA) is False
 
 
-def test_meta_registers_row_model() -> None:
-    class Model(NamedTuple):
-        id: int | None
-        name: str
-
-    assert is_registered_row_model(Model) is False
-
-    _meta = get_meta(Model)
-
-    assert is_registered_row_model(Model) is True
-
-
 def test_column_definition() -> None:
-    assert column_definition(("id", int | None)) == "id [INTEGER] PRIMARY KEY NOT NULL"
+    assert _sql_columndef('id', True, int) == "id [INTEGER] PRIMARY KEY NOT NULL"
     with pytest.raises(TypeError):
-        column_definition(("id", int | str))
-    with pytest.raises(TypeError):
-        column_definition(("id", int))
+        _sql_columndef('id', False, int)
 
-    assert column_definition(("count", int)) == "count [INTEGER] NOT NULL"
-    assert column_definition(("value", float)) == "value [REAL] NOT NULL"
-    assert column_definition(("name", str)) == "name [TEXT] NOT NULL"
-    assert column_definition(("data", bytes)) == "data [BLOB] NOT NULL"
-
-    assert column_definition(("count", int | None)) == "count [INTEGER] NULL"
-    assert column_definition(("value", float | None)) == "value [REAL] NULL"
-    assert column_definition(("name", str | None)) == "name [TEXT] NULL"
-    assert column_definition(("data", bytes | None)) == "data [BLOB] NULL"
+    assert _sql_columndef("value", False, float) == "value [REAL] NOT NULL"
+    assert _sql_columndef("value", True, float) == "value [REAL] NULL"
 
     class ModelA(NamedTuple):
         id: int | None
         name: str
 
-    assert column_definition(("moda", ModelA)) == "moda [ModelA_ID] NOT NULL"
-    assert column_definition(("moda", ModelA | None)) == "moda [ModelA_ID] NULL"
+    assert _sql_columndef("moda", False, ModelA) == "moda [ModelA_ID] NOT NULL"
+    assert _sql_columndef("moda", True, ModelA) == "moda [ModelA_ID] NULL"

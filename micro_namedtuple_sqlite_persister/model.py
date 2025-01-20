@@ -34,11 +34,30 @@ def is_registered_row_model(cls: object) -> bool:
     return cls in _meta
 
 
+def is_registered_table_model(cls: object) -> bool:
+    return cls in _meta and _meta[cls].is_table
+
+
+def is_registered_fieldtype(cls: object) -> bool:
+    return cls in _meta or cls in adaptconvert_columntypes or cls in _native_columntypes
+
+
 class Meta(NamedTuple):
     Model: type[Row]
-    annotations: dict[str, Any]
-    unwrapped_field_types: tuple[type, ...]
+    is_table: bool
     select: str
+    fields: tuple[MetaField, ...]
+
+
+class MetaField(NamedTuple):
+    name: str
+    type: type
+    full_type: Any  # e.g. includes Optional
+    nullable: bool
+    is_fk: bool
+    is_pk: bool
+    sql_typename: str
+    sql_columndef: str
 
 
 _meta: dict[type[Row], Meta] = {}
@@ -46,24 +65,45 @@ _meta: dict[type[Row], Meta] = {}
 
 def clear_modelmeta_registrations() -> None:
     _meta.clear()
-    _model_columntypes.clear()
 
 
 def get_meta(Model: type[Row]) -> Meta:
     try:
         return _meta[Model]
     except KeyError:
-        annotations = get_resolved_annotations(Model)
-        unwapped_annotations = {k: unwrap_optional_type(v)[1] for k, v in annotations.items()}
-        unwrapped_field_types = tuple(unwapped_annotations.values())
-        select = f"SELECT {', '.join(Model._fields)} FROM {Model.__name__} WHERE id = ?"
-        _meta[Model] = Meta(
-            Model,
-            annotations,
-            unwrapped_field_types,
-            select,
+        pass
+
+    annotations = _get_resolved_annotations(Model)
+    fieldnames = Model._fields
+    full_types = tuple(annotations.values())
+    unwrapped_types = tuple(_unwrap_optional_type(t) for t in full_types)
+
+    fields = tuple(
+        MetaField(
+            name=fieldname,
+            type=FieldType,
+            full_type=annotations[fieldname],
+            nullable=nullable,
+            is_fk=is_row_model(FieldType),
+            is_pk=fieldname == "id",
+            sql_typename=_sql_typename(FieldType),
+            sql_columndef=_sql_columndef(fieldname, nullable, FieldType),
         )
-        return _meta[Model]
+        for fieldname, (nullable, FieldType) in zip(fieldnames, unwrapped_types)
+    )
+
+    select = f"SELECT {', '.join(Model._fields)} FROM {Model.__name__} WHERE id = ?"
+    _meta[Model] = Meta(
+        Model=Model,
+        is_table=False,
+        select=select,
+        fields=fields,
+    )
+    return _meta[Model]
+
+
+def register_table_model(Model: type[Row]) -> None:
+    _meta[Model] = get_meta(Model)._replace(is_table=True)
 
 
 _native_columntypes: dict[type, str] = {
@@ -72,44 +112,38 @@ _native_columntypes: dict[type, str] = {
     int: "INTEGER",
     bytes: "BLOB",
 }
-_model_columntypes: dict[type, str] = {}
 
 
-def get_sqltypename(FieldType: type, *, registered_only: bool = False) -> str | None:
+def _sql_typename(FieldType: type) -> str:
     if FieldType in _native_columntypes:
         return _native_columntypes[FieldType]
-    elif FieldType in _model_columntypes:
-        return _model_columntypes[FieldType]
     elif FieldType in adaptconvert_columntypes:
         # TODO: can we use registered_only here, and centralize naming
         return adaptconvert_columntypes[FieldType]
-    elif is_row_model(FieldType) and not registered_only:
+    elif is_row_model(FieldType):
         # a yet unregistered foreign key
         return f"{FieldType.__name__}_ID"
+    else:
+        return 'UNKNOWN'  # TODO: will be unreachable, when we use it as the source of truth for adaptconvert typenames
 
 
-def column_definition(annotation: tuple[str, Any]) -> str:
-    field_name, FieldType = annotation
-
+def _sql_columndef(field_name: str, nullable: bool, FieldType: type) -> str:
     if field_name == "id":
-        if FieldType != int | None:
+        if FieldType is not int or not nullable:
             raise TypeError("id field must be of type int | None")
-
         return "id [INTEGER] PRIMARY KEY NOT NULL"
-
-    nullable, FieldType = unwrap_optional_type(FieldType)
 
     if nullable:
         nullable_sql = "NULL"
     else:
         nullable_sql = "NOT NULL"
 
-    columntype = get_sqltypename(FieldType, registered_only=False)
+    columntype = _sql_typename(FieldType)
 
     return f"{field_name} [{columntype}] {nullable_sql}"
 
 
-def unwrap_optional_type(type_hint: Any) -> tuple[bool, Any]:
+def _unwrap_optional_type(type_hint: Any) -> tuple[bool, Any]:
     """Determine if a given type hint is an Optional type
 
     Supports the following forms of Optional types:
@@ -137,7 +171,7 @@ def unwrap_optional_type(type_hint: Any) -> tuple[bool, Any]:
     return optional, underlying_type
 
 
-def get_resolved_annotations(Model: Any) -> dict[str, Any]:
+def _get_resolved_annotations(Model: Any) -> dict[str, Any]:
     """Resolve ForwardRef type hints by combining all local and global namespaces up the call stack."""
     globalns = getattr(inspect.getmodule(Model), "__dict__", {})
     localns = {}

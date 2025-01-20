@@ -319,28 +319,9 @@ create table Person (
   - maybe put in own file?
 - use the assert_type from typing to check type hints throught all tests
 - Harmonize the def-scoped Model class names in the tests
-- leverage meta (and add registered_only=False flage to it) to eliminated _model_columntypes
-- column definition into Meta
-- slice Meta row-wise into FieldMeta?? maybe, depends on tight loops usage
-- Use meta to differentiate between tables and views, update uses of is_registered_row_model and uses accordingly
-  - e.g foreign key type in creeate table must be table, view in query doesn't
-- Use Meta to cache the SQL COLTYPE for each field (use in column def)
-- Use Meta to cache bool of whether a field is a FK (use in column def, and make_model)
-- Use Meta to cache forward and backpop relation for a model\
-  Eliminate traversal of the Model every time we go to create an instance
-  ```python
-  _field_name, FieldType = fields_[idx]
-  _nullable, FieldType = unwrap_optional_type(FieldType)
-  field_value = values[idx]
-
-  # only check FieldType.__name__ if the FieldType is a type itself, e.g. possible a Sub-model
-  if type(FieldType) is type and _columntype.get(FieldType) == f"{FieldType.__name__}_ID":
-  ```
-- Use extra-typical metadata to cache (and also therefore single source of truthfy) the queries for get, insert, update, delete by id\
-  e.g. the select is repeated in sub-model loader row_factory
-  ```python
-  inner_values = list(c.execute(f"SELECT * FROM {InnerModel.__name__} WHERE id = ?", (field_value,)).fetchone())
-  ```
+- Store tablename in meta
+- Use extra-typical metadata to store standard queries\
+  - delete, update by id, insert
 - Consider connection/transaction management
   - context manager?
   - how long is sqlite connection good for? application lifetime?

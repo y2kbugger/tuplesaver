@@ -8,6 +8,7 @@ from typing import Any, NamedTuple, assert_type
 import pytest
 from pytest_benchmark.plugin import BenchmarkFixture
 
+from .model import is_registered_row_model, is_registered_table_model
 from .persister import (
     Engine,
     FieldZeroIdRequired,
@@ -214,9 +215,21 @@ def test_table_model_only_registered_when_successful(engine: Engine) -> None:
     with pytest.raises(UnregisteredFieldTypeError, match="is a NamedTuple Row Model"):
         engine.ensure_table_created(Model)
 
-    from .persister import get_sqltypename
+    assert not is_registered_table_model(Model)
 
-    assert get_sqltypename(ModelUnknownType, registered_only=True) is None
+
+def test_table_creation_registers_table(engine: Engine) -> None:
+    class Model(NamedTuple):
+        id: int | None
+        name: str
+
+    assert is_registered_row_model(Model) is False
+    assert is_registered_table_model(Model) is False
+
+    engine.ensure_table_created(Model)
+
+    assert is_registered_row_model(Model) is True
+    assert is_registered_table_model(Model) is True
 
 
 def test_insert_row(engine: Engine) -> None:
