@@ -112,13 +112,37 @@ def test_get_sqltypename() -> None:
     assert _sql_typename(ModelA) == "ModelA_ID"
 
 
-def test_get_meta() -> None:
+def test_get_table_meta() -> None:
     class ModelA(NamedTuple):
         id: int | None
         name: str
 
+    register_table_model(ModelA)
     assert get_meta(ModelA) == Meta(
         Model=ModelA,
+        is_table=True,
+        select="SELECT id, name FROM ModelA WHERE id = ?",
+        fields=(
+            MetaField(name="id", type=int, full_type=int | None, nullable=True, is_fk=False, is_pk=True, sql_typename="INTEGER", sql_columndef="id [INTEGER] PRIMARY KEY NOT NULL"),
+            MetaField(name="name", type=str, full_type=str, nullable=False, is_fk=False, is_pk=False, sql_typename="TEXT", sql_columndef="name [TEXT] NOT NULL"),
+        ),
+    )
+
+
+def test_get_alternateview_meta() -> None:
+    class ModelA(NamedTuple):
+        id: int | None
+        name: str
+        score: float
+
+    register_table_model(ModelA)
+
+    class ModelA_NameOnly(NamedTuple):
+        id: int | None
+        name: str
+
+    assert get_meta(ModelA_NameOnly) == Meta(
+        Model=ModelA_NameOnly,
         is_table=False,
         select="SELECT id, name FROM ModelA WHERE id = ?",
         fields=(
