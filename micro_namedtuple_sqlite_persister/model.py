@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import logging
 import types
+from textwrap import dedent
 from typing import Any, NamedTuple, Union, get_args, get_origin, get_type_hints
 
 from .adaptconvert import adaptconvert_columntypes
@@ -48,6 +49,7 @@ class Meta(NamedTuple):
     table_name: str
     is_table: bool
     select: str
+    insert: str
     fields: tuple[MetaField, ...]
 
 
@@ -96,12 +98,19 @@ def get_meta(Model: type[Row]) -> Meta:
     )
 
     select = f"SELECT {', '.join(Model._fields)} FROM {table_name} WHERE id = ?"
+    insert = dedent(f"""
+            INSERT INTO {table_name} (
+                {', '.join(fieldnames)}
+            ) VALUES (
+                {', '.join("?" for _ in fieldnames)}
+            )""").strip()
     _meta[Model] = Meta(
         Model=Model,
         model_name=Model.__name__,
         table_name=table_name,
         is_table=False,
         select=select,
+        insert=insert,
         fields=fields,
     )
     return _meta[Model]

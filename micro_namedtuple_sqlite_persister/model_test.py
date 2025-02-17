@@ -124,6 +124,7 @@ def test_get_table_meta() -> None:
         table_name="ModelA",
         is_table=True,
         select="SELECT id, name FROM ModelA WHERE id = ?",
+        insert="INSERT INTO ModelA (\n    id, name\n) VALUES (\n    ?, ?\n)",
         fields=(
             MetaField(name="id", type=int, full_type=int | None, nullable=True, is_fk=False, is_pk=True, sql_typename="INTEGER", sql_columndef="id [INTEGER] PRIMARY KEY NOT NULL"),
             MetaField(name="name", type=str, full_type=str, nullable=False, is_fk=False, is_pk=False, sql_typename="TEXT", sql_columndef="name [TEXT] NOT NULL"),
@@ -149,6 +150,7 @@ def test_get_alternateview_meta() -> None:
         table_name="ModelA",
         is_table=False,
         select="SELECT id, name FROM ModelA WHERE id = ?",
+        insert="INSERT INTO ModelA (\n    id, name\n) VALUES (\n    ?, ?\n)",
         fields=(
             MetaField(name="id", type=int, full_type=int | None, nullable=True, is_fk=False, is_pk=True, sql_typename="INTEGER", sql_columndef="id [INTEGER] PRIMARY KEY NOT NULL"),
             MetaField(name="name", type=str, full_type=str, nullable=False, is_fk=False, is_pk=False, sql_typename="TEXT", sql_columndef="name [TEXT] NOT NULL"),

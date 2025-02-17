@@ -6,7 +6,7 @@ import sqlite3
 from collections.abc import Sequence
 from typing import Any, cast, overload
 
-from .model import Row, get_meta, is_registered_fieldtype, is_registered_row_model, is_registered_table_model, is_row_model, register_table_model
+from .model import Row, get_meta, is_registered_fieldtype, is_registered_table_model, is_row_model, register_table_model
 
 logger = logging.getLogger(__name__)
 
@@ -95,23 +95,10 @@ class Engine:
         sqlite3.register_adapter(Model, lambda row: row[0])  # Register to be able to insert Model instances as foreign keys
 
     #### Writing
-    def _insert_if_is_model(self, field: Any) -> None:
-        if is_registered_row_model(type(field)):
-            return self.insert(field)
-        else:
-            return field
-
     def insert[R: Row](self, row: R) -> R:
         # recursively save
-        row = row._make(self._insert_if_is_model(f) for f in row)
-
-        query = f"""
-            INSERT INTO {row.__class__.__name__} (
-            {', '.join(row._fields)}
-            ) VALUES (
-            {', '.join("?" for _ in range(len(row._fields)))}
-            )"""
-        cur = self.connection.execute(query, row)
+        row = row._make(self.insert(f) if is_registered_table_model(type(f)) else f for f in row)
+        cur = self.connection.execute(get_meta(type(row)).insert, row)
         return row._replace(id=cur.lastrowid)
 
     def update(self, row: Row) -> None:
