@@ -14,9 +14,34 @@ from .persister import Engine
 
 @pytest.fixture
 def engine() -> Iterable[Engine]:
-    engine = Engine(":memory:", echo_sql=True)
+    engine = Engine(":memory:")
     yield engine
     engine.connection.close()
+
+
+class SqlLog:
+    def __init__(self):
+        self.entrys = []
+        self.block = ""
+
+    def log(self, entry: str) -> None:
+        print(entry)  # Echo to stdout, shown on test failure
+        self.entrys.append(entry)
+        self.block += entry + "\n"
+
+    def clear(self) -> None:
+        self.entrys.clear()
+        self.block = ""
+
+    def __contains__(self, entry: str):
+        return entry in self.block
+
+
+@pytest.fixture
+def sql_log(engine: Engine) -> Iterable[SqlLog]:
+    sql_log = SqlLog()
+    engine.connection.set_trace_callback(sql_log.log)
+    yield sql_log
 
 
 @pytest.fixture(autouse=True)
