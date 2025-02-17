@@ -11,8 +11,10 @@ from .persister import Engine
 
 
 @pytest.fixture
-def engine() -> Engine:
-    return Engine(":memory:", echo_sql=True)
+def engine() -> Iterable[Engine]:
+    engine = Engine(":memory:", echo_sql=True)
+    yield engine
+    engine.connection.close()
 
 
 @pytest.fixture(autouse=True)
