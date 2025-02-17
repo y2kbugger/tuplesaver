@@ -31,6 +31,7 @@ If you meet the above constraints, there are tangible benefits.
 - all options are discoverable
   - e.g. through args of def: select(Model, where, limit, etc.)
 - no dependencies
+- User should never have to pass a Meta, when a Model would suffice
 
 ## Outstanding Design Questions
 - Tolerance to out-of-band schema changes
@@ -182,7 +183,8 @@ If you need to update the precommit hooks, run the following:
   - Add foreign key constraints to the table creation
     - through the metadata system?? appending to meta during ensure_table_created?
   - Test using model with int as foreign key rather than model to prevent recursion
-      e.g. int instead of Node
+    - e.g. int instead of Node
+    - need to have more sophisticated tablename e.g. split on _
   - Test the forgein key may only be a union with None i.e. Optional BUT NOT with int or something else
 
 one to many
@@ -228,6 +230,9 @@ create table Person (
 # Tests
 - Test what happens when you have two adapters, one more specific than the other
 - test for fetchone returning none
+- test that you cannot insert, update, or delete, a view model, only a table model
+  - test that mutation queries don't even get set for the view meta
+
 
 # Backlog
 - expanded api for update/delete
@@ -241,6 +246,10 @@ create table Person (
 
 ## Engineering
 - Extract TODO from README.md
+- Move user notes all to example.ipynb
+- Don't do this, violates don't wrap unesscarityly. if echo_sql: self.connection.set_trace_callback(print)
+- Dedent create statement
+- Benchmark and test connection creation and closing
 - Test cleanup
   - Harmonize the def-scoped Model class names in the tests
   - use test specific Models in a small scope
@@ -250,6 +259,7 @@ create table Person (
   - maybe put in own file?
 - use the assert_type from typing to check type hints throught all tests
 - Store tablename in meta
+- could we store map from _tuplegetter -> MetaField in Meta and get_meta_by_tuplegetter(tg) -> Meta, this would allow writing multi table quyeries using Model.name, Model2.value etc
 - Use extra-typical metadata to store standard queries\
   - delete, update by id, insert
 - Consider connection/transaction management
