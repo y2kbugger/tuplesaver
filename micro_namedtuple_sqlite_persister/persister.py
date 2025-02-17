@@ -17,9 +17,9 @@ class FieldZeroIdRequired(Exception):
 
 
 class TableSchemaMismatch(Exception):
-    def __init__(self, Model: type[Row], existing_table_schema: str, new_table_schema: str) -> None:
+    def __init__(self, table_name: str, existing_table_schema: str, new_table_schema: str) -> None:
         super().__init__(
-            f"Table `{Model.__name__}` already exists but the schema does not match the expected schema.\nj"
+            f"Table `{table_name}` already exists but the schema does not match the expected schema.\nj"
             f"Existing schema:\n\t{existing_table_schema}.\n"
             f"Expected schema:\n\t{new_table_schema}"
         )
@@ -45,8 +45,8 @@ class Engine:
         if echo_sql:
             self.connection.set_trace_callback(print)
 
-    def _get_sql_for_existing_table(self, Model: type[Row]) -> str:
-        query = f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{Model.__name__}'"
+    def _get_sql_for_existing_table(self, table_name: str) -> str:
+        query = f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table_name}'"
         cursor = self.connection.execute(query)
         return cursor.fetchone()[0]
 
@@ -54,7 +54,7 @@ class Engine:
         meta = get_meta(Model)
         field_zero = meta.fields[0]
         if field_zero.name != "id" or field_zero.full_type != (int | None):
-            raise FieldZeroIdRequired(Model.__name__, field_zero.name, field_zero.full_type)
+            raise FieldZeroIdRequired(meta.model_name, field_zero.name, field_zero.full_type)
 
         # Check that all fields are registered
         for field in meta.fields:
@@ -65,28 +65,28 @@ class Engine:
                 raise UnregisteredFieldTypeError(field.type)
 
         query = f"""
-            CREATE TABLE {Model.__name__} (
+            CREATE TABLE {meta.table_name} (
             {', '.join(f.sql_columndef for f in meta.fields)}
             )"""
 
         try:
             self.connection.execute(query)
         except sqlite3.OperationalError as e:
-            if f"table {Model.__name__} already exists" in str(e):
+            if f"table {meta.table_name} already exists" in str(e):
                 # Force Recreate
                 if force_recreate:
-                    self.connection.execute(f"DROP TABLE {Model.__name__}")
+                    self.connection.execute(f"DROP TABLE {meta.table_name}")
                     self.connection.execute(query)
 
                 # Check existing table, it might be ok
                 def normalize_whitespace(s: str) -> str:
                     return re.sub(r'\s+', ' ', s).strip()
 
-                existing_table_schema = normalize_whitespace(self._get_sql_for_existing_table(Model))
+                existing_table_schema = normalize_whitespace(self._get_sql_for_existing_table(meta.table_name))
                 new_table_schema = normalize_whitespace(query)
 
                 if existing_table_schema != new_table_schema:
-                    raise TableSchemaMismatch(Model, existing_table_schema, new_table_schema) from e
+                    raise TableSchemaMismatch(meta.table_name, existing_table_schema, new_table_schema) from e
             else:
                 # error is not about the table already existing
                 raise

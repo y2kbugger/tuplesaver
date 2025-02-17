@@ -44,6 +44,8 @@ def is_registered_fieldtype(cls: object) -> bool:
 
 class Meta(NamedTuple):
     Model: type[Row]
+    model_name: str
+    table_name: str
     is_table: bool
     select: str
     fields: tuple[MetaField, ...]
@@ -73,6 +75,7 @@ def get_meta(Model: type[Row]) -> Meta:
     except KeyError:
         pass
 
+    table_name = Model.__name__.split('_')[0]
     annotations = _get_resolved_annotations(Model)
     fieldnames = Model._fields
     full_types = tuple(annotations.values())
@@ -92,9 +95,11 @@ def get_meta(Model: type[Row]) -> Meta:
         for fieldname, (nullable, FieldType) in zip(fieldnames, unwrapped_types)
     )
 
-    select = f"SELECT {', '.join(Model._fields)} FROM {Model.__name__} WHERE id = ?"
+    select = f"SELECT {', '.join(Model._fields)} FROM {table_name} WHERE id = ?"
     _meta[Model] = Meta(
         Model=Model,
+        model_name=Model.__name__,
+        table_name=table_name,
         is_table=False,
         select=select,
         fields=fields,

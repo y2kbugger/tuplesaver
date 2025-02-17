@@ -120,6 +120,8 @@ def test_get_table_meta() -> None:
     register_table_model(ModelA)
     assert get_meta(ModelA) == Meta(
         Model=ModelA,
+        model_name="ModelA",
+        table_name="ModelA",
         is_table=True,
         select="SELECT id, name FROM ModelA WHERE id = ?",
         fields=(
@@ -143,6 +145,8 @@ def test_get_alternateview_meta() -> None:
 
     assert get_meta(ModelA_NameOnly) == Meta(
         Model=ModelA_NameOnly,
+        model_name="ModelA_NameOnly",
+        table_name="ModelA",
         is_table=False,
         select="SELECT id, name FROM ModelA WHERE id = ?",
         fields=(
