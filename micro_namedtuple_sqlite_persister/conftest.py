@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from collections.abc import Iterable
 
 import pytest
+from pytest_benchmark.plugin import BenchmarkFixture
 
 from .adaptconvert import clear_adapt_convert_registrations, enable_included_adaptconverters
 from .model import clear_modelmeta_registrations
@@ -30,3 +32,18 @@ def init_and_cleanup_registrations() -> Iterable[None]:
     sqlite3.converters.clear()
     # clean up our model registrations
     clear_modelmeta_registrations()
+
+
+@pytest.fixture
+def benchmark(benchmark: BenchmarkFixture) -> Iterable[BenchmarkFixture]:
+    """Overwrite the benchmark fixture to set affinity to a specific core"""
+
+    old = os.sched_getaffinity(0)
+    # set affinity to 6,7 e.g physical hyperthreaded physical core 3, this is system specific
+    # TODO: make this configurable
+    os.sched_setaffinity(0, {6, 7})
+    os.sched_yield()
+
+    yield benchmark
+
+    os.sched_setaffinity(0, old)

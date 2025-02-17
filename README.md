@@ -111,19 +111,31 @@ then activate and run the tests via vscode or the cli:
     $ poetry shell
     $ pytest
 
-to run perf regression tests like they will on commit, extend the time and add a compare fail:
-
-    pytest  --benchmark-max-time=5 --benchmark-compare-fail=median:4%
-
-to profile the benchmarks:
-
-    pytest --benchmark-cprofile=tottime  --benchmark-cprofile-dump --benchmark-only
-
 There is a test Task setup in vscode that, you can add a keybinding to run it, e.g.
 
     [Ctrl]+[Shift]+G
 
 Interactively code with the python API in the `example.ipynb` notebook. This should include many examples.
+
+
+## Benchmarking
+to run perf regression tests exactly as they would be ran in pre-commit:
+
+    pre-commit run pytest-check
+
+to redraw the benchmark baseline, first stash to get a clean baseline of HEAD, then run the benchmark in save mode:
+
+    git stash
+    pre-commit run pytest-save-benchmarks
+
+On linux you can set kernel parameters to isolate the cpu and get kernel threads off the cpu:
+
+  isolcpus=6,7 nohz_full=6,7
+
+For my dev system, cores 6 and 7 are the two hyperthreaded cores of my physical core 3, this is hardcoded into the testing harness to put benchmarks on this core.
+
+Other things to disable/consider: backup software, web browsers, compositors, large monitors. Disconnect from a docking station and just use a power adapter. An extreme approach would be to boot directly to Virtual Console. Note, just switching to a virtual console does not eliminate the effect of being connected to a docking station.
+
 
 ## Linting
 pre-commit hooks are installed and should be run before committing. To run them manually, use the following command:
