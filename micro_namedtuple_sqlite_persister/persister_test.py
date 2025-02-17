@@ -8,6 +8,8 @@ from typing import Any, NamedTuple, assert_type
 import pytest
 from pytest_benchmark.plugin import BenchmarkFixture
 
+from micro_namedtuple_sqlite_persister.conftest import SqlLog
+
 from .model import is_registered_row_model, is_registered_table_model
 from .persister import (
     Engine,
@@ -675,6 +677,49 @@ class TestBomSelfJoin:
 
         retrieved_root = engine.get(self.BOM, inserted_root.id)
         assert retrieved_root == inserted_root
+
+    def test_get_bom_with_raw_fk(self, engine: Engine) -> None:
+        engine.ensure_table_created(self.BOM)
+
+        root = self.create_bom(3)
+        inserted_root = engine.insert(root)
+        engine.connection.commit()
+        assert inserted_root.child_a is not None
+        assert inserted_root.child_b is not None
+
+        class BOM_View(NamedTuple):
+            id: int | None
+            name: str
+            value: float
+            child_a: int | None  # as fk
+            child_b: int | None  # as fk
+
+        retrieved_root = engine.get(BOM_View, inserted_root.id)
+
+        assert retrieved_root == BOM_View(
+            inserted_root.id,
+            inserted_root.name,
+            inserted_root.value,
+            inserted_root.child_a.id,
+            inserted_root.child_b.id,
+        )
+
+    def test_get_bom_with_fks_excluded(self, engine: Engine, sql_log: SqlLog) -> None:
+        engine.ensure_table_created(self.BOM)
+
+        root = self.create_bom(3)
+        inserted_root = engine.insert(root)
+        engine.connection.commit()
+
+        class BOM_View(NamedTuple):
+            id: int | None
+            name: str
+            value: float
+
+        sql_log.clear()
+        retrieved_root = engine.get(BOM_View, inserted_root.id)
+        assert "child_a" not in sql_log  # Ensure that the query did not include the child_a column, even if it ended up discarding it.
+        assert retrieved_root == BOM_View(inserted_root.id, inserted_root.name, inserted_root.value)
 
     @pytest.mark.xfail(reason="Insert still uses recursion")
     def test_for_stack_overflow(self, engine: Engine) -> None:
