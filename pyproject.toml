@@ -33,15 +33,19 @@ scalene = "^1.5.49"
 [tool.pytest.ini_options]
 minversion = "8.0"
 python_files = "*_test.py"
+markers = [
+    "slow: marks tests as slow",
+]
+
 addopts = [
     "--benchmark-columns=min,median,iqr,stddev,iterations,rounds,ops",
     "--benchmark-max-time=0.25",
-    "--benchmark-enable",
-    "--benchmark-compare",
     "--benchmark-group-by=name",
     "--benchmark-sort=fullname",
     "--benchmark-name=short",
+    "--benchmark-disable",
     ]
+
 testpaths = ["micro_namedtuple_sqlite_persister"]
 
 [tool.ruff]

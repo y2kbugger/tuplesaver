@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import sys
 from collections.abc import Iterable
 
 import pytest
@@ -72,3 +73,11 @@ def benchmark(benchmark: BenchmarkFixture) -> Iterable[BenchmarkFixture]:
     yield benchmark
 
     os.sched_setaffinity(0, old)
+
+
+@pytest.fixture
+def limit_stack_depth() -> Iterable[None]:
+    old_limit = sys.getrecursionlimit()
+    sys.setrecursionlimit(55)
+    yield
+    sys.setrecursionlimit(old_limit)

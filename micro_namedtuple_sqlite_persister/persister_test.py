@@ -722,7 +722,7 @@ class TestBomSelfJoin:
         assert retrieved_root == BOM_View(inserted_root.id, inserted_root.name, inserted_root.value)
 
     @pytest.mark.xfail(reason="Insert still uses recursion")
-    def test_for_stack_overflow(self, engine: Engine) -> None:
+    def test_for_stack_overflow(self, engine: Engine, limit_stack_depth: None) -> None:
         engine.ensure_table_created(self.BOM)
         root = self.create_linear_bom(1500)
         inserted_root = engine.insert(root)
@@ -738,7 +738,6 @@ class TestBomSelfJoin:
         @benchmark
         def insert_bom():
             _inserted_root = engine.insert(root)
-            engine.connection.commit()
 
     def test_benchmark_get_bom(self, engine: Engine, benchmark: BenchmarkFixture) -> None:
         engine.ensure_table_created(self.BOM)
