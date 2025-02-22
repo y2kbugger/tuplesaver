@@ -191,6 +191,21 @@ def test_render_query_with_where_and_limit() -> None:
     """)
 
 
+def test_render_query_with_order_by() -> None:
+    """Test rendering a query with ORDER BY clause"""
+    Model, sql = select(
+        MyModel,
+        order_by=(MyModel.id,),
+    )
+
+    assert Model == MyModel
+    assert sql == dd("""
+        SELECT id, name, date
+        FROM MyModel
+        ORDER BY MyModel.id
+    """)
+
+
 def test_render_query_with_and() -> None:
     """Test rendering a query with AND condition"""
     Model, sql = select(

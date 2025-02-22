@@ -38,6 +38,7 @@ def get_table_name(Model: type[Row]) -> str:
 class SELECT(tuple): ...
 class CSV(tuple): ...  # comma separated values
 class WHERE(tuple): ...
+class ORDERBY(tuple): ...
 class LIMIT(tuple): ...
 class LOGIC(tuple): ...  # logical operator
 class STRLIT(str): ...  # string literal
@@ -57,9 +58,9 @@ type Frag = Field | Scalar | CSV
 type Fragment = Sequence[Frag | Fragment] | Frag
 
 
-def select[R: Row](Model: type[R], *, where: Fragment | None = None, limit: int | None = None) -> tuple[type[R], str]:
+def select[R: Row](Model: type[R], *, where: Fragment | None = None, limit: int | None = None, order_by: Fragment | None = None) -> tuple[type[R], str]:
     """Produce a rendered SELECT query"""
-    select_fragment = _select(Model, where=where, limit=limit)
+    select_fragment = _select(Model, where=where, limit=limit, order_by=order_by)
     sql = render(Model, select_fragment)
     return Model, sql
 
@@ -101,12 +102,14 @@ def and_(left: Fragment, right: Fragment) -> Fragment:
     return LOGIC((left, 'AND', right))
 
 
-def _select(Model: type[Row], *, where: Fragment | None = None, limit: int | None = None) -> Fragment:
+def _select(Model: type[Row], *, where: Fragment | None = None, limit: int | None = None, order_by: Fragment | None = None) -> Fragment:
     """Create a SELECT statement"""
     cols = CSV(Model._fields)
     select = ('SELECT', cols, 'FROM', Model)
     if where is not None:
         select = (*select, WHERE(('WHERE', where)))
+    if order_by is not None:
+        select = (*select, ORDERBY(('ORDER BY', order_by)))
     if limit is not None:
         select = (*select, LIMIT(("LIMIT", limit)))
     return SELECT(select)
@@ -124,6 +127,8 @@ def render(M: type[Row], fg: Fragment) -> str:
             return f"({render(M, left)} {operator} {render(M, right)})"
         case WHERE((keyword, condition)):  # Deconstruct WHERE into keyword and condition
             return f"{keyword} {render(M, condition)}"
+        case ORDERBY((keyword, fields)):  # Deconstruct ORDERBY into keyword and fields
+            return f"{keyword} {render(M, fields)}"
         case LIMIT((keyword, value)):  # Deconstruct LIMIT into keyword and value
             return f"{keyword} {value}"
         case _tuplegetter():
