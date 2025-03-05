@@ -179,6 +179,10 @@ If you need to update the precommit hooks, run the following:
     pre-commit autoupdate
 
 # WIP
+- handle build in containers as special cases
+  - list, dict, set, tuple
+  - Test that bare container raises
+  - will be stored as JSON, as long as adapt/convert has been specified
 - pull in object from other table as field (1:Many, but on the single side)
   - Add foreign key constraints to the table creation
     - through the metadata system?? appending to meta during ensure_table_created?
@@ -226,6 +230,33 @@ create table Person (
 ```
 
 # Bugs
+- but instead is `setting_name: <class 'str'>`")
+  - > but instead is `setting_name: str`")
+  - not sure how to make it look exactly like the type hint
+- Investigate/ Test what Happens when specifying Model | int, should this raise??
+- recursive get breaks depth first cursor proxy?? only finds one person.
+  FIXED but needs regression test
+  ```
+  teama = Team(None, "Team A")
+  teamb = Team(None, "Team B")
+  teama = engine.insert(teama)
+  teamb = engine.insert(teamb)
+
+  pa1 = Person(None, "Alice", teama)
+  pa2 = Person(None, "Bob", teama)
+  pb1 = Person(None, "Charlie", teamb)
+  pb2 = Person(None, "David", teamb)
+  pa1 = engine.save(pa1)
+  pa2 = engine.save(pa2)
+  pb1 = engine.save(pb1)
+  pb2 = engine.save(pb2)
+  engine.connection.commit()
+  print(teama)
+  M, q = select(Person, where=eq(Person.team, teama.id))
+
+  rows = engine.query(M, q).fetchall()
+  print(rows)
+  ```
 
 # Tests
 - Test what happens when you have two adapters, one more specific than the other
@@ -235,6 +266,32 @@ create table Person (
 
 
 # Backlog
+- I want to be able to persist built in container types without configuration
+- I want to be able to persist an Enum without configuration
+- Starting to think a unified save api is better than recursive insert
+  - insert/update/delete can be non-recursive (and raise if relation is not persisted)
+  - save can be a recursive upsert on id
+    ```
+      def _insert_shallow[R: Row](self, row: R) -> R:
+          # insert only the current row, without recursion
+          cur = self.connection.execute(get_meta(type(row)).insert, row)
+          return row._replace(id=cur.lastrowid)
+
+      def save[R: Row](self, row: R) -> R:
+          # recursively insert or update records, based on the presence of an id
+          # ids can be mixed and matched anywhere in the tree
+          row = row._make(self.save(f) if is_registered_table_model(type(f)) else f for f in row)
+          if row[0] is None:
+              return self._insert_shallow(row)
+          else:
+              self.update_(row)
+              return row
+    ```
+- I want to fall back to pickles for any type that is not configured, and just raise if pickle fails
+- I want to be able to explain model function. This would explain what the type annotation is., what the sqllite column type is, And why?. Like it would tell you that an INT is a built-in Python SQLite type., but a model is another model, And a list of a built-in type is stored as json., And then what it would attempt to pickle if there would be a pickle if it's unknown..
+This would help distinguish between a list of model and a list of something else. 
+This is cool cuz it blends casa no sql with SQL. We could probably even make a refactoring tool to switch between the two.
+- how handle unions of two valid types, e.g. int | str
 - expanded api for update/delete
 - extra-typical metadata
 - unique contraints
@@ -353,6 +410,7 @@ create table Person (
     - could it just give insight to recent changes during dev?
 
 ## QUERYING
+- can we use a Model reference eq to fk in where clause??
 - limit row count
 - order by
 - Supra-binay logical operators e.g. (a or b or c)
@@ -531,6 +589,7 @@ update MyModel set name = 'Apple' where score > 42;
 ```
 ### Backpop
 Thinking to not do this, circular references might make it impossible anyway. just make it easy to fetch.
+It also side steps the issue of double querying to fill in the forward reference/caching and wiring up the FK to the backprops. it actually forces everying to be a circular reference which isn't possible.
 - backpop
   ```python
   class Team(NamedTuple):
