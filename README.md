@@ -291,8 +291,11 @@ This is cool cuz it blends casa no sql with SQL. We could probably even make a r
   - use test specific Models in a small scope
   - refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
   - group tests, and promote _some_ model reuse if it makes sense
+  - move "function" end to end tests together, ensure we have good unit tests in the module specific test files.
+  - Start tracking coverage?
 - maybe simplify "included adapters" to not be dict, but just a function with defs
   - maybe put in own file?
+  - maybe don't make this optional, just have a default set of adapters
 - use the assert_type from typing to check type hints throught all tests
 - Store tablename in meta
 - could we store map from _tuplegetter -> MetaField in Meta and get_meta_by_tuplegetter(tg) -> Meta, this would allow writing multi table quyeries using Model.name, Model2.value etc
@@ -303,16 +306,18 @@ This is cool cuz it blends casa no sql with SQL. We could probably even make a r
   - how long is sqlite connection good for? application lifetime?
   - closing cursors? commit? difference between?
     - Context manager on cursor?
+  - connection pooling?
 - Consider Concurrentcy in both read and write
   - what happens if two threads try to write to the same table at the same time?
   - How to actually test this?
   - Is there a connection setting (check same thread) that can be used to at least detect this?
   - https://www.sqlite.org/wal.html
+- Benchmark and consider joined loads
 - All exceptions raised to client api should have a custom exception type
+  - especially in query builder, those give some pretty cryptic errors
 - approx 20% perf boost for execute many on 20k rows
   - not worth complexity compared to other things to spend time on
 - Minimize stack depth of engine.insert for deep recursive models e.g. depth=2000 BOM
-- figure out why the benchmark warns about different system specs EVERY run.
 - Can persister.py have to imports from query.py?
   - NO
 
@@ -397,6 +402,9 @@ This is cool cuz it blends casa no sql with SQL. We could probably even make a r
   - need way to specify which actual table the columns are from
 - Insure that the query typehints have no type errors IF and only IF the query will be valid SQL at runtime
 - SQL injection mitigation, correctly parameterize queries
+- JSON syntax support will be important, since we are trying to have transparent no-sql like support
+  - man wouldn't it be cool if query build could build query off of python syntax (requires AST method)
+  - At the same time, this leave no ramp to transition to raw sql, or does it? could be have a way to "dump" the query to raw sql using tooling? could we allow inline raw sql in the query builder?
 
 
 ### Purely functional API
@@ -445,21 +453,272 @@ Just brainstorming here, the purely functional API is follows my interest in sim
 That is a lot to sacrifice for gaining infix notation.
 
 ```python
-@sql_query
+@select
 def build_query():
     select(MyModel).columns(MyModel.id, MyModel.name, MyModel.type)
-    where((MyModel.id == 42) and (MyModel.name != "Apple") or (MyModel.count > 100))
+    where((MyModel.id == 42) and (MyModel.name != "Apple") or (MyModel.score > 100))
     group_by(MyModel.type)
-    having(avg(MyModel.count) > 50)
+    having(avg(MyModel.score) > 50)
     order_by([MyModel.created_at.desc(), MyModel.name.asc()])
     limit(200)
 ```
 ```sql
 SELECT id, name, type FROM MyModel
-WHERE id = 42 AND name != "Apple" OR count > 100
+WHERE id = 42 AND name != "Apple" OR score > 100
 GROUP BY type
-HAVING avg(count) > 50
+HAVING avg(score) > 50
 ```
+
+Could also handle parameters this way
+```python
+@select
+def build_query(id: int, name: str, minscore: int):
+    select(MyModel).columns(MyModel.id, MyModel.name, MyModel.type)
+    where((MyModel.id == id) and (MyModel.name != name) or (MyModel.score >= minscore))
+```
+```sql
+SELECT id, name, type FROM MyModel
+WHERE id = :id AND name != :name OR score > :minscore
+```
+
+Could also handle JSON types somehow
+```python
+class Character(NamedTuple):
+    id: int
+    name: str
+    data: dict[str, int | str | dt.datetime]
+
+@select
+def get_fireball_characters():
+    select(MyModel).columns(MyModel.id, MyModel.name)
+    where(MyModel.data["spell"] == "Fireball")
+```
+```sql
+SELECT id, name, data->'$.spell' FROM MyModel
+WHERE data->'$.spell' = 'Fireball'
+```
+
+### AST Based Query Builder using f-strings
+think about this man, this simplifies everything. Because we only have to worry about SQLite,
+We can just write what we mean, we don't need to abstract all possible SQL syntax to python.
+
+Just just solve for refactoring (no hardcoded column names) usecase, by using an f-string in a def context.
+
+```python
+class MyModel(NamedTuple):
+    id: int
+    name: str
+    score: int
+
+@select(MyModel)
+def high_scores():
+    f"""
+    SELECT {MyModel} FROM {MyModel}
+    WHERE {MyModel.score} > 100
+    """
+    # could add feature letting you omit the FROM clause
+    # but is it really worth breaking the ramp and adding edges?
+    f"""
+    SELECT {MyModel}
+    WHERE {MyModel.score} > 100
+    """
+    # or this. Less edges, and leaves the ramp
+    f"""
+    SELECT {MyModel} FROM ...
+    WHERE {MyModel.score} > 100
+    """
+
+    # or even omit the SELECT clause
+    f"""WHERE {MyModel.score} > 100"""
+
+engine.query(*high_scores)
+```
+
+```sql
+SELECT id, name, type FROM MyModel
+WHERE id = 42 AND name != "Apple" OR score > 100
+```
+
+#### using views
+```python
+class MyModel_NameOnly(NamedTuple):
+    id: int
+    name: str
+
+@select(MyModel_NameOnly)
+def find_nameonly_subset():
+    f"""
+    SELECT {MyModel_NameOnly} FROM {MyModel}
+    """
+
+engine.query(*find_nameonly_subset)
+
+# or
+find_nameonly_subset = select(MyModel_NameOnly)
+engine.query(*find_nameonly_subset)
+
+# or even
+engine.query(*select(MyModel_NameOnly))
+
+# these concise versions give a nice ramp to add more clauses
+```
+
+#### and also parameters
+```python
+@select(MyModel_NameOnly)
+def find_mymodel_by_min_score(minscore: int):
+    f"""
+    SELECT {MyModel_NameOnly} FROM {MyModel}
+    WHERE {MyModel.score} >= {minscore}
+    """
+
+engine.query(*find_mymodel_by_min_score, 42, "Apple", 100)
+```
+```sql
+SELECT id, name, type FROM MyModel
+WHERE id = :id AND name != :name OR score > :score
+```
+
+#### Finding total score where name is "Apple"
+```python
+
+class MyModel_TotalScore(NamedTuple):
+    name: str
+    total_score: int
+
+@select(MyModel_TotalScore)
+def apple_total()
+    f"""
+    SELECT {MyModel.name}, sum({MyModel.score}) as total_score
+    FROM {MyModel}
+    WHERE {MyModel.name} = 'Apple'
+    GROUP BY {MyModel.name}
+    """
+engine.query(*find_total_score)
+
+# or in the Annotated style
+
+class MyModel_TotalScore(NamedTuple):
+    name: str
+    total_score: Annotated[int, f"sum({MyModel.score})"]
+
+@select(MyModel_TotalScore)
+def apple_total()
+    f"""
+    WHERE {MyModel.name} = 'Apple'
+    GROUP BY {MyModel.name}
+    """
+engine.query(*find_total_score)
+
+# or in the subsumed style
+# this could actually be implemented exactly like the above.
+# then this would just be a stylistic choice
+class MyModel_TotalScore(NamedTuple):
+    name: str
+    total_score: Annotated[int, f"sum({MyModel.score})"]
+
+  @select(MyModel_TotalScore)
+  def apple_total():
+      f"""
+      WHERE {MyModel.name} = 'Apple'
+      GROUP BY {MyModel.name}
+      """
+engine.query(MyModel_TotalScore)
+
+
+```
+#### JSON types
+```python
+class Character(NamedTuple):
+    id: int
+    name: str
+    data: dict[str, int | str | dt.datetime]
+
+@select(Character)
+def get_fireball_characters():
+    f"""
+    WHERE {Character.data} -> '$.spell' = 'Fireball'
+    """
+```
+
+or extracting a new column
+```python
+class CharacterWithSpell(NamedTuple):
+    id: int
+    name: str
+    spell: str
+
+@select(CharacterWithSpell)
+def get_fireball_characters():
+    f"""
+    SELECT {Character.id}, {Character.name}, {Character.data} -> '$.spell' as spell
+    FROM {Character}
+    WHERE {Character.data} -> '$.spell' = 'Fireball'
+    """
+
+# hmmm maybe annotate the f-string within the model
+```python
+class Character_WithSpell(NamedTuple):
+    id: int
+    name: str
+    spell: Annotated[str, f"{Character.data} -> '$.spell'"]
+
+@select(Character_WithSpell)
+def characters_with_spell():
+    f"""
+    WHERE {Character.data} -> '$.spell' = 'Fireball'
+    """
+
+# or what if it got subsumed into the model
+```python
+class Character_WithSpell(NamedTuple):
+    id: int
+    name: str
+    spell: Annotated[str, f"{Character.data} -> '$.spell'"]
+
+  def query():
+      f"""
+      WHERE {Character.data} -> '$.spell' = 'Fireball'
+      """
+```
+# and could that handle joins?
+```python
+class Team(NamedTuple):
+    id: int
+    name: str
+
+class Character(NamedTuple):
+    id: int
+    name: str
+    team: Team
+
+class Character_ByTeamName(NamedTuple):
+    id: int
+    name: str
+
+    def query():
+        f"""
+        WHERE {Character.team.name} = 'Red'
+        """
+
+engine.query(*select(Character_ByTeamName))
+```
+
+But this could be done without having to redefine the model,
+And I think I would prefer one way to do things.
+```python
+@select(Character)
+def characters_on_red_team():
+    f"WHERE {Character.team.name} = 'Red'"
+```
+
+
+select(CharacterWithSpell)
+```
+
+
+
+
 
 ## Extra-typical metadata
 Some features requiring metadata than can't expressed in standard typehints
