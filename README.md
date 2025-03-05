@@ -236,29 +236,6 @@ create table Person (
   - > but instead is `setting_name: str`")
   - not sure how to make it look exactly like the type hint
 - Investigate/ Test what Happens when specifying Model | int, should this raise??
-- recursive get breaks depth first cursor proxy?? only finds one person.
-  FIXED but needs regression test
-  ```
-  teama = Team(None, "Team A")
-  teamb = Team(None, "Team B")
-  teama = engine.insert(teama)
-  teamb = engine.insert(teamb)
-
-  pa1 = Person(None, "Alice", teama)
-  pa2 = Person(None, "Bob", teama)
-  pb1 = Person(None, "Charlie", teamb)
-  pb2 = Person(None, "David", teamb)
-  pa1 = engine.save(pa1)
-  pa2 = engine.save(pa2)
-  pb1 = engine.save(pb1)
-  pb2 = engine.save(pb2)
-  engine.connection.commit()
-  print(teama)
-  M, q = select(Person, where=eq(Person.team, teama.id))
-
-  rows = engine.query(M, q).fetchall()
-  print(rows)
-  ```
 
 # Tests
 - Test what happens when you have two adapters, one more specific than the other

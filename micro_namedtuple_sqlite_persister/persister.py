@@ -101,6 +101,21 @@ class Engine:
         cur = self.connection.execute(get_meta(type(row)).insert, row)
         return row._replace(id=cur.lastrowid)
 
+    def insert_shallow[R: Row](self, row: R) -> R:
+        # insert only the current row, without recursion
+        cur = self.connection.execute(get_meta(type(row)).insert, row)
+        return row._replace(id=cur.lastrowid)
+
+    def save[R: Row](self, row: R) -> R:
+        # recursively insert or update records, based on the presence of an id
+        # ids can be mixed and matched anywhere in the tree
+        row = row._make(self.save(f) if is_registered_table_model(type(f)) else f for f in row)
+        if row[0] is None:
+            return self.insert_shallow(row)
+        else:
+            self.update(row)
+            return row
+
     def update(self, row: Row) -> None:
         if row[0] is None:
             raise ValueError("Cannot UPDATE, id=None")
@@ -177,6 +192,7 @@ def make_model[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.
                 # Sub-model fetch
                 InnerModel = FieldType
                 inner_meta = get_meta(InnerModel)
+
                 inner_values = list(c.execute(inner_meta.select, (field_value,)).fetchone())
 
                 # Defer remainder of current model
@@ -204,7 +220,11 @@ class TypedCursorProxy[R: Row](sqlite3.Cursor):
             # Disable the row factory to let us handle making the inner models ourselves
             root_row_factory = c.row_factory
             c.row_factory = None
-            m = make_model(Model, c, r)
+
+            # so we don't thow away subsequent results in outer cursor
+            inner_c = c.connection.cursor()
+            m = make_model(Model, inner_c, r)
+            inner_c.close()
             c.row_factory = root_row_factory
             return m
 

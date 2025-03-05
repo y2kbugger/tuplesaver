@@ -576,6 +576,23 @@ class TestRelatedTable:
 
         assert row == self.Arm(1, 30.0, self.Person(1, "Alice", self.Team(1, "Team A")))
 
+    def test_that_you_can_get_more_than_one_top_level_result(self, engine: Engine) -> None:
+        """This was a real bug where the proxy cursor row factory reused the
+        same outer cursor and through away subsequent results."""
+
+        engine.ensure_table_created(self.Team)
+        engine.ensure_table_created(self.Person)
+
+        team = self.Team(None, "Team A")
+        person1 = self.Person(None, "Alice", team)
+        person2 = self.Person(None, "Bob", team)
+        person1 = engine.insert(person1)
+        person2 = engine.insert(person2)
+
+        rows = engine.query(self.Person, "SELECT * FROM Person;").fetchall()
+
+        assert rows == [person1, person2]
+
 
 class TestOptionalRelatedTable:
     class Team(NamedTuple):
