@@ -1,23 +1,24 @@
 # Notes
-## Target Applications
-- Single node for app + sqlite db
-- Only your application access the db directly
-  - ETL prefetch for reads of external data
-  - Save, export for external writes
-  - API access for reads from external services
+## Target Applications Constraints
+- Python app + sqlite db served from a single server.
+- The app will ONLY access the db.
+  - Instead, use ETL to load data in the db from external sources.
+- ONLY the App will access the db.
+  - Have a stable API for external access to underlying data.
 
-This is a niche that viable many web applications, as well as for many enterprise applications.
+This is a viable niche for many web apps, include a large percentage of those with enterprises.
 
 ## Why
-If you meet the above constraints, there are tangible benefits.
+If you can meet the above constraints, there are tangible benefits.
 - Simplified application infrastructure, no need for a separate db server
 - If noone else accesses your db directly, you maintain the freedom to refactor the db schema
-- Latency of persistance is negligible
-  - Apps can leverage this and simplify by eliminating unpersisted state.
-- Consistancy between devlocal, test, and production environments
+- Latency of persistance becomes negligible
+  - Apps can leverage this and simplify by eliminating unpersisted state within the app and become stateless.
+- True consistancy between devlocal, test, and production environments.
+  - Migrations become easier to automate and test.
 
 ## Library Goals
-- Correct type hinting on both sides of persistance
+- Correct static type hinting on both sides of persistance
 - Improve refactorability
   - Eliminate stringly referenced columns
   - Migrations distilled to thier essential complexity
@@ -25,13 +26,13 @@ If you meet the above constraints, there are tangible benefits.
 ## Design Principles
 - truely simple, not seemingly simple
 - minimize library specific knowledge requirements, use standard types, type hints, and features
+  - Never wrap native functionality
 - minimize boilerplate
 - between "more magic" and "more boilerplate", choose "more boilerplate"
 - principle of least surprise
-- all options are discoverable
-  - e.g. through args of def: select(Model, where, limit, etc.)
+- library specific knowlege should be self revealing
+  - e.g. through attributes, type hints, or parameters
 - no dependencies
-- User should never have to pass a Meta, when a Model would suffice
 
 ## Outstanding Design Questions
 - Tolerance to out-of-band schema changes
@@ -266,6 +267,9 @@ create table Person (
               self.update_(row)
               return row
     ```
+- consider add column constraints as annotations, like the select
+  https://sqlite.org/syntax/column-def.html
+  https://sqlite.org/syntax/column-constraint.html
 - I want to fall back to pickles for any type that is not configured, and just raise if pickle fails
 - I want to be able to explain model function. This would explain what the type annotation is., what the sqllite column type is, And why?. Like it would tell you that an INT is a built-in Python SQLite type., but a model is another model, And a list of a built-in type is stored as json., And then what it would attempt to pickle if there would be a pickle if it's unknown..
 This would help distinguish between a list of model and a list of something else. 
@@ -393,334 +397,222 @@ This is cool cuz it blends casa no sql with SQL. We could probably even make a r
     - Could it help generate scripts?
     - could it just give insight to recent changes during dev?
 
-## QUERYING
-- can we use a Model reference eq to fk in where clause??
-- limit row count
-- order by
-- Supra-binay logical operators e.g. (a or b or c)
+# QUERYING 2.0 - `def` based Query Builder using f-strings
 - Subset of columns query
   - need way to specify which actual table the columns are from
-- Insure that the query typehints have no type errors IF and only IF the query will be valid SQL at runtime
+    - just always follow an implicit join path
 - SQL injection mitigation, correctly parameterize queries
-- JSON syntax support will be important, since we are trying to have transparent no-sql like support
-  - man wouldn't it be cool if query build could build query off of python syntax (requires AST method)
-  - At the same time, this leave no ramp to transition to raw sql, or does it? could be have a way to "dump" the query to raw sql using tooling? could we allow inline raw sql in the query builder?
+  using def
+https://sqlite.org/syntax/result-column.html
 
+This simplifies a lot. Because we only have to worry about SQLite, We can just write what we mean in SQLite proper, we don't need to abstract all possible SQL syntax to python.
 
-### Purely functional API
+This solves the refactoring (no hardcoded column names) usecase.
+It also ensures type safety on both sides of the query, because all `SELECT` queries are defined in the Table or View models.
 
+`select` still just returns a tupel of (Model, sql)
+
+Implementation note:
+- To make annotations work, we force usage of `from __future__ import annotations`
+- we might have to wrap annotations e.g.
+
+      team_name: Annotated[str, Col(f"{Athlete.team.name}")]
+
+  but that might also allow us to drop the f-string completely
+
+      team_name: Annotated[str, Col(Athlete.team.name)]
+
+  Also this same scheme could be used for CREATE statement column constraints
+
+      name: Annotated[str, Constraint("UNIQUE")]
+
+## Table Model
 ```python
-query = select(
-    MyModel,
-    where=and_(
-        eq(MyModel.name, "Apple"),
-        eq(MyModel.id, 42),
-    ),
-    group_by=MyModel.type,
-    having=eq(func.count(MyModel.id), 1),
-    order_by=desc(MyModel.updated_at),
-    limit=10,
-)
-```
-```sql
-SELECT * FROM MyModel
-WHERE name = ? AND id = ?
-GROUP BY type
-HAVING count(id) = ?
-ORDER BY updated_at DESC
-LIMIT 10
-```
-```python
-query = select(
-    (MyModel.name, MyModel.score)
-)
-```
-```sql
-SELECT name, score FROM MyModel
-```
-
-```python
-query = select(
-    (count(MyModel),)
-)
-```
-```sql
-SELECT count(*) FROM MyModel
-```
-
-### AST Based Query Builder
-Just brainstorming here, the purely functional API is follows my interest in simplicity and no surprises.
-That is a lot to sacrifice for gaining infix notation.
-
-```python
-@select
-def build_query():
-    select(MyModel).columns(MyModel.id, MyModel.name, MyModel.type)
-    where((MyModel.id == 42) and (MyModel.name != "Apple") or (MyModel.score > 100))
-    group_by(MyModel.type)
-    having(avg(MyModel.score) > 50)
-    order_by([MyModel.created_at.desc(), MyModel.name.asc()])
-    limit(200)
-```
-```sql
-SELECT id, name, type FROM MyModel
-WHERE id = 42 AND name != "Apple" OR score > 100
-GROUP BY type
-HAVING avg(score) > 50
-```
-
-Could also handle parameters this way
-```python
-@select
-def build_query(id: int, name: str, minscore: int):
-    select(MyModel).columns(MyModel.id, MyModel.name, MyModel.type)
-    where((MyModel.id == id) and (MyModel.name != name) or (MyModel.score >= minscore))
-```
-```sql
-SELECT id, name, type FROM MyModel
-WHERE id = :id AND name != :name OR score > :minscore
-```
-
-Could also handle JSON types somehow
-```python
-class Character(NamedTuple):
-    id: int
-    name: str
-    data: dict[str, int | str | dt.datetime]
-
-@select
-def get_fireball_characters():
-    select(MyModel).columns(MyModel.id, MyModel.name)
-    where(MyModel.data["spell"] == "Fireball")
-```
-```sql
-SELECT id, name, data->'$.spell' FROM MyModel
-WHERE data->'$.spell' = 'Fireball'
-```
-
-### AST Based Query Builder using f-strings
-think about this man, this simplifies everything. Because we only have to worry about SQLite,
-We can just write what we mean, we don't need to abstract all possible SQL syntax to python.
-
-Just just solve for refactoring (no hardcoded column names) usecase, by using an f-string in a def context.
-
-```python
-class MyModel(NamedTuple):
+class Person(NamedTuple):
     id: int
     name: str
     score: int
 
-@select(MyModel)
-def high_scores():
-    f"""
-    SELECT {MyModel} FROM {MyModel}
-    WHERE {MyModel.score} > 100
-    """
-    # could add feature letting you omit the FROM clause
-    # but is it really worth breaking the ramp and adding edges?
-    f"""
-    SELECT {MyModel}
-    WHERE {MyModel.score} > 100
-    """
-    # or this. Less edges, and leaves the ramp
-    f"""
-    SELECT {MyModel} FROM ...
-    WHERE {MyModel.score} > 100
-    """
+engine.query(*select(Person))
+```
 
-    # or even omit the SELECT clause
-    f"""WHERE {MyModel.score} > 100"""
+## Subset of Columns (View Model)
+```python
+class Person_NameOnly(NamedTuple):
+    name: str
+
+engine.query(*select(Person_NameOnly))
+```
+```sql
+SELECT name FROM Person
+```
+
+## WHERE clause
+
+```python
+@select(Person)
+def high_scores():
+    f"WHERE {Person.score} > 100"
 
 engine.query(*high_scores)
 ```
-
 ```sql
-SELECT id, name, type FROM MyModel
-WHERE id = 42 AND name != "Apple" OR score > 100
+SELECT id, name, score FROM Person
+WHERE score > 100
 ```
 
-#### using views
+## Parameters
 ```python
-class MyModel_NameOnly(NamedTuple):
-    id: int
-    name: str
+@select(Person)
+def find_person_by_score(minscore: int):
+    f"WHERE {Person.score} >= {minscore}"
 
-@select(MyModel_NameOnly)
-def find_nameonly_subset():
-    f"""
-    SELECT {MyModel_NameOnly} FROM {MyModel}
-    """
-
-engine.query(*find_nameonly_subset)
-
-# or
-find_nameonly_subset = select(MyModel_NameOnly)
-engine.query(*find_nameonly_subset)
-
-# or even
-engine.query(*select(MyModel_NameOnly))
-
-# these concise versions give a nice ramp to add more clauses
-```
-
-#### and also parameters
-```python
-@select(MyModel_NameOnly)
-def find_mymodel_by_min_score(minscore: int):
-    f"""
-    SELECT {MyModel_NameOnly} FROM {MyModel}
-    WHERE {MyModel.score} >= {minscore}
-    """
-
-engine.query(*find_mymodel_by_min_score, 42, "Apple", 100)
+engine.query(*find_person_by_score, params=(100,))
 ```
 ```sql
-SELECT id, name, type FROM MyModel
-WHERE id = :id AND name != :name OR score > :score
+SELECT id, name, score FROM Person
+WHERE  OR score > :minscore
 ```
 
-#### Finding total score where name is "Apple"
+## GROUP BY / Aggregation
 ```python
-
-class MyModel_TotalScore(NamedTuple):
+Aggregations queries are more tightly coupled to the View Model because the model must define the aggregations, but the query defines the grouping. Therefore you might want to define the query f-string in the model def. But this is
+just a stylistic choice
+```
+```python
+class Person_TotalScore(NamedTuple):
     name: str
-    total_score: int
+    total_score: Annotated[int, f"sum({Person.score})"]
 
-@select(MyModel_TotalScore)
+@select(Person_TotalScore)
 def apple_total()
     f"""
-    SELECT {MyModel.name}, sum({MyModel.score}) as total_score
-    FROM {MyModel}
-    WHERE {MyModel.name} = 'Apple'
-    GROUP BY {MyModel.name}
+    WHERE {Person.name} = 'Apple'
+    GROUP BY {Person.name}
     """
-engine.query(*find_total_score)
+engine.query(*apple_total)
 
-# or in the Annotated style
-
-class MyModel_TotalScore(NamedTuple):
+# or in the nested style, to communicate coupling
+class Person_TotalScore(NamedTuple):
     name: str
-    total_score: Annotated[int, f"sum({MyModel.score})"]
+    total_score: Annotated[int, f"sum({Person.score})"]
 
-@select(MyModel_TotalScore)
-def apple_total()
-    f"""
-    WHERE {MyModel.name} = 'Apple'
-    GROUP BY {MyModel.name}
-    """
-engine.query(*find_total_score)
-
-# or in the subsumed style
-# this could actually be implemented exactly like the above.
-# then this would just be a stylistic choice
-class MyModel_TotalScore(NamedTuple):
-    name: str
-    total_score: Annotated[int, f"sum({MyModel.score})"]
-
-  @select(MyModel_TotalScore)
+  @select(Person_TotalScore)
   def apple_total():
       f"""
-      WHERE {MyModel.name} = 'Apple'
-      GROUP BY {MyModel.name}
+      WHERE {Person.name} = 'Apple'
+      GROUP BY {Person.name}
       """
-engine.query(MyModel_TotalScore)
-
-
+engine.query(Person_TotalScore.apple_total)
 ```
-#### JSON types
+Both of these would generate the same SQL
+```sql
+SELECT name, sum(score) as total_score
+FROM Person
+WHERE name = 'Apple'
+```
+
+## JSON extracted field in WHERE
+Get out of your way and let you use SQLite JSON functions
 ```python
 class Character(NamedTuple):
     id: int
     name: str
-    data: dict[str, int | str | dt.datetime]
+    stats: dict[str, int | str | dt.datetime]
+
+example_char = Character(1, 'Apple', {'spell': 'Fireball', 'level': 3, 'date': dt.datetime.now()})
 
 @select(Character)
 def get_fireball_characters():
-    f"""
-    WHERE {Character.data} -> '$.spell' = 'Fireball'
-    """
+    f"WHERE {Character.stats} -> '$.spell' = 'Fireball'"
+
+engine.query(*get_fireball_characters)
+```
+```sql
+SELECT id, name, stats
+FROM Character
+WHERE stats -> '$.spell' = 'Fireball'
 ```
 
-or extracting a new column
-```python
-class CharacterWithSpell(NamedTuple):
-    id: int
-    name: str
-    spell: str
-
-@select(CharacterWithSpell)
-def get_fireball_characters():
-    f"""
-    SELECT {Character.id}, {Character.name}, {Character.data} -> '$.spell' as spell
-    FROM {Character}
-    WHERE {Character.data} -> '$.spell' = 'Fireball'
-    """
-
-# hmmm maybe annotate the f-string within the model
+## JSON extracted field in SELECT
 ```python
 class Character_WithSpell(NamedTuple):
     id: int
     name: str
-    spell: Annotated[str, f"{Character.data} -> '$.spell'"]
+    spell: Annotated[str, f"{Character.stats} -> '$.spell'"]
 
-@select(Character_WithSpell)
-def characters_with_spell():
-    f"""
-    WHERE {Character.data} -> '$.spell' = 'Fireball'
-    """
-
-# or what if it got subsumed into the model
+engine.query(*select(Character_WithSpell))
+```
+```sql
+SELECT id, name, stats -> '$.spell' as spell
+FROM Character
+```
+## View Model Referring to another View Model
+This seems in theory possible, but might have impossible edge cases
 ```python
-class Character_WithSpell(NamedTuple):
+class Character_WithPowerColumn(NamedTuple):
     id: int
     name: str
-    spell: Annotated[str, f"{Character.data} -> '$.spell'"]
+    power: Annotated[str, f"{Character.stats} -> '$.power'"]
 
-  def query():
-      f"""
-      WHERE {Character.data} -> '$.spell' = 'Fireball'
-      """
+class Character_TotalPower(NamedTuple):
+    id: int
+    name: str
+    total_power: Annotated[str, f"sum{Character_WithPowerColumn.power}"]
+
+  @select(Character_TotalPower)
+  def total_power():
+      f"GROUP BY {Character.name}"
+
+engine.query(*Character_TotalPower.total_power)
 ```
-# and could that handle joins?
+```sql
+SELECT id, name, sum(stats -> '$.power') as total_power
+FROM Character
+GROUP BY name
+```
+
+## JOINs for predicate
 ```python
 class Team(NamedTuple):
     id: int
     name: str
 
-class Character(NamedTuple):
+class Athlete(NamedTuple):
     id: int
     name: str
     team: Team
 
-class Character_ByTeamName(NamedTuple):
-    id: int
-    name: str
+@select(Athlete)
+def athletes_on_red_team():
+    f"WHERE {Athlete.team.name} = 'Red'"
 
-    def query():
-        f"""
-        WHERE {Character.team.name} = 'Red'
-        """
-
-engine.query(*select(Character_ByTeamName))
+engine.query(*athletes_on_red_team)
+```
+```sql
+SELECT id, name, team
+FROM Athlete
+JOIN Team ON Athlete.team = Team.id
+WHERE team.name = 'Red'
 ```
 
-But this could be done without having to redefine the model,
-And I think I would prefer one way to do things.
+## JOINs for SELECT
 ```python
-@select(Character)
-def characters_on_red_team():
-    f"WHERE {Character.team.name} = 'Red'"
+class Athlete_WithTeamName(NamedTuple):
+    name: str
+    team_name: Annotated[str, f"{Athlete.team.name}"]
+
+engine.query(*select(Athlete_WithTeamName))
+```
+```sql
+SELECT Athlete.name, Athlete.team.name as team_name
+FROM Athlete
+JOIN Team team ON Athlete.team = team.id
 ```
 
 
-select(CharacterWithSpell)
-```
 
-
-
-
-
-## Extra-typical metadata
+# Extra-typical metadata
 Some features requiring metadata than can't expressed in standard typehints
 - unique constraints
 - indexes
@@ -909,3 +801,66 @@ It also side steps the issue of double querying to fill in the forward reference
       employee: Employee
       role: str
   ```
+
+# Rebuttles to criticisms
+This is all just thinking out loud. Will reread and condense.
+
+1.  **Implicit vs. Explicit Joins** – Your `JOIN` logic relies on Python’s type annotations. How will you handle ambiguous foreign keys (e.g., an `Athlete` belonging to multiple teams)?
+  - you can see in my models that I reference the field and not the table. e.g. `Athelete.team.name`
+2.  **Aliasing Strategy** – How do you plan to handle column name collisions when selecting from multiple tables?
+  - I can make the generator include the table name in the column name
+3.  **Dynamic Queries** – You’re using f-strings for query generation, but what if a `WHERE` clause needs conditional logic (e.g., filtering only when a parameter is present)?
+  - Good point. because of the inpection/reflection I will use, this will never work as the body is never executed. i actually don't feel like dynamic sql is a virtue anyhow.
+4.  **Performance Considerations** – SQLite is great, but large queries could get expensive. Are you considering indexing hints or query optimizations?
+  - I can add indexes via migration script mechanisms, not thought too much about it though. I as I stated. I want the raw and FULL power of SQLite, so anything that possible is within my scope. I see this filed under "should not wrap native functionality"
+5.  **Schema Evolution** – How do you handle schema changes? What happens when a column is renamed or a new field is added?  1. **Schema Evolution & Refactorability** – If you have full control over schema changes, how do you handle old queries still expecting the previous schema?  10.  **API Access for Reads from External Services** – How do you ensure data freshness for API reads? Is there caching or invalidation logic when external data updates?” 3.  **Consistency Across Environments** – SQLite behaves slightly differently across OSes and versions. How do you ensure schema and behavior consistency across dev, test, and production?  10.  **Migrations & Backwards Compatibility** – If a query relies on an old table structure, how do you prevent breaking changes in production?”
+  - Having full control because I am the only and only app touching the DB allows me to handle this. I will use replication and rollbacks to test migration script against the real and full DB locally and in CI/CD.
+6.  **Parameterized Queries** – Your `find_person_by_score` example shows a parameter, but the SQL output has an `OR` typo (`score > :minscore`). How are you validating generated SQL?
+  - This are imagined output, so that was my typo. In real life typos in f-string will be caught by sqlite itself, again, don't wrap native functionality.
+7.  **Security Concerns** – f-strings make it easy to inject SQL directly. How do you ensure queries remain safe from accidental injection vulnerabilities?
+  - You are missing how this works. the parameters are generated as SQL params, by the generator.
+8.  **JSON Queries** – SQLite’s JSON functions are powerful, but they return `TEXT` unless explicitly cast. Are you handling type enforcement properly when querying JSON fields?
+  - This will be handled by the query, maybe runtime checking is needed
+9.  **View Models** – Your View Models are great for encapsulation, but what happens when you need a calculated field in multiple queries? Do you duplicate logic, or have a strategy for reusable fragments?  6.  **Discoverability via Function Args** – This makes API usage clear, but what if a user wants composability? How do you handle dynamic query generation without introducing excessive complexity?
+  - I believe a View Model can reference another one.
+    This seems in theory possible, but might have impossible edge cases
+    ```python
+    class Character_WithPowerColumn(NamedTuple):
+        id: int
+        name: str
+        power: Annotated[str, f"{Character.stats} -> '$.power'"]
+
+    class Character_TotalPower(NamedTuple):
+        id: int
+        name: str
+        total_power: Annotated[str, f"sum{Character_WithPowerColumn.power}"]
+
+      @select(Character_TotalPower)
+      def total_power():
+          f"GROUP BY {Character.name}"
+
+    engine.query(*Character_TotalPower.total_power)
+    ```
+    ```sql
+    SELECT id, name, sum(stats -> '$.power') as total_power
+    FROM Character
+    GROUP BY name
+    ```
+
+2.  **ETL Prefetch for Reads** – How do you handle batch processing efficiently? Are you considering bulk inserts, WAL mode, or pragma tuning for large data imports?
+  - This is a dumb question. All i mean is that if we need to access external data, we will not do it from application. we will use ETL to load up sqlite with the data we need, in correct format for model.
+4.  **Minimizing Library-Specific Knowledge** – Type hints provide strong correctness, but what happens when users want to execute ad hoc queries not easily expressed via type annotations?
+ - Literally look at my query example. I can do anything with the query. I can even do `engine.query("SELECT * FROM Character")`
+5.  **No Dependencies** – Are you considering leveraging optional dependencies for specific use cases (e.g., `pydantic` for schema validation, `duckdb` for in-memory analytics)?
+  - Another dumb question
+7.  **Minimizing Boilerplate vs. Explicitness** – Your philosophy leans toward "more boilerplate" for clarity. Are there cases where too much boilerplate makes queries harder to manage?
+ - This is not a real question or critique........
+8.  **Meta-Free Models** – You aim to avoid explicit metadata definitions, but certain SQL features (indexes, constraints) need metadata. How do you handle those while staying true to your principles?
+  - I'm backtracking on this. in fact I say:
+
+    > Also this same scheme could be used for CREATE statement column constraints
+    > ```
+    > name: Annotated[str, Constraint("UNIQUE")]
+    > ```
+9.  **Concurrency & Multi-Threading** – SQLite supports concurrent reads but locks on writes. How do you handle high write contention in a single-node scenario?
+  - Yes I am thinking about it.
