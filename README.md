@@ -124,10 +124,12 @@ to run perf regression tests exactly as they would be ran in pre-commit:
 
     pre-commit run pytest-check
 
-to redraw the benchmark baseline, first stash to get a clean baseline of HEAD, then run the benchmark in save mode:
+to redraw the benchmark baseline, first stash to get a clean baseline of HEAD,
+then simpulate what precommit would do (to warm up cpu, cause noise on sytem, etc),
+then run the benchmark in save mode:
 
     git stash
-    pre-commit run pytest-save-benchmarks
+    pre-commit run --hook-stage pre-commit; pre-commit run pytest-save-benchmarks --hook-stage post-commit
 
 On linux you can set kernel parameters to isolate the cpu and get kernel threads off the cpu:
 
