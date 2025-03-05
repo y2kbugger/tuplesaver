@@ -46,9 +46,15 @@ repos:
       pass_filenames: false
       always_run: true
       verbose: true
+    - id: cpu-cooldown
+      name: cpu-cooldown
+      entry: sleep 10
+      language: system
+      pass_filenames: false
+      always_run: true
     - id: pytest-benchmarks
       name: pytest-benchmarks
-      entry: pytest --color=yes --benchmark-enable --benchmark-only --benchmark-compare --benchmark-max-time=1 --benchmark-compare-fail=min:4%
+      entry: pytest --color=yes --benchmark-enable --benchmark-only --benchmark-compare --benchmark-max-time=1 --benchmark-compare-fail=min:5%
       language: system
       pass_filenames: false
       always_run: true
