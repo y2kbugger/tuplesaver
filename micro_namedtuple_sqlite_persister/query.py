@@ -136,6 +136,8 @@ def render(M: type[Row], fg: Fragment) -> str:
             return get_column_name(M, get_field_idx(fg))
         case _ if is_row_model(fg):
             return get_table_name(cast(type[Row], fg))
+        case _ if is_row_model(type(fg)):
+            return cast(tuple, fg)[0]
         case tuple():  # Match any tuple and deconstruct into elements
             return ' '.join(render(M, f) for f in fg)
         case int() | float():

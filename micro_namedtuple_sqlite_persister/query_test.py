@@ -174,6 +174,36 @@ def test_render_query_with_complex_where() -> None:
     """)
 
 
+def test_render_query_with_model_id_as_parameter() -> None:
+    mm = MyModel(42, "Apple", dt.datetime.now())
+    Model, sql = select(
+        MyModel,
+        where=eq(MyModel.id, mm.id),
+    )
+
+    assert Model == MyModel
+    assert sql == dd("""
+        SELECT id, name, date
+        FROM MyModel
+        WHERE (MyModel.id = 42)
+    """)
+
+
+def test_render_query_with_model_object_as_parameter() -> None:
+    mm = MyModel(42, "Apple", dt.datetime.now())
+    Model, sql = select(
+        MyModel,
+        where=eq(MyModel.id, mm),
+    )
+
+    assert Model == MyModel
+    assert sql == dd("""
+        SELECT id, name, date
+        FROM MyModel
+        WHERE (MyModel.id = 42)
+    """)
+
+
 def test_render_query_with_where_and_limit() -> None:
     """Test rendering a query with WHERE clause and LIMIT"""
     Model, sql = select(
