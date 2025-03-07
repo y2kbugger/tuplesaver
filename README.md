@@ -68,7 +68,20 @@ These are the only built in type mappings
 | str    | TEXT    |
 | bytes  | BLOB    |
 
-For other types we use a thin wrapper on top of Adapt/Convert api
+We also include by default the following mappings
+
+| Python   | SQLite            | Adapt/Convert      |
+|----------|-------------------|--------------------|
+| bool     | builtins.bool     | 1 -> x01, 0 -> x00 |
+| list     | builtins.list     | json dumps/loads   |
+| dict     | builtins.dict     | json dumps/loads   |
+| date     | datetime.date     | .isoformat()       |
+| datetime | datetime.datetime | .isoformat()       |
+
+Any other types will attempt to be pickled.
+
+
+If you want to customize how you serialize, we use a thin wrapper on top of Adapt/Convert api.
 https://docs.python.org/3/library/sqlite3.html#sqlite3-adapter-converter-recipes
 
     def adapt_date_iso(val):
@@ -98,6 +111,20 @@ So our api which wraps the above would look like this:
 
     register_adapt_convert(datetime.datetime, adapt_datetime_iso, convert_datetime_iso)
 
+### A note on JSON columns
+Currently we do not apply adapters/converters to json dumps, because without specifying a schema there is no way to reliably recover type info.
+
+Even something as simple as date, would be ambiguous, because it could be a date or str going in
+
+    {"date": "2021-01-01"}
+
+If we enable dt.datetime serialization, then the above could have been
+
+    dict(date=dt.datetime(2021, 1, 1))
+
+or
+
+    dict(date="2021-01-01")
 
 # Development
 Use poetry to install the dependencies:
@@ -182,13 +209,10 @@ If you need to update the precommit hooks, run the following:
     pre-commit autoupdate
 
 # WIP
-- handle build in containers as special cases
-  - list, dict, set, tuple
-  - Test that bare container raises
-  - will be stored as JSON, as long as adapt/convert has been specified
 - pull in object from other table as field (1:Many, but on the single side)
   - Add foreign key constraints to the table creation
     - through the metadata system?? appending to meta during ensure_table_created?
+  - test field base FK disambiguation
   - Test using model with int as foreign key rather than model to prevent recursion
     - e.g. int instead of Node
     - need to have more sophisticated tablename e.g. split on _
@@ -267,6 +291,7 @@ create table Person (
               self.update_(row)
               return row
     ```
+    I think there needs to be more testing for nested updates. I think this stops short when updating a row. like what if row has id but its related model is uninserted. I think "update" needs a recursive component, but "insert" does not. but maybe it is right.
 - consider add column constraints as annotations, like the select
   https://sqlite.org/syntax/column-def.html
   https://sqlite.org/syntax/column-constraint.html
@@ -274,7 +299,11 @@ create table Person (
 - I want to be able to explain model function. This would explain what the type annotation is., what the sqllite column type is, And why?. Like it would tell you that an INT is a built-in Python SQLite type., but a model is another model, And a list of a built-in type is stored as json., And then what it would attempt to pickle if there would be a pickle if it's unknown..
 This would help distinguish between a list of model and a list of something else. 
 This is cool cuz it blends casa no sql with SQL. We could probably even make a refactoring tool to switch between the two.
+- Maybe update should return the row back to match insert.
+  - but no reason so misleading?
 - how handle unions of two valid types, e.g. int | str
+  - Adapting would work fine, but conversion could be ambiguous
+  - I think we should just raise on this
 - expanded api for update/delete
 - extra-typical metadata
 - unique contraints

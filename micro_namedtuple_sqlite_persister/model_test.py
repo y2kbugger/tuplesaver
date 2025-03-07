@@ -104,6 +104,9 @@ def test_get_sqltypename() -> None:
     assert _sql_typename(str) == "TEXT"
     assert _sql_typename(float) == "REAL"
     assert _sql_typename(bytes) == "BLOB"
+    assert _sql_typename(bool) == "builtins.bool"
+    assert _sql_typename(list) == "builtins.list"
+    assert _sql_typename(dict) == "builtins.dict"
 
     class ModelA(NamedTuple):
         id: int | None
