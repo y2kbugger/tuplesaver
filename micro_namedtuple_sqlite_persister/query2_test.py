@@ -1,7 +1,9 @@
 from textwrap import dedent
 from typing import NamedTuple
 
-from .query2 import select, select_query
+import pytest
+
+from .query2 import QueryError, select, select_query
 
 
 class League(NamedTuple):
@@ -69,3 +71,32 @@ def test_select_on_table_with_multiple_implicit_joins() -> None:
         JOIN League team_league ON team.league = team_league.id
         WHERE team_league.leaguename = 'Big'
         """)
+
+
+def test_select_with_parameters() -> None:
+    @select_query(Athlete)
+    def athletes_in_league(league: str):
+        return f"WHERE {Athlete.team.league.leaguename} = {league}"
+
+    M, q = athletes_in_league()
+    assert q == dd("""
+        SELECT Athlete.id, Athlete.name, Athlete.team FROM Athlete
+        JOIN Team team ON Athlete.team = team.id
+        JOIN League team_league ON team.league = team_league.id
+        WHERE team_league.leaguename = :league
+        """)
+
+
+# Error cases
+
+
+def test_select_with_unused_parameter() -> None:
+    with pytest.raises(QueryError, match="Unused parameter"):
+
+        @select_query(Athlete)
+        def athletes_in_league(league: str, unused: str):
+            return f"WHERE {Athlete.team.league.leaguename} = {league}"
+
+
+# TODO: More edges
+# test_select_with_field_root_unmatched_with_model

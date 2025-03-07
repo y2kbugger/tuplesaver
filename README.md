@@ -54,6 +54,11 @@ I think we will want to use named placeholder when possible
 think about this for migrations
 https://martinfowler.com/articles/evodb.html
 
+Really need to read and understand this new annotation sematics coming in 3.14, as well as difference between inspect.get_nnotations and typing.get_type_hints
+https://docs.python.org/3/howto/annotations.html#annotations-howto
+https://github.com/python/cpython/issues/102405
+https://peps.python.org/pep-0649/
+
 
 ## Types
 https://docs.python.org/3/library/sqlite3.html#sqlite3-types
