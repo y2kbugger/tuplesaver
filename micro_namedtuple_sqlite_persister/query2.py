@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import inspect
 from textwrap import dedent
-from typing import Callable
+from typing import Any, Callable, Generic, TypeVar
 
 from micro_namedtuple_sqlite_persister.model import Row, get_meta
 
@@ -12,18 +12,25 @@ class QueryError(Exception):
     pass
 
 
-def select[R: type[Row]](Model: R) -> tuple[R, str]:
-    return Model, get_meta(Model).select
+R = TypeVar("R", bound="type[Row]")
 
 
-# TODO: I really want to use select for both, but static typing is not working out
-# maybe I could at least get a single import e.g. select and select.query
-def select_query[R: type[Row]](Model: R) -> Callable[[Callable], Callable[[], tuple[R, str]]]:
-    def decorator(func: Callable) -> Callable[[], tuple[R, str]]:
-        q = render_query_def_func(Model, func)
-        return lambda: (Model, q)
+class SelectDual(tuple[R, str], Generic[R]):
+    def __new__(cls, Model: R) -> SelectDual[R]:
+        # Create a tuple (Model, meta.select)
+        return super().__new__(cls, (Model, get_meta(Model).select))
 
-    return decorator
+    def __call__(self, func: Callable[..., Any]) -> Callable[[], tuple[R, str]]:
+        q = render_query_def_func(self[0], func)
+
+        def wrapper() -> tuple[R, str]:
+            return (self[0], q)
+
+        return wrapper
+
+
+def select(Model: R) -> SelectDual[R]:
+    return SelectDual(Model)
 
 
 def render_query_def_func(Model: type[Row], func: Callable) -> str:

@@ -644,6 +644,11 @@ FROM Athlete
 JOIN Team team ON Athlete.team = team.id
 ```
 
+## Alternate lambda syntax
+```python
+M, q = select(Athlete)(lambda: f"WHERE name LIKE '%e%'")
+```
+
 
 
 # Extra-typical metadata

@@ -3,7 +3,7 @@ from typing import NamedTuple
 
 import pytest
 
-from .query2 import QueryError, select, select_query
+from .query2 import QueryError, select
 
 
 class League(NamedTuple):
@@ -35,7 +35,7 @@ def test_select_on_table() -> None:
 
 
 def test_select_on_table_with_where() -> None:
-    @select_query(Athlete)
+    @select(Athlete)
     def big_leagues():
         return f"WHERE {Athlete.name} = 'Joe'"
 
@@ -47,7 +47,7 @@ def test_select_on_table_with_where() -> None:
 
 
 def test_select_on_table_with_join_caused_by_predicate() -> None:
-    @select_query(Athlete)
+    @select(Athlete)
     def athletes_on_red_team():
         return f"WHERE {Athlete.team.teamname} = 'Red Snickers'"
 
@@ -60,7 +60,7 @@ def test_select_on_table_with_join_caused_by_predicate() -> None:
 
 
 def test_select_on_table_with_multiple_implicit_joins() -> None:
-    @select_query(Athlete)
+    @select(Athlete)
     def athletes_in_big_league():
         return f"WHERE {Athlete.team.league.leaguename} = 'Big'"
 
@@ -74,7 +74,7 @@ def test_select_on_table_with_multiple_implicit_joins() -> None:
 
 
 def test_select_with_parameters() -> None:
-    @select_query(Athlete)
+    @select(Athlete)
     def athletes_in_league(league: str):
         return f"WHERE {Athlete.team.league.leaguename} = {league}"
 
@@ -93,7 +93,7 @@ def test_select_with_parameters() -> None:
 def test_select_with_unused_parameter() -> None:
     with pytest.raises(QueryError, match="Unused parameter"):
 
-        @select_query(Athlete)
+        @select(Athlete)
         def athletes_in_league(league: str, unused: str):
             return f"WHERE {Athlete.team.league.leaguename} = {league}"
 
