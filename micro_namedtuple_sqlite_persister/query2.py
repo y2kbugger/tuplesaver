@@ -12,9 +12,12 @@ def select[R: type[Row]](Model: R) -> tuple[R, str]:
     return Model, get_meta(Model).select
 
 
+# TODO: I really want to use select for both, but static typing is not working out
+# maybe I could at least get a single import e.g. select and select.query
 def select_query[R: type[Row]](Model: R) -> Callable[[Callable], Callable[[], tuple[R, str]]]:
-    def decorator(query_def_func: Callable) -> Callable[[], tuple[R, str]]:
-        return lambda: (Model, render_query_def_func(Model, query_def_func))
+    def decorator(func: Callable) -> Callable[[], tuple[R, str]]:
+        q = render_query_def_func(Model, func)
+        return lambda: (Model, q)
 
     return decorator
 
