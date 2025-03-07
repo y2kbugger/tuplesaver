@@ -158,7 +158,7 @@ class Engine:
         if row_id is None:
             raise ValueError("Cannot SELECT, id=None")
 
-        row = self.query(Model, get_meta(Model).select, (row_id,)).fetchone()
+        row = self.query(Model, get_meta(Model).select_by_id, (row_id,)).fetchone()
 
         if row is None:
             raise ValueError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
@@ -193,7 +193,7 @@ def make_model[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.
                 InnerModel = FieldType
                 inner_meta = get_meta(InnerModel)
 
-                inner_values = list(c.execute(inner_meta.select, (field_value,)).fetchone())
+                inner_values = list(c.execute(inner_meta.select_by_id, (field_value,)).fetchone())
 
                 # Defer remainder of current model
                 stack.append((Model, values, idx + 1, parent_values, parent_idx))

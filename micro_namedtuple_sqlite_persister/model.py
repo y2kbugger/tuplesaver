@@ -49,6 +49,7 @@ class Meta(NamedTuple):
     table_name: str
     is_table: bool
     select: str
+    select_by_id: str
     insert: str
     fields: tuple[MetaField, ...]
 
@@ -97,7 +98,8 @@ def get_meta(Model: type[Row]) -> Meta:
         for fieldname, (nullable, FieldType) in zip(fieldnames, unwrapped_types)
     )
 
-    select = f"SELECT {', '.join(Model._fields)} FROM {table_name} WHERE id = ?"
+    select = f"SELECT {', '.join(table_name+'.'+f for f in Model._fields)} FROM {table_name}"
+    select_by_id = select + " WHERE id = ?"
     insert = dedent(f"""
             INSERT INTO {table_name} (
                 {', '.join(fieldnames)}
@@ -110,6 +112,7 @@ def get_meta(Model: type[Row]) -> Meta:
         table_name=table_name,
         is_table=False,
         select=select,
+        select_by_id=select_by_id,
         insert=insert,
         fields=fields,
     )
