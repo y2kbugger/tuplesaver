@@ -87,6 +87,14 @@ def test_select_with_parameters() -> None:
         """)
 
 
+def test_select_decorator_runs_eagerly() -> None:
+    with pytest.raises(QueryError, match="must be either Fields of Models or parameters"):
+
+        @select(Athlete)
+        def malformed():
+            return f"WHERE {8888} = 1"
+
+
 # Error cases
 
 

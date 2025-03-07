@@ -63,6 +63,10 @@ def render_query_def_func(Model: type[Row], func: Callable) -> str:
                 for n in ast.walk(v.value):
                     if isinstance(n, (ast.Attribute, ast.Name)):
                         stack.append(n)
+                    elif isinstance(n, ast.Load):
+                        pass
+                    else:
+                        raise QueryError(f"All formatted values e.g. within `{{...}}`, must be either Fields of Models or parameters, not {n}: {type(n)}")
                 stack.reverse()
                 assert isinstance(stack[0], ast.Name), "The first part of the field name must be a class name"
                 assert all(isinstance(n, ast.Attribute) for n in stack[1:]), "The rest of the field name must be attributes"
@@ -107,10 +111,10 @@ def render_query_def_func(Model: type[Row], func: Callable) -> str:
                     query_parts.append(f":{name}")
                     unused_parameters.remove(name)
                 else:
-                    raise ValueError(f"Specify all columns as field paths from {Model.__name__}, e.g. {Model.__name__}.foo.bar.name")
+                    raise QueryError(f"Specify all columns as field paths from {Model.__name__}, e.g. {Model.__name__}.foo.bar.name")
             case _:
                 print("Unknown type", type(v), v)
-                raise ValueError("Unknown type in query f-string")
+                raise QueryError("Unknown type in query f-string")
 
     if len(unused_parameters) > 0:
         raise QueryError(f"Unused parameter(s): {', '.join(unused_parameters)}")
