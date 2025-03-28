@@ -29,6 +29,7 @@ def dd(sql: str) -> str:
 
 def test_select_on_table() -> None:
     M, q = select(Athlete)
+
     assert q == dd("""
         SELECT Athlete.id, Athlete.name, Athlete.team FROM Athlete
         """)
@@ -39,7 +40,7 @@ def test_select_on_table_with_where() -> None:
     def big_leagues():
         return f"WHERE {Athlete.name} = 'Joe'"
 
-    M, q = big_leagues()
+    M, q, _ = big_leagues()
     assert q == dd("""
         SELECT Athlete.id, Athlete.name, Athlete.team FROM Athlete
         WHERE Athlete.name = 'Joe'
@@ -51,7 +52,7 @@ def test_select_on_table_with_join_caused_by_predicate() -> None:
     def athletes_on_red_team():
         return f"WHERE {Athlete.team.teamname} = 'Red Snickers'"
 
-    M, q = athletes_on_red_team()
+    M, q, _ = athletes_on_red_team()
     assert q == dd("""
         SELECT Athlete.id, Athlete.name, Athlete.team FROM Athlete
         JOIN Team team ON Athlete.team = team.id
@@ -64,7 +65,7 @@ def test_select_on_table_with_multiple_implicit_joins() -> None:
     def athletes_in_big_league():
         return f"WHERE {Athlete.team.league.leaguename} = 'Big'"
 
-    M, q = athletes_in_big_league()
+    M, q, _ = athletes_in_big_league()
     assert q == dd("""
         SELECT Athlete.id, Athlete.name, Athlete.team FROM Athlete
         JOIN Team team ON Athlete.team = team.id
@@ -78,13 +79,15 @@ def test_select_with_parameters() -> None:
     def athletes_in_league(league: str):
         return f"WHERE {Athlete.team.league.leaguename} = {league}"
 
-    M, q = athletes_in_league()
+    M, q, p = athletes_in_league('Big')
     assert q == dd("""
         SELECT Athlete.id, Athlete.name, Athlete.team FROM Athlete
         JOIN Team team ON Athlete.team = team.id
         JOIN League team_league ON team.league = team_league.id
         WHERE team_league.leaguename = :league
         """)
+
+    assert p == {'league': 'Big'}
 
 
 def test_select_decorator_runs_eagerly() -> None:

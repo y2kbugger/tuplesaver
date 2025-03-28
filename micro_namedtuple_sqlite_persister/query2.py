@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import ast
 import inspect
+from functools import wraps
 from textwrap import dedent
-from typing import Any, Callable, Generic, TypeVar
+from typing import Any, Callable, Generic, ParamSpec, TypeVar
 
 from micro_namedtuple_sqlite_persister.model import Row, get_meta
 
@@ -13,6 +14,7 @@ class QueryError(Exception):
 
 
 R = TypeVar("R", bound="type[Row]")
+P = ParamSpec("P")
 
 
 class SelectDual(tuple[R, str], Generic[R]):
@@ -20,11 +22,14 @@ class SelectDual(tuple[R, str], Generic[R]):
         # Create a tuple (Model, meta.select)
         return super().__new__(cls, (Model, get_meta(Model).select))
 
-    def __call__(self, func: Callable[..., Any]) -> Callable[[], tuple[R, str]]:
+    def __call__(self, func: Callable[P, Any]) -> Callable[P, tuple[R, str, dict[str, Any]]]:
         q = render_query_def_func(self[0], func)
+        argnames = inspect.signature(func).parameters.keys()
 
-        def wrapper() -> tuple[R, str]:
-            return (self[0], q)
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> tuple[R, str, dict[str, Any]]:
+            combined_kwargs = {**dict(zip(argnames, args)), **kwargs}
+            return (self[0], q, combined_kwargs)
 
         return wrapper
 
