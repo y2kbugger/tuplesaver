@@ -7,6 +7,7 @@ import pytest
 from .model import (
     Meta,
     MetaField,
+    ModelDefinitionError,
     _sql_columndef,
     _sql_typename,
     _unwrap_optional_type,
@@ -198,7 +199,7 @@ def test_clear_modelmeta_registrations() -> None:
 
 def test_column_definition() -> None:
     assert _sql_columndef('id', True, int) == "id [INTEGER] PRIMARY KEY NOT NULL"
-    with pytest.raises(TypeError):
+    with pytest.raises(ModelDefinitionError):
         _sql_columndef('id', False, int)
 
     assert _sql_columndef("value", False, float) == "value [REAL] NOT NULL"

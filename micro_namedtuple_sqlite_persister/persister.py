@@ -6,14 +6,24 @@ import sqlite3
 from collections.abc import Sequence
 from typing import Any, cast, overload
 
-from .model import Row, get_meta, is_registered_fieldtype, is_registered_table_model, is_row_model, register_table_model
+from .model import (
+    Row,
+    get_meta,
+    is_registered_fieldtype,
+    is_registered_table_model,
+    is_row_model,
+    register_table_model,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class FieldZeroIdRequired(Exception):
     def __init__(self, model_name: str, field_zero_name: str, field_zero_typehint: Any) -> None:
-        super().__init__(self, f"Field 0 of {model_name} is required to be `id: int | None` but instead is `{field_zero_name}: {field_zero_typehint}`")
+        super().__init__(
+            self,
+            f"Field 0 of {model_name} is required to be `id: int | None` but instead is `{field_zero_name}: {field_zero_typehint}`",
+        )
 
 
 class TableSchemaMismatch(Exception):
@@ -35,6 +45,14 @@ class UnregisteredFieldTypeError(Exception):
         else:
             msg = f"Field Type {field_type} has not been registered with an adapter and converter.\n `register_adapt_convert` to register it"
         super().__init__(msg)
+
+
+class IdNoneError(ValueError):
+    pass
+
+
+class IdNotFoundError(ValueError):
+    pass
 
 
 class Engine:
@@ -118,7 +136,7 @@ class Engine:
 
     def update(self, row: Row) -> None:
         if row[0] is None:
-            raise ValueError("Cannot UPDATE, id=None")
+            raise IdNoneError("Cannot UPDATE, id=None")
         query = f"""
             UPDATE {row.__class__.__name__}
             SET {', '.join(f"{f} = ?" for f in row._fields)}
@@ -126,7 +144,7 @@ class Engine:
             """
         cur = self.connection.execute(query, (*row, row[0]))
         if cur.rowcount == 0:
-            raise ValueError(f"Cannot UPDATE, no row with id={row[0]} in table `{row.__class__.__name__}`")
+            raise IdNotFoundError(f"Cannot UPDATE, no row with id={row[0]} in table `{row.__class__.__name__}`")
 
     @overload
     def delete(self, Model: type[Row], row_id: int | None) -> None: ...
@@ -144,24 +162,24 @@ class Engine:
             Model = Model_or_row
 
         if row_id is None:
-            raise ValueError("Cannot DELETE, id=None")
+            raise IdNoneError("Cannot DELETE, id=None")
         query = f"""
             DELETE FROM {Model.__name__}
             WHERE id = ?
             """
         cur = self.connection.execute(query, (row_id,))
         if cur.rowcount == 0:
-            raise ValueError(f"Cannot DELETE, no row with id={row_id} in table `{Model.__name__}`")
+            raise IdNotFoundError(f"Cannot DELETE, no row with id={row_id} in table `{Model.__name__}`")
 
     ##### Reading
     def get[R: Row](self, Model: type[R], row_id: int | None) -> R:
         if row_id is None:
-            raise ValueError("Cannot SELECT, id=None")
+            raise IdNoneError("Cannot SELECT, id=None")
 
         row = self.query(Model, get_meta(Model).select_by_id, (row_id,)).fetchone()
 
         if row is None:
-            raise ValueError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
+            raise IdNotFoundError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
 
         return row
 
@@ -210,7 +228,7 @@ def make_model[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.
                 return built
 
     # Should never reach here if input data is valid
-    raise RuntimeError("Stack unexpectedly empty before returning the root model.")
+    raise AssertionError("Stack unexpectedly empty before returning the root model.")
 
 
 class TypedCursorProxy[R: Row](sqlite3.Cursor):

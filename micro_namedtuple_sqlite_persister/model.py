@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 type Row = NamedTuple
 
 
+class ModelDefinitionError(Exception):
+    pass
+
+
 def is_row_model(cls: object) -> bool:
     """Test at runtime whether an object is a Row, e.g. a NamedTuple model"""
     if not isinstance(cls, type):
@@ -147,7 +151,7 @@ def _sql_typename(FieldType: type) -> str:
 def _sql_columndef(field_name: str, nullable: bool, FieldType: type) -> str:
     if field_name == "id":
         if FieldType is not int or not nullable:
-            raise TypeError("id field must be of type int | None")
+            raise ModelDefinitionError("id field must be of type `int | None`")
         return "id [INTEGER] PRIMARY KEY NOT NULL"
 
     if nullable:

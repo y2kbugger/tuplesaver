@@ -351,8 +351,6 @@ This is cool cuz it blends casa no sql with SQL. We could probably even make a r
   - Is there a connection setting (check same thread) that can be used to at least detect this?
   - https://www.sqlite.org/wal.html
 - Benchmark and consider joined loads
-- All exceptions raised to client api should have a custom exception type
-  - especially in query builder, those give some pretty cryptic errors
 - approx 20% perf boost for execute many on 20k rows
   - not worth complexity compared to other things to spend time on
 - Minimize stack depth of engine.insert for deep recursive models e.g. depth=2000 BOM
