@@ -234,7 +234,7 @@ class TypedCursorProxy[R: Row](sqlite3.Cursor):
     def __getattr__(self, name: str) -> Any:
         return getattr(self.cursor, name)
 
-    def fetchone(self) -> R:
+    def fetchone(self) -> R | None:
         return self.cursor.fetchone()
 
     def fetchall(self) -> list[R]:
