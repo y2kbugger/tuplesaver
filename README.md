@@ -1,4 +1,19 @@
-# Notes
+# Tuple Saver
+Tuple Saver persists and retrieves native python NamedTuples to SQLite3.
+
+## Quick Start
+Add the library to your poetry project:
+
+    poetry add git+https://github.com/y2kbugger/tuplesaver.git
+
+or if you use something else to manage you .venv use that or pip instead.
+
+    pip install git+https://github.com/y2kbugger/tuplesaver.git
+
+
+See the `example.ipynb` notebook for usage examples.
+
+
 ## Target Applications Constraints
 - Python app + sqlite db served from a single server.
 - The app will ONLY access the db.
@@ -34,17 +49,8 @@ If you can meet the above constraints, there are tangible benefits.
   - e.g. through attributes, type hints, or parameters
 - no dependencies
 
-## Outstanding Design Questions
-- Tolerance to out-of-band schema changes
-  1. Be fully compatible out-of-band changes to the db schema
-    - adding indexes, constraints, etc.
-    - interop with handwritten queries to avoid stringly typed column names.
-  2. Narrow scope to allow stonger assumptions
-    - Enhanced predictability of db responses, e.g. contraints allowed or now? triggers?
-    - Simplified migrations, because we know nothing happened out-of-band
-    - Only support querys that can be created from our query builder.
 
-## Reference
+# Notes
 https://docs.python.org/3/library/sqlite3.html
 https://docs.python.org/3/library/sqlite3.html#sqlite3-placeholders
 I think we will want to use named placeholder when possible
@@ -140,16 +146,14 @@ Install pre-commit hooks:
 
     $ pre-commit install --hook-type pre-commit --hook-type pre-push --hook-type post-commit
 
-then activate and run the tests via vscode or the cli:
+then activate your terminal and run the tests via vscode or the cli:
 
-    $ poetry shell
     $ pytest
 
-There is a test Task setup in vscode that, you can add a keybinding to run it, e.g.
+There is a test Task setup in vscode. You maybe wish to add a keybinding to run it, e.g.
 
     [Ctrl]+[Shift]+G
 
-Interactively code with the python API in the `example.ipynb` notebook. This should include many examples.
 
 
 ## Benchmarking
@@ -649,6 +653,8 @@ M, q = select(Athlete)(lambda: f"WHERE name LIKE '%e%'")
 
 
 
+
+
 # Extra-typical metadata
 Some features requiring metadata than can't expressed in standard typehints
 - unique constraints
@@ -671,7 +677,7 @@ Considerations for extra-typical metadata
       )
   ```
 
-  ## Upsert
+# Upsert
 ```sql
 create table XXX (
     id integer primary key,
@@ -713,9 +719,9 @@ engine.upsert(XXX(name='a', place='c', value=888))
 ```
 
 
-## expanded api for update/delete
+# expanded api for update/delete
 
-### Delete
+## Delete
 To delete on id
 ```sql
 delete from XXX where id = 42;
@@ -738,7 +744,7 @@ engine.delete(XXX, where=and_(eq(XXX.name == 'a'), eq(XXX.place,'b')))
 engine.delete
 ```
 
-### Update
+## Update
 To only some fields, on a single existing row, pull id from row:
 ```python
 engine.update(row, set={MyModel.name: "Apple"})
@@ -754,7 +760,7 @@ engine.update(MyModel, set=(MyModel.name, "Apple"), where=gt(MyModel.score, 42))
 ```sql
 update MyModel set name = 'Apple' where score > 42;
 ```
-### Backpop
+# Backpop
 Thinking to not do this, circular references might make it impossible anyway. just make it easy to fetch.
 It also side steps the issue of double querying to fill in the forward reference/caching and wiring up the FK to the backprops. it actually forces everying to be a circular reference which isn't possible.
 - backpop
