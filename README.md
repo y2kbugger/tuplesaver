@@ -266,6 +266,8 @@ create table Person (
 ```
 
 # Bugs
+- a single in-memory-but-unpersisted, e.g. without ID model will get created/inserted more than once with difference ID's if you call recursive save when it if referenced twice. Could temporarily map id of object to id of the row when first inserted.
+- Test types on select (both decorator and non)
 - but instead is `setting_name: <class 'str'>`")
   - > but instead is `setting_name: str`")
   - not sure how to make it look exactly like the type hint
@@ -313,7 +315,6 @@ This is cool cuz it blends casa no sql with SQL. We could probably even make a r
 - how handle unions of two valid types, e.g. int | str
   - Adapting would work fine, but conversion could be ambiguous
   - I think we should just raise on this
-- expanded api for update/delete
 - extra-typical metadata
 - unique contraints
   - requires extra-typical metadata
@@ -360,6 +361,10 @@ This is cool cuz it blends casa no sql with SQL. We could probably even make a r
 - Minimize stack depth of engine.insert for deep recursive models e.g. depth=2000 BOM
 - Can persister.py have to imports from query.py?
   - NO
+
+## likely will not implement
+- a true cursor proxy and fetchoneonly helper/wrapper
+  - cost penalty for get row benchmark (maybe test again later)
 
 ## will not implement
 - Add passthrough for commit? e.g. engine.commit

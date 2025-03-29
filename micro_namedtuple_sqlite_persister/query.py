@@ -1,150 +1,131 @@
-from _collections import _tuplegetter  # type: ignore
-from collections.abc import Sequence
-from typing import Any, cast
+from __future__ import annotations
 
-from .model import Row, is_row_model
+import ast
+import inspect
+from functools import wraps
+from textwrap import dedent
+from typing import Any, Callable
 
-
-def get_field_idx(field: Any) -> int:
-    """Get the index of a field in a NamedTuple
-
-    this is the C-Optimized version of the tuple getter
-    the python stub is a property and currently unsupported
-    see python/collections/__init__.py
-
-    try:
-        from _collections import _tuplegetter
-    except ImportError:
-        _tuplegetter = lambda index, doc: property(_itemgetter(index), doc=doc)
-    """
-    # ensure we are using the C-optimized version
-    c_optimized_field_type = "<class 'collections._tuplegetter'>"
-    our_field_type = str(type(field))
-    assert our_field_type == c_optimized_field_type, f'Expected {c_optimized_field_type}, got {our_field_type!r}'
-    assert isinstance(field, _tuplegetter), f'Expected {_tuplegetter!r} got {field!r}'
-
-    return field.__reduce__()[1][0]
+from micro_namedtuple_sqlite_persister.model import Row, get_meta
 
 
-def get_column_name(Model: type[Row], idx: int) -> str:
-    return f"{Model.__name__}.{Model._fields[idx]}"
+class QueryError(Exception):
+    pass
 
 
-def get_table_name(Model: type[Row]) -> str:
-    return Model.__name__
+class SelectDual[R: Row](tuple[type[R], str]):
+    def __new__(cls, Model: type[R]) -> SelectDual[R]:
+        # Create a tuple (Model, meta.select)
+        return super().__new__(cls, (Model, get_meta(Model).select))
+
+    def __call__[**P](self, func: Callable[P, Any]) -> Callable[P, tuple[type[R], str, dict[str, Any]]]:
+        q = render_query_def_func(self[0], func)
+        argnames = inspect.signature(func).parameters.keys()
+
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> tuple[type[R], str, dict[str, Any]]:
+            combined_kwargs = {**dict(zip(argnames, args)), **kwargs}
+            return (self[0], q, combined_kwargs)
+
+        return wrapper
 
 
-# fmt: off
-class SELECT(tuple): ...
-class CSV(tuple): ...  # comma separated values
-class WHERE(tuple): ...
-class ORDERBY(tuple): ...
-class LIMIT(tuple): ...
-class LOGIC(tuple): ...  # logical operator
-class STRLIT(str): ...  # string literal
-class CMP(tuple): # comparison
-    def __new__(cls, args: tuple) -> tuple:
-        left, op, right = args
-        if isinstance(left, str):
-            left = STRLIT(left)
-        if isinstance(right, str):
-            right = STRLIT(right)
-        return super().__new__(cls, (left, op, right))
-# fmt: on
-
-type Field = _tuplegetter
-type Scalar = Field | str | int | float
-type Frag = Field | Scalar | CSV
-type Fragment = Sequence[Frag | Fragment] | Frag
+def select[R: Row](Model: type[R]) -> SelectDual[R]:
+    return SelectDual.__new__(SelectDual, Model)
 
 
-def select[R: Row](Model: type[R], *, where: Fragment | None = None, limit: int | None = None, order_by: Fragment | None = None) -> tuple[type[R], str]:
-    """Produce a rendered SELECT query"""
-    select_fragment = _select(Model, where=where, limit=limit, order_by=order_by)
-    sql = render(Model, select_fragment)
-    return Model, sql
+def render_query_def_func(Model: type[Row], func: Callable) -> str:
+    source = inspect.getsource(func)
+    source = dedent(source)
+    tree = ast.parse(source)
+    fbody = tree.body[0].body  # type: ignore
+    assert len(fbody) == 1, "The query def must only contain a single expression"
+    expr = fbody[0]
 
+    js: ast.JoinedStr = expr.value
+    query_parts: list[str] = []
+    joins: dict[str, str] = {}
 
-def eq(left: Scalar, right: Scalar) -> Fragment:
-    return CMP((left, '=', right))
+    parameter_names = set(inspect.signature(func).parameters.keys())
+    unused_parameters = parameter_names.copy()
 
+    basemeta = get_meta(Model)
+    for v in js.values:
+        match v:
+            case ast.Constant():
+                assert isinstance(v.value, str), "This is supposed to be a string part of an f-string"
+                query_parts.append(v.value)
+            case ast.FormattedValue():
+                # We could use formats and conversions to do special things later if we want
+                assert v.format_spec is None, "Do not include format specifiers in the field names. e.g. {name:0.2f}"
+                assert v.conversion == -1, "Do not include conversion  in the field names. e.g. {!r}"
 
-def gt(left: Scalar, right: Scalar) -> Fragment:
-    """Greater than comparison"""
-    return CMP((left, '>', right))
+                stack = []
+                for n in ast.walk(v.value):
+                    if isinstance(n, (ast.Attribute, ast.Name)):
+                        stack.append(n)
+                    elif isinstance(n, ast.Load):
+                        pass
+                    else:
+                        raise QueryError(f"All formatted values e.g. within `{{...}}`, must be either Fields of Models or parameters, not {n}: {type(n)}")
+                stack.reverse()
+                assert isinstance(stack[0], ast.Name), "The first part of the field name must be a class name"
+                assert all(isinstance(n, ast.Attribute) for n in stack[1:]), "The rest of the field name must be attributes"
 
+                name = stack[0].id
+                if Model.__name__ == name:
+                    ModelName = name
+                    # This is correct root model for a field specification
+                    found_intermediatte_field = None
+                    if len(stack) > 2:
+                        join_alias_parts = []
+                        meta = basemeta
+                        last_jalias = basemeta.table_name
+                        for attrlevel in stack[1:-1]:
+                            join_alias_parts.append(attrlevel.attr)
+                            # TODO: save this looping by add a field by name dict to meta
+                            for field in meta.fields:
+                                if field.name == attrlevel.attr:
+                                    found_intermediatte_field = field
+                                    meta = get_meta(field.type)
+                                    jalias = "_".join(join_alias_parts)
+                                    joins[jalias] = f"JOIN {meta.table_name} {jalias} ON {last_jalias}.{field.name} = {jalias}.id"
+                                    last_jalias = "_".join(join_alias_parts)
 
-def lt(left: Scalar, right: Scalar) -> Fragment:
-    """Less than comparison"""
-    return CMP((left, '<', right))
+                                    break
+                            assert found_intermediatte_field is not None, f"Field {attrlevel.attr} not found in {ModelName}"
+                        jalias = "_".join(join_alias_parts)
+                        table_or_alias = jalias
+                        finalmeta = meta
+                    else:
+                        table_or_alias = basemeta.table_name
+                        finalmeta = basemeta
+                    final_field = None
+                    # TODO: save this looping by add a field by name dict to meta
+                    for field in finalmeta.fields:
+                        if field.name == stack[-1].attr:
+                            final_field = field
+                            break
+                    assert final_field is not None, f"Field {stack[-1].attr} not found in {ModelName}"
+                    query_parts.append(table_or_alias + "." + final_field.name)
+                elif name in parameter_names:
+                    query_parts.append(f":{name}")
+                    unused_parameters.remove(name)
+                else:
+                    raise QueryError(f"Specify all columns as field paths from {Model.__name__}, e.g. {Model.__name__}.foo.bar.name")
+            case _:
+                print("Unknown type", type(v), v)
+                raise QueryError("Unknown type in query f-string")
 
+    if len(unused_parameters) > 0:
+        raise QueryError(f"Unused parameter(s): {', '.join(unused_parameters)}")
 
-def gte(left: Scalar, right: Scalar) -> Fragment:
-    """Greater than or equal comparison"""
-    return CMP((left, '>=', right))
+    select = get_meta(Model).select
+    query_predicate = dedent("".join(query_parts)).strip()
+    query_parts = [query_predicate]
 
-
-def lte(left: Scalar, right: Scalar) -> Fragment:
-    """Less than or equal comparison"""
-    return CMP((left, '<=', right))
-
-
-def ne(left: Scalar, right: Scalar) -> Fragment:
-    """Not equal comparison"""
-    return CMP((left, '!=', right))
-
-
-def or_(left: Fragment, right: Fragment) -> Fragment:
-    return LOGIC((left, 'OR', right))
-
-
-def and_(left: Fragment, right: Fragment) -> Fragment:
-    return LOGIC((left, 'AND', right))
-
-
-def _select(Model: type[Row], *, where: Fragment | None = None, limit: int | None = None, order_by: Fragment | None = None) -> Fragment:
-    """Create a SELECT statement"""
-    cols = CSV(Model._fields)
-    select = ('SELECT', cols, 'FROM', Model)
-    if where is not None:
-        select = (*select, WHERE(('WHERE', where)))
-    if order_by is not None:
-        select = (*select, ORDERBY(('ORDER BY', order_by)))
-    if limit is not None:
-        select = (*select, LIMIT(("LIMIT", limit)))
-    return SELECT(select)
-
-
-def render(M: type[Row], fg: Fragment) -> str:
-    match fg:
-        case SELECT((select, cols, frm, model, *rest)):  # Deconstruct SELECT statement
-            return f"{select} {render(M, cols)}\n{frm} {render(M, model)}" + (f"\n{'\n'.join(render(M, f) for f in rest)}" if rest else "")
-        case CSV(fields):  # Deconstruct CSV into fields
-            return ', '.join(fields)
-        case CMP((left, op, right)):  # Deconstruct CMP into left, op, and right
-            return f"({render(M, left)} {op} {render(M, right)})"
-        case LOGIC((left, operator, right)):  # Deconstruct LOGIC into left and right
-            return f"({render(M, left)} {operator} {render(M, right)})"
-        case WHERE((keyword, condition)):  # Deconstruct WHERE into keyword and condition
-            return f"{keyword} {render(M, condition)}"
-        case ORDERBY((keyword, fields)):  # Deconstruct ORDERBY into keyword and fields
-            return f"{keyword} {render(M, fields)}"
-        case LIMIT((keyword, value)):  # Deconstruct LIMIT into keyword and value
-            return f"{keyword} {value}"
-        case _tuplegetter():
-            assert M is not None
-            return get_column_name(M, get_field_idx(fg))
-        case _ if is_row_model(fg):
-            return get_table_name(cast(type[Row], fg))
-        case _ if is_row_model(type(fg)):
-            return cast(tuple, fg)[0]
-        case tuple():  # Match any tuple and deconstruct into elements
-            return ' '.join(render(M, f) for f in fg)
-        case int() | float():
-            return str(fg)
-        case STRLIT():
-            return f"'{fg}'"
-        case str():
-            return fg
-        case _:
-            raise TypeError(f"Unexpected type: {type(fg)}")
+    join_clauses = joins.values()
+    if len(join_clauses) > 0:
+        query_parts.insert(0, "\n".join(join_clauses) + "\n")
+    query_parts.insert(0, select + "\n")
+    return "".join(query_parts)

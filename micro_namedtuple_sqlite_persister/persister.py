@@ -4,6 +4,7 @@ import logging
 import re
 import sqlite3
 from collections.abc import Sequence
+from textwrap import dedent
 from typing import Any, cast, overload
 
 from .model import (
@@ -82,10 +83,10 @@ class Engine:
             if not is_registered_fieldtype(field.type):
                 raise UnregisteredFieldTypeError(field.type)
 
-        query = f"""
+        query = dedent(f"""
             CREATE TABLE {meta.table_name} (
             {', '.join(f.sql_columndef for f in meta.fields)}
-            )"""
+            )""").strip()
 
         try:
             self.connection.execute(query)
@@ -137,11 +138,11 @@ class Engine:
     def update(self, row: Row) -> None:
         if row[0] is None:
             raise IdNoneError("Cannot UPDATE, id=None")
-        query = f"""
+        query = dedent(f"""
             UPDATE {row.__class__.__name__}
             SET {', '.join(f"{f} = ?" for f in row._fields)}
             WHERE id = ?
-            """
+            """).strip()
         cur = self.connection.execute(query, (*row, row[0]))
         if cur.rowcount == 0:
             raise IdNotFoundError(f"Cannot UPDATE, no row with id={row[0]} in table `{row.__class__.__name__}`")
@@ -163,10 +164,10 @@ class Engine:
 
         if row_id is None:
             raise IdNoneError("Cannot DELETE, id=None")
-        query = f"""
+        query = dedent(f"""
             DELETE FROM {Model.__name__}
             WHERE id = ?
-            """
+            """).strip()
         cur = self.connection.execute(query, (row_id,))
         if cur.rowcount == 0:
             raise IdNotFoundError(f"Cannot DELETE, no row with id={row_id} in table `{Model.__name__}`")
