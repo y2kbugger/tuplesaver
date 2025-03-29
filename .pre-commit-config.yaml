@@ -62,7 +62,7 @@ repos:
     - id: pytest-save-benchmarks
       stages: [post-commit]
       name: pytest-save-benchmarks
-      entry: pytest --color=yes --benchmark-enable --benchmark-autosave --benchmark-max-time=5 --benchmark-only
+      entry: pytest --color=yes --benchmark-enable --benchmark-autosave --benchmark-max-time=1 --benchmark-only
       language: system
       pass_filenames: false
       always_run: true
