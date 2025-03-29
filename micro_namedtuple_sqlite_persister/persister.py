@@ -233,7 +233,7 @@ def make_model[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.
 
 class TypedCursorProxy[R: Row](sqlite3.Cursor):
     @staticmethod
-    def proxy_cursor(Model: type[R], cursor: sqlite3.Cursor) -> TypedCursorProxy:
+    def proxy_cursor(Model: type[R], cursor: sqlite3.Cursor) -> TypedCursorProxy[R]:
         def row_fac(c: sqlite3.Cursor, r: sqlite3.Row) -> R:
             # Disable the row factory to let us handle making the inner models ourselves
             root_row_factory = c.row_factory
@@ -249,14 +249,8 @@ class TypedCursorProxy[R: Row](sqlite3.Cursor):
         cursor.row_factory = row_fac
         return cast(TypedCursorProxy, cursor)
 
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self.cursor, name)
+    def fetchone(self) -> R | None: ...
 
-    def fetchone(self) -> R | None:
-        return self.cursor.fetchone()
+    def fetchall(self) -> list[R]: ...
 
-    def fetchall(self) -> list[R]:
-        return self.cursor.fetchall()
-
-    def fetchmany(self, size: int | None = 1) -> list[R]:
-        return self.cursor.fetchmany(size)
+    def fetchmany(self, size: int | None = 1) -> list[R]: ...

@@ -495,7 +495,7 @@ def test_engine_query_cursorproxy_getattr_maintains_typehints(engine: Engine) ->
     sql = "SELECT 1 as id, 'Alice' as name, 30 as age;"
 
     cur = engine.query(ModelX, sql)
-    assert_type(cur.fetchone(), ModelX)
+    assert_type(cur.fetchone(), ModelX | None)
     assert_type(cur.fetchall(), list[ModelX])
     assert_type(cur.fetchmany(1), list[ModelX])
     assert_type(cur.rowcount, int)
@@ -512,7 +512,7 @@ def test_that_row_factory_doesnt_leak_to_other_cursors(engine: Engine) -> None:
     # Engine.query gives back Model typed rows
     cur = engine.query(ModelX, sql)
     row = cur.fetchone()
-    assert_type(row, ModelX)
+    assert_type(row, ModelX | None)
     assert isinstance(row, ModelX)
 
     # Engine.connection.cursor still gives back raw rows
@@ -559,6 +559,7 @@ class TestRelatedTable:
         person = engine.insert(person)
 
         row = engine.query(self.Person, "SELECT * FROM Person;").fetchone()
+        assert row is not None
         assert row == self.Person(1, "Alice", self.Team(1, "Team A"))
         assert person == self.Person(*row)
 
@@ -625,6 +626,7 @@ class TestOptionalRelatedTable:
         person = engine.insert(person)
 
         row = engine.query(self.Person, "SELECT * FROM Person;").fetchone()
+        assert row is not None
         assert row == self.Person(1, "Alice", self.Team(1, "Team A"))
         assert person == self.Person(*row)
 
@@ -636,6 +638,7 @@ class TestOptionalRelatedTable:
         person = engine.insert(person)
 
         row = engine.query(self.Person, "SELECT * FROM Person;").fetchone()
+        assert row is not None
         assert row == self.Person(1, "Alice", None)
         assert person == self.Person(*row)
 
