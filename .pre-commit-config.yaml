@@ -48,7 +48,7 @@ repos:
       verbose: true
     - id: cpu-cooldown
       name: cpu-cooldown
-      entry: sleep 10
+      entry: sleep 1
       language: system
       pass_filenames: false
       always_run: true
