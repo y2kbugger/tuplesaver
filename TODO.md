@@ -2,11 +2,22 @@
 
 # Bugs
 - a single in-memory-but-unpersisted, e.g. without ID model will get created/inserted more than once with difference ID's if you call recursive save when it if referenced twice. Could temporarily map id of object to id of the row when first inserted.
+  - Could we instrument sqlite during tests to regression test this???
 - but instead is `setting_name: <class 'str'>`")
   - > but instead is `setting_name: str`")
   - not sure how to make it look exactly like the type hint
+- Don't do this, violates don't wrap unesscarityly. if echo_sql: self.connection.set_trace_callback(print)
+- Dedent create statement
 
-# Tests
+# Testing
+- I want to instrument sqlite to log and profile queries.
+- Test cleanup
+  - Harmonize the def-scoped Model class names in the tests
+  - use test specific Models in a small scope
+  - refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
+  - group tests, and promote _some_ model reuse if it makes sense
+  - move "function" end to end tests together, ensure we have good unit tests in the module specific test files.
+  - Start tracking coverage?
 - Test types on select (both decorator and non)
 - Test what happens when you have two adapters, one more specific than the other
 - test for fetchone returning none
@@ -17,6 +28,8 @@
 - Test can get using model with int as FK rather than Model to stop recursive loading
   e.g. int instead of Node in a Person_IntFK model
 - Test you can have two field of same type,e.g. right_node, left_node
+- Benchmark and test connection creation and closing
+- use the assert_type from typing to check type hints throught all tests
 
 # Backlog
 - Add foreign key constraints to the table creation
@@ -56,7 +69,6 @@ This is cool cuz it blends casa no sql with SQL. We could probably even make a r
 - how handle unions of two valid types, e.g. int | str
   - Adapting would work fine, but conversion could be ambiguous
   - I think we should just raise on this
-- extra-typical metadata
 - unique contraints
   - requires extra-typical metadata
 - upsert
@@ -65,23 +77,16 @@ This is cool cuz it blends casa no sql with SQL. We could probably even make a r
   - requires a way to specify which columns the unique constraint is on
 
 ## Engineering
-- Extract TODO from README.md
+- Extract DESIGN.md from TODO.md
+  - Move anything speculative there
+  - really go through todos with fine tooth comb and remove completed items
+  - make TODO.md a clean short concise set of user stories instead of rambling.
+  - make as many descisions as possible
+  - act and complete any concrete todos like bugs/engineering.
 - Move user notes all to example.ipynb
-- Don't do this, violates don't wrap unesscarityly. if echo_sql: self.connection.set_trace_callback(print)
-- Dedent create statement
-- Benchmark and test connection creation and closing
-- Test cleanup
-  - Harmonize the def-scoped Model class names in the tests
-  - use test specific Models in a small scope
-  - refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
-  - group tests, and promote _some_ model reuse if it makes sense
-  - move "function" end to end tests together, ensure we have good unit tests in the module specific test files.
-  - Start tracking coverage?
 - maybe simplify "included adapters" to not be dict, but just a function with defs
   - maybe put in own file?
   - maybe don't make this optional, just have a default set of adapters
-- use the assert_type from typing to check type hints throught all tests
-- Store tablename in meta
 - could we store map from _tuplegetter -> MetaField in Meta and get_meta_by_tuplegetter(tg) -> Meta, this would allow writing multi table quyeries using Model.name, Model2.value etc
 - Use extra-typical metadata to store standard queries\
   - delete, update by id, insert

@@ -162,7 +162,7 @@ to run perf regression tests exactly as they would be ran in pre-commit:
     pre-commit run pytest-check
 
 to redraw the benchmark baseline, first stash to get a clean baseline of HEAD,
-then simpulate what precommit would do (to warm up cpu, cause noise on sytem, etc),
+then simulate what precommit would do (to warm up cpu, cause noise on sytem, etc),
 then run the benchmark in save mode:
 
     git stash
