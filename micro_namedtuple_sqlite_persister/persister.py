@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from textwrap import dedent
 from typing import Any, cast, overload
 
+# NOTE: persister.py should only know about .model, but not .query
 from .model import (
     Row,
     get_meta,
