@@ -24,7 +24,6 @@ ipykernel = "*"
 pandas = "*"
 matplotlib = "^3.10.3"
 networkx = "^3.5"
-pygraphviz = "^1.14"
 
 [tool.poetry.group.profiling.dependencies]
 snakeviz = "^2.2.2"
