@@ -1,6 +1,5 @@
 {
   "recommendations": [
-    "gruntfuggly.todo-tree",
     "charliermarsh.ruff",
     "ms-python.vscode-pylance",
     "ms-python.python",
