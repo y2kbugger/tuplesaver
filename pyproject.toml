@@ -22,13 +22,13 @@ pytest-benchmark = "^5.1.0"
 [tool.poetry.group.examplenotebook.dependencies]
 ipykernel = "*"
 pandas = "*"
-matplotlib = "^3.10.0"
-networkx = "^3.4.2"
+matplotlib = "^3.10.3"
+networkx = "^3.5"
 pygraphviz = "^1.14"
 
 [tool.poetry.group.profiling.dependencies]
 snakeviz = "^2.2.2"
-scalene = "^1.5.49"
+scalene = "^1.5.51"
 
 [tool.pytest.ini_options]
 minversion = "8.0"
