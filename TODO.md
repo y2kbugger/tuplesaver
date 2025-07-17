@@ -4,6 +4,8 @@
 - a single in-memory-but-unpersisted, e.g. without ID model will get created/inserted more than once with difference ID's if you call recursive save when it if referenced twice. Could temporarily map id of object to id of the row when first inserted.
   - Could we instrument sqlite during tests to regression test this???
   - Consider how this interacts with 2.0 save/insert API
+    - maybe just raise if id is None, requiring the user to explicitly insert it first
+    - then we can ditch recursive save and move to 2.0 save/insert API
 - but instead is `setting_name: <class 'str'>`")
   - > but instead is `setting_name: str`")
   - not sure how to make it look exactly like the type hint
@@ -26,6 +28,7 @@
 - Test types on select (both decorator and non)
 - Test what happens when you have two adapters, one more specific than the other
 - test for fetchone returning none
+- Test for cyclic data structures e.g. A -> B -> C -> A
 - test that you cannot insert, update, or delete, a view model, only a table model
   - test that mutation queries don't even get set for the view meta
 - Test the forgein key may only be a union with None i.e. Optional BUT NOT with int or something else
@@ -61,16 +64,6 @@
 - joined loads
   - approx 20% perf boost for execute many on 20k rows, not worth it, yet
 
-## Migrations
-- consider https://martinfowler.com/articles/evodb.html
-- Auto add column(s) to table if they don't exist
-  - or maybe just let this be the easy way to teach people to use explicit migrations
-- Maybe store all versions of models in the db in additions to migrations script.
-  - What about when "blowing away" the db?
-  - what value does this add?
-    - Could it help generate scripts?
-    - could it just give insight to recent changes during dev?
-
 ## Better insert/update/delete/save/get api
 Starting to think a unified save api is better than recursive insert
 - insert/update/delete can be non-recursive (and raise if relation is not persisted)
@@ -95,13 +88,14 @@ I think there needs to be more testing for nested updates. I think this stops sh
 
 Below are just some thought. I want to preserve really easy persistance, but something familar to those who know SQL.
 
-## Get
+
+### Get
 
     engine.get(MyModel,row.id)
 
 but is there an easy way to say "where MyModel.name=='SOMETHING'"??
 
-## Delete
+### Delete
 To delete on id
 ```sql
 delete from XXX where id = 42;
@@ -119,7 +113,7 @@ delete from xxx where name = 'a' and place = 'b';
 ```
 we could add something like the querying 2.0 api
 
-## Update
+### Update
 Maybe update should return the row back to match insert??
   - but no reason so misleading?
 To only some fields, on a single existing row, pull id from row:
@@ -138,13 +132,88 @@ engine.update(MyModel, set=(MyModel.name, "Apple"), where=gt(MyModel.score, 42))
 update MyModel set name = 'Apple' where score > 42;
 ```
 
+### Upsert
+Requires unique constraints and  a way to specify which columns the unique constraint is on
+#### Rails upsert
+✅ Rails 6+ (Single Upsert)
+
+Book.upsert({ title: "1984", year: 1950 }, unique_by: :index_books_on_title)
+
+This is the single-record equivalent of upsert_all.
+
+    Bypasses AR object instantiation
+
+    No validations, no callbacks
+
+    Pure SQL-level upsert
+
+🛠️ Want validations/callbacks? You have to simulate it:
+
+book = Book.find_or_initialize_by(title: "1984")
+book.year = 1950
+book.save!
+
+    Creates or updates
+
+    Triggers validations, callbacks, etc.
+
+    Not a SQL-level atomic upsert
+
+### ROR Persistence api (double check with real docs)
+| Action          | API Signature                     | Notes                              |
+| --------------- | --------------------------------- | ---------------------------------- |
+| Insert (create) | `Model.create(attrs)`             | Creates and saves one new record   |
+|                 | `Model.new(attrs)` + `obj.save`   | Two-step create                    |
+| Update          | `obj.update(attrs)`               | Sets and saves attrs               |
+|                 | `obj.update_attribute(attr, val)` | No validations/callbacks           |
+|                 | `Model.update(id, attrs)`         | Update by ID                       |
+|                 | `Model.update_all(attrs)`         | Bulk update; no callbacks          |
+| Delete          | `obj.destroy`                     | Deletes with callbacks             |
+|                 | `obj.delete`                      | Deletes without callbacks          |
+|                 | `Model.delete(id)`                | One-liner delete                   |
+|                 | `Model.delete_all`                | Deletes all (no callbacks)         |
+| Save            | `obj.save`                        | Insert or update, runs validations |
+| Force Save      | `obj.save!`                       | Same, raises exception on failure  |
+| Reload          | `obj.reload`                      | Re-fetch from DB                   |
+| Upsert          | `Model.upsert(attrs, unique_by)`  | Insert or update based on unique key |
+|                 | `Model.find_or_initialize_by(attr: val)` | Find or create new object  (simulated upsert)|
+### ROR Retrieval api (double check with real docs)
+| Action        | API Signature                    | Notes                       |
+| ------------- | -------------------------------- | --------------------------- |
+| Get by ID     | `Model.find(id)`                 | Raises if not found         |
+| Optional get  | `Model.find_by(attr: val)`       | Returns nil if not found    |
+| Where clause  | `Model.where(attr: val)`         | Returns a Relation          |
+| All rows      | `Model.all`                      | Lazy-loaded Relation        |
+| First/Last    | `Model.first`, `Model.last`      | Based on PK sorting         |
+| Limit         | `Model.limit(n)`                 | Chainable                   |
+| Order         | `Model.order(:attr)`             | Chainable                   |
+| Select fields | `Model.select(:attr1, :attr2)`   | Partial row loading         |
+| Pluck fields  | `Model.pluck(:attr)`             | Returns array of raw values |
+| Exists?       | `Model.exists?(attr: val)`       | Boolean                     |
+| Count         | `Model.count`                    | Integer                     |
+| Batch read    | `Model.find_each(batch_size: n)` | Iterates in chunks          |
+
+
+
 ## Explain Model
 I want to be able to explain model function. This would explain what the type annotation is., what the sqllite column type is, And why?. Like it would tell you that an INT is a built-in Python SQLite type., but a model is another model, And a list of a built-in type is stored as json., And then what it would attempt to pickle if there would be a pickle if it's unknown..
 This would help distinguish between a list of model and a list of something else. 
 This is cool cuz it blends casa no sql with SQL. We could probably even make a refactoring tool to switch between the two.
 
-## Upsert
-Requires unique constraints and  a way to specify which columns the unique constraint is on
+
+## Migrations
+- consider https://martinfowler.com/articles/evodb.html
+- Auto add column(s) to table if they don't exist
+  - or maybe just let this be the easy way to teach people to use explicit migrations
+- Maybe store all versions of models in the db in additions to migrations script.
+  - What about when "blowing away" the db?
+  - what value does this add?
+    - Could it help generate scripts?
+    - could it just give insight to recent changes during dev?
+- Have a dedicated external entrypoint to control migrations and rollback ala RoR AR
+- Use sqlite backup api to snapshot safely the DB while connected before a migration, this will allow easy rollback
+
+
 
 ```sql
 create table XXX (
@@ -199,11 +268,14 @@ engine.upsert(XXX(name='a', place='c', value=888))
   - closing cursors? commit? difference between?
     - Context manager on cursor?
   - connection pooling?
-
+- Consider dropping the injected Engine, and goto a fluent RoR AR style interface
+- switching to dataclasses to allow mutating and then calling save.
+- mutable id object as id which can mutate when saved.
 
 ## Backpop
 Thinking to not do this, circular references might make it impossible anyway. just make it easy to fetch.
 It also side steps the issue of double querying to fill in the forward reference/caching and wiring up the FK to the backprops. it actually forces everying to be a circular reference which isn't possible.
+- Also considder one to one relationships that backpop to a single instance rather than a list
 - backpop
   ```python
   class Team(NamedTuple):

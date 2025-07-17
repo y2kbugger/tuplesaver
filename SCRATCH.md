@@ -80,3 +80,27 @@ Really need to read and understand this new annotation sematics coming in 3.14, 
 https://docs.python.org/3/howto/annotations.html#annotations-howto
 https://github.com/python/cpython/issues/102405
 https://peps.python.org/pep-0649/
+
+## Notes from RoR Active Record
+### Connection Handling
+Implicit Connection Handling: Active Record uses a global connection pool and thread-local connections instead of an explicitly passed session object. On the first database call in a given thread (e.g. a web request thread), Active Record will check out a connection from the pool and associate it with that thread
+discuss.rubyonrails.org . That same connection is reused for all queries in the thread by default, instead of checking out/in on every query, to reduce lock overhead discuss.rubyonrails.org . Rails keeps track of the “current” connection via a thread-local key, ensuring each thread uses its own database connection .
+
+Request Lifecycle and Cleanup: In a typical Rails request, the framework ensures the connection is returned to the pool at the end. The Rack middleware
+
+Transactions and Context: Active Record provides methods like Model.transaction do ... end to run a block of code in a database transaction. Internally, this just uses the thread’s connection to BEGIN/COMMIT
+
+### No Identity Map
+Identity Map (or Lack Thereof): One notable aspect of Active Record’s implicit approach is that it historically does not implement a global identity map by default (unlike explicit session ORMs which typically do). In other words, if you query the same record twice in Rails (outside of the same short-lived transaction or object reference), you’ll get two separate Ruby object instances representing the same row. Rails did experiment with an optional Identity Map in Rails 3.2 (to ensure each object is loaded only once per request/thread)
+api.rubyonrails.org
+api.rubyonrails.org
+, but it was disabled by default and later removed. Without an explicit session tracking all loaded entities, Rails forgoes the complexity of a long-lived identity map. This means less memory overhead and bookkeeping, at the cost of potential duplicate objects
+
+### No engine or session
+These are injected into the objects themselves at runtime. AR assumes DB schema is source of truth.
+Migrations are done in a DSL with an external
+
+### recursive saves are configured per attribute/field
+
+### ruby autocompletions for fields are not native and come in via rbi files (like pyi files)
+### relationships defined with `has_many`, `belongs_to`, `has_one`, `has_and_belongs_to_many`,
