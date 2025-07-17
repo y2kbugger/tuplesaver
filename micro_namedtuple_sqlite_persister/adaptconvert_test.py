@@ -45,8 +45,8 @@ def test_registering_adapt_convert_pair(engine: Engine) -> None:
     assert columns[2][5] == 0  # Not Primary Key
 
     ### Adapt
-    row = ModelUnknownType(1, "Alice", NewType(["a", "b", "c"]))
-    row = engine.insert(row)
+    row = ModelUnknownType(None, "Alice", NewType(["a", "b", "c"]))
+    row = engine.save(row)
 
     cursor.execute(f"SELECT substr(custom,0) FROM {ModelUnknownType.__name__};")  # substr converting to NewType with converter
     rows = cursor.fetchall()
@@ -54,7 +54,7 @@ def test_registering_adapt_convert_pair(engine: Engine) -> None:
     assert rows[0][0] == b'a,b,c'  # adapted to a binary format
 
     ### Convert
-    retrieved_row = engine.get(ModelUnknownType, row.id)
+    retrieved_row = engine.find(ModelUnknownType, row.id)
     assert type(retrieved_row.custom) is NewType
     assert retrieved_row.custom.values == ["a", "b", "c"]
 

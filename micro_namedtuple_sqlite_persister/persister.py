@@ -31,9 +31,7 @@ class FieldZeroIdRequired(Exception):
 class TableSchemaMismatch(Exception):
     def __init__(self, table_name: str, existing_table_schema: str, new_table_schema: str) -> None:
         super().__init__(
-            f"Table `{table_name}` already exists but the schema does not match the expected schema.\nj"
-            f"Existing schema:\n\t{existing_table_schema}.\n"
-            f"Expected schema:\n\t{new_table_schema}"
+            f"Table `{table_name}` already exists but the schema does not match the expected schema.\njExisting schema:\n\t{existing_table_schema}.\nExpected schema:\n\t{new_table_schema}"
         )
 
 
@@ -47,6 +45,21 @@ class UnregisteredFieldTypeError(Exception):
         else:
             msg = f"Field Type {field_type} has not been registered with an adapter and converter.\n `register_adapt_convert` to register it"
         super().__init__(msg)
+
+
+class UnpersistedRelationshipError(Exception):
+    def __init__(self, model_name: str, field_name: str, row: Row) -> None:
+        super().__init__(self, f"Cannot save {model_name} with unpersisted {model_name}.{field_name} of row {row}")
+
+
+class NoKwargFieldSpecifiedError(ValueError):
+    def __init__(self) -> None:
+        super().__init__("At least one field must be specified to find a row.")
+
+
+class InvalidKwargFieldSpecifiedError(ValueError):
+    def __init__(self, Model: type[Row], kwargs: dict[str, Any]) -> None:
+        super().__init__(f"Invalid fields for {Model.__name__}: {', '.join(kwargs.keys())}. Valid fields are: {', '.join(f.name for f in get_meta(Model).fields)}")
 
 
 class IdNoneError(ValueError):
@@ -115,38 +128,29 @@ class Engine:
         sqlite3.register_adapter(Model, lambda row: row[0])  # Register to be able to insert Model instances as foreign keys
 
     #### Writing
-    def insert[R: Row](self, row: R) -> R:
-        # recursively save
-        row = row._make(self.insert(f) if is_registered_table_model(type(f)) else f for f in row)
-        cur = self.connection.execute(get_meta(type(row)).insert, row)
-        return row._replace(id=cur.lastrowid)
-
-    def insert_shallow[R: Row](self, row: R) -> R:
-        # insert only the current row, without recursion
-        cur = self.connection.execute(get_meta(type(row)).insert, row)
-        return row._replace(id=cur.lastrowid)
-
-    def save[R: Row](self, row: R) -> R:
-        # recursively insert or update records, based on the presence of an id
-        # ids can be mixed and matched anywhere in the tree
-        row = row._make(self.save(f) if is_registered_table_model(type(f)) else f for f in row)
-        if row[0] is None:
-            return self.insert_shallow(row)
+    def save[R: Row](self, row: R, *, deep: bool = False) -> R:
+        """insert or update records, based on the presence of an id"""
+        if deep:
+            # If deep is True, we save all related rows recursively
+            row = row._make(self.save(f, deep=deep) if is_registered_table_model(type(f)) else f for f in row)
         else:
-            self.update(row)
-            return row
+            # Don't allow saving if a related row is not persisted
+            if any(related_row.id is None for related_row in row[1:] if is_row_model(related_row.__class__)):
+                raise UnpersistedRelationshipError(type(row).__name__, "related row", row)
 
-    def update(self, row: Row) -> None:
         if row[0] is None:
-            raise IdNoneError("Cannot UPDATE, id=None")
-        query = dedent(f"""
-            UPDATE {row.__class__.__name__}
-            SET {', '.join(f"{f} = ?" for f in row._fields)}
-            WHERE id = ?
-            """).strip()
-        cur = self.connection.execute(query, (*row, row[0]))
-        if cur.rowcount == 0:
-            raise IdNotFoundError(f"Cannot UPDATE, no row with id={row[0]} in table `{row.__class__.__name__}`")
+            cur = self.connection.execute(get_meta(type(row)).insert, row)
+            return row._replace(id=cur.lastrowid)
+        else:
+            query = dedent(f"""
+                UPDATE {row.__class__.__name__}
+                SET {', '.join(f"{f} = ?" for f in row._fields)}
+                WHERE id = ?
+                """).strip()
+            cur = self.connection.execute(query, (*row, row[0]))
+            if cur.rowcount == 0:
+                raise IdNotFoundError(f"Cannot UPDATE, no row with id={row[0]} in table `{row.__class__.__name__}`")
+            return row
 
     @overload
     def delete(self, Model: type[Row], row_id: int | None) -> None: ...
@@ -174,7 +178,7 @@ class Engine:
             raise IdNotFoundError(f"Cannot DELETE, no row with id={row_id} in table `{Model.__name__}`")
 
     ##### Reading
-    def get[R: Row](self, Model: type[R], row_id: int | None) -> R:
+    def find[R: Row](self, Model: type[R], row_id: int | None) -> R:
         if row_id is None:
             raise IdNoneError("Cannot SELECT, id=None")
 
@@ -182,6 +186,28 @@ class Engine:
 
         if row is None:
             raise IdNotFoundError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
+
+        return row
+
+    def find_by[R: Row](self, Model: type[R], **kwargs: Any) -> R:
+        """Find a row by its fields, e.g. `find_by(Model, name="Alice")`"""
+        if not kwargs:
+            raise NoKwargFieldSpecifiedError()
+
+        field_names = [f.name for f in get_meta(Model).fields]
+        if not all(k in field_names for k in kwargs):
+            raise InvalidKwargFieldSpecifiedError(Model, kwargs)
+
+        # Build the WHERE clause
+        where_clause = " AND ".join(f"{k} = ?" for k in kwargs)
+        select = get_meta(Model).select
+        sql = dedent(f"""
+            {select}
+            WHERE {where_clause}
+            """).strip()
+
+        cursor = self.connection.execute(sql, tuple(kwargs.values()))
+        row = cursor.fetchone()
 
         return row
 
