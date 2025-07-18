@@ -1,9 +1,6 @@
 # WIP
 
 # Bugs
-- but instead is `setting_name: <class 'str'>`")
-  - > but instead is `setting_name: str`")
-  - not sure how to make it look exactly like the type hint
 - Don't do this, violates don't wrap built int functions. if echo_sql: self.connection.set_trace_callback(print)
 - Dedent create statement
 

@@ -26,7 +26,7 @@ def clear_adapt_convert_registrations() -> None:
 class InvalidAdaptConvertType(Exception):
     def __init__(self, AdaptConvertType: type) -> None:
         super().__init__(
-            f"AdaptConvertType {AdaptConvertType} is not a valid type for persisting. `{AdaptConvertType})` must be an instance of `type` but instead is `{type(AdaptConvertType)}`"
+            f"AdaptConvertType {AdaptConvertType} is not a valid type for persisting. `{AdaptConvertType}` must be an instance of `type` but instead is `{type(AdaptConvertType)}`"
         )
 
 

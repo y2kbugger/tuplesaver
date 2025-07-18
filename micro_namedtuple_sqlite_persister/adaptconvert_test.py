@@ -59,6 +59,19 @@ def test_registering_adapt_convert_pair(engine: Engine) -> None:
     assert retrieved_row.custom.values == ["a", "b", "c"]
 
 
+def test_attempted_registration_of_concrete_obj_raises() -> None:
+    class NewType: ...
+
+    def adapt_newtype(value: NewType) -> bytes:
+        return b''
+
+    def convert_newtype(value: bytes) -> NewType:
+        return NewType()
+
+    with pytest.raises(InvalidAdaptConvertType):
+        register_adapt_convert("Blah", adapt_newtype, convert_newtype)  # type: ignore
+
+
 def test_attempted_registration_of_an_union_raises() -> None:
     class NewType: ...
 
