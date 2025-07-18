@@ -1,7 +1,6 @@
 # WIP
 
 # Bugs
-- Don't do this, violates don't wrap built int functions. if echo_sql: self.connection.set_trace_callback(print)
 - Dedent create statement
 
 # Testing

@@ -71,12 +71,10 @@ class IdNotFoundError(ValueError):
 
 
 class Engine:
-    def __init__(self, db_path: str, echo_sql: bool = False) -> None:
+    def __init__(self, db_path: str) -> None:
         self.db_path = db_path
         self.connection = sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES)
         self.connection.execute("PRAGMA journal_mode=WAL")
-        if echo_sql:
-            self.connection.set_trace_callback(print)
 
     def _get_sql_for_existing_table(self, table_name: str) -> str:
         query = f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table_name}'"
