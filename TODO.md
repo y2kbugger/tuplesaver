@@ -1,7 +1,6 @@
 # WIP
 
 # Bugs
-- Dedent create statement
 
 # Testing
 - Test cleanup
