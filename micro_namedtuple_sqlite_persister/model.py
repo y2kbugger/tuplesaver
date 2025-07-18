@@ -102,8 +102,8 @@ def get_meta(Model: type[Row]) -> Meta:
         for fieldname, (nullable, FieldType) in zip(fieldnames, unwrapped_types)
     )
 
-    select = f"SELECT {', '.join(table_name+'.'+f for f in Model._fields)} FROM {table_name}"
-    select_by_id = select + " WHERE id = ?"
+    select = f"SELECT {', '.join(table_name + '.' + f for f in Model._fields)} FROM {table_name}"
+    select_by_id = select + "\nWHERE id = ?"
     insert = dedent(f"""
             INSERT INTO {table_name} (
                 {', '.join(fieldnames)}
