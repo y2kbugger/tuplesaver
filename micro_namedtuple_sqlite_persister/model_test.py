@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 from typing import NamedTuple, Optional, Union
 
 import pytest
@@ -108,7 +109,11 @@ def test_get_sqltypename() -> None:
     assert _sql_typename(bool) == "builtins.bool"
     assert _sql_typename(list) == "builtins.list"
     assert _sql_typename(dict) == "builtins.dict"
+    # this also tests that inheritance hierarchy doesn't disrupt column type resolution
+    assert _sql_typename(dt.date) == "datetime.date"
+    assert _sql_typename(dt.datetime) == "datetime.datetime"
 
+    # Test related models as fields
     class ModelA(NamedTuple):
         id: int | None
         name: str

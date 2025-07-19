@@ -1,6 +1,10 @@
 # WIP
+- I want to be able to persist an Enum without configuration
+  - tests?, examples?
+- Test for id as a str, and int but not int | None to raise FieldZeroIdRequired
 
 # Bugs
+- Meta caches invalid models e.g. missing id, or missing adapters
 
 # Testing
 - Test cleanup
@@ -8,9 +12,7 @@
   - use test specific Models in a small scope
   - refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
   - group tests, and promote _some_ model reuse if it makes sense
-  - move "function" end to end tests together, ensure we have good unit tests in the module specific test files.
 - Test types on select (both decorator and non)
-- Test what happens when you have two adapters, one more specific than the other
 - test for fetchone returning none
 - Test for cyclic data structures e.g. A -> B -> C -> A
 - test that you cannot insert, update, or delete, a view model, only a table model
@@ -30,19 +32,13 @@
 
 # Next
 - Modify example story of "queries", do raw sql first, then show query.py builder
-- simplify "included adapters" to not be dict, but just a function with defs
-  - maybe put in own file?
-  - maybe don't make this optional, just have a default set of adapters, its annoying when called twice
+- Remove demos of error handling in example.ipynb
 - Ensure that we use named placeholder when possible
   https://docs.python.org/3/library/sqlite3.html#sqlite3-placeholders
     cur.executemany("INSERT INTO lang VALUES(:name, :year)", data)
 - Add foreign key constraints to the table creation
   - through the metadata system?? appending to meta during ensure_table_created?
   `foreign key (team_id) references Team(id)`
-- I want to be able to persist built in container types without configuration
-  - tests?, examples?
-- I want to be able to persist an Enum without configuration
-  - tests?, examples?
 - I want to fall back to pickles for any type that is not configured, and just raise if pickle fails
   - tests?, examples?
 - Add in lazy loading of relationships

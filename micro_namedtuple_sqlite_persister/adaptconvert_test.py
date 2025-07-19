@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import sqlite3
 from typing import NamedTuple, Optional
 
@@ -10,8 +11,9 @@ from .adaptconvert import (
     InvalidAdaptConvertType,
     clear_adapt_convert_registrations,
     register_adapt_convert,
+    register_pickleable_adapt_convert,
 )
-from .persister import Engine
+from .persister import Engine, UnregisteredFieldTypeError
 
 
 def test_registering_adapt_convert_pair(engine: Engine) -> None:
@@ -135,3 +137,118 @@ def test_adapter_converter_reset_only_affects_what_we_registered() -> None:
 
     assert (NewType, sqlite3.PrepareProtocol) in sqlite3.adapters
     assert 'NEWTYPE' in sqlite3.converters
+
+
+def test_can_store_and_retrieve_datetime_as_iso(engine: Engine) -> None:
+    class T(NamedTuple):
+        id: int | None
+        date: dt.datetime
+
+    engine.ensure_table_created(T)
+    now = dt.datetime.now()
+    row = engine.save(T(None, now))
+
+    returned_row = engine.find(T, row.id)
+
+    assert returned_row.date == now
+
+
+def test_can_store_and_retrieve_date_as_iso(engine: Engine) -> None:
+    class T(NamedTuple):
+        id: int | None
+        date: dt.date
+
+    engine.ensure_table_created(T)
+    today = dt.date.today()
+    row = engine.save(T(None, today))
+
+    returned_row = engine.find(T, row.id)
+
+    assert returned_row.date == today
+
+
+def test_can_store_and_retrieve_bool_as_int(engine: Engine) -> None:
+    class T(NamedTuple):
+        id: int | None
+        flag: bool
+
+    engine.ensure_table_created(T)
+    row = engine.save(T(None, True))
+
+    returned_row = engine.find(T, row.id)
+
+    assert returned_row.flag is True
+
+    row = engine.save(T(None, False))
+
+    returned_row = engine.find(T, row.id)
+
+    assert returned_row.flag is False
+
+
+def test_can_store_and_retrieve_list_as_json(engine: Engine) -> None:
+    class T(NamedTuple):
+        id: int | None
+        names: list
+
+    engine.ensure_table_created(T)
+    names = ["Alice", "Bob", "Charlie", 2]
+    row = engine.save(T(None, names))
+
+    returned_row = engine.find(T, row.id)
+
+    assert returned_row.names == names
+
+
+def test_can_store_and_retrieve_dict_as_json(engine: Engine) -> None:
+    class T(NamedTuple):
+        id: int | None
+        names: dict
+
+    engine.ensure_table_created(T)
+    names = {"Alice": 1, "Bob": 2, "Charlie": 3}
+    row = engine.save(T(None, names))
+
+    returned_row = engine.find(T, row.id)
+
+    assert returned_row.names == names
+
+
+def test_raises_on_json_when_nonserializeable(engine: Engine) -> None:
+    class T(NamedTuple):
+        id: int | None
+        dates: list
+
+    engine.ensure_table_created(T)
+
+    with pytest.raises(TypeError, match="Object of type datetime is not JSON serializable"):
+        engine.save(T(None, [dt.datetime.now()]))
+
+
+def test_that_unregistered_fieldtype_raises(engine: Engine) -> None:
+    from array import array
+
+    class T(NamedTuple):
+        id: int | None
+        data: array
+
+    with pytest.raises(UnregisteredFieldTypeError):
+        engine.ensure_table_created(T)
+
+
+def test_can_store_and_retrieve_pickleable_type(engine: Engine) -> None:
+    from array import array
+
+    class T(NamedTuple):
+        id: int | None
+        data: array
+
+    register_pickleable_adapt_convert(array)
+    engine.ensure_table_created(T)
+
+    data = array('i', [1, 2, 3])
+    row = engine.save(T(None, data))
+
+    returned_row = engine.find(T, row.id)
+
+    assert returned_row.data.tolist() == data.tolist()

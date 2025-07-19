@@ -8,7 +8,7 @@ from collections.abc import Iterable
 import pytest
 from pytest_benchmark.plugin import BenchmarkFixture
 
-from .adaptconvert import clear_adapt_convert_registrations, enable_included_adaptconverters
+from .adaptconvert import clear_adapt_convert_registrations, register_standard_adaptconverters
 from .model import clear_modelmeta_registrations
 from .persister import Engine
 
@@ -47,7 +47,7 @@ def sql_log(engine: Engine) -> Iterable[SqlLog]:
 
 @pytest.fixture(autouse=True)
 def init_and_cleanup_registrations() -> Iterable[None]:
-    enable_included_adaptconverters()
+    register_standard_adaptconverters()
 
     yield
 
