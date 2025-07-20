@@ -1,19 +1,15 @@
 # WIP
-- I want to be able to persist an Enum without configuration
-  - tests?, examples?
-- Test that Any can only be used for read-only fields
-  - e.g. `Any` is not a valid type for persisting, but can be used for reading
+- Modify example story of "queries", do raw sql first, then show query.py builder
+- Add example of using Any for reading
+- Add in lazy loading of relationships
+  - should reduce need for some of the model views in examples e.g. id only views
+  - This would unlock the ability to define backpop relationships and use them in queries
 
 # Bugs
 
 
 # Testing
 - Test cleanup
-  - Harmonize the def-scoped Model class names in the tests
-  - use test specific Models in a small scope
-  - refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
-  - group tests, and promote _some_ model reuse if it makes sense
-  - All test should use double underscore unit_under_test__when__effect style when possible
   - split out TypedCursorProxy into a separate file
     - tighten the tests to just the cursor proxy
   - Make "ensure table created" concept part of migrations instead of engine??
@@ -24,10 +20,14 @@
       - What about FK relationships? does this mean we can only recurse when making tables, but not when gettting table meta?
         - or can we be smart?
       - remember to go and remove the test fixure in query that ensure table meta is created in the right order
+  - Harmonize the def-scoped Model class names in the tests
+  - use test specific Models in a small scope
+  - refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
+  - group tests, and promote _some_ model reuse if it makes sense
+  - All test should use double underscore unit_under_test__when__effect style when possible
 - Test that non Fields greater than zero cannot be called id
 - test is_registered_fieldtype
   - unknown types, unregistered models, both Optional and non-Optional variants
-
 - Test types on select (both decorator and non)
 - test for fetchone returning none
 - Test for cyclic data structures e.g. A -> B -> C -> A
@@ -46,11 +46,13 @@
 - Benchmark and test connection creation and closing
 - I want to instrument sqlite to log and profile queries.
 - Test CRUD on View Models
+- Validate in Meta creation that related models in fields of table models are actually table models and not view models
+- Test that everything works on when doing arbitrary view model queries that select FK in as model relationships
 
 # Next
-- Modify example story of "queries", do raw sql first, then show query.py builder
-- Remove demos of error handling in example.ipynb
-- Add example of using Any for reading
+- Harmonize names "view model" and "row model" in codebase and docs
+- More standard adaptconverters Enum, set, tuple, time, frozenset, Path, UUID, Decimal, bytes
+  - tests?, examples?
 - Ensure that we use named placeholder when possible
   https://docs.python.org/3/library/sqlite3.html#sqlite3-placeholders
     cur.executemany("INSERT INTO lang VALUES(:name, :year)", data)
@@ -59,9 +61,6 @@
   `foreign key (team_id) references Team(id)`
 - I want to fall back to pickles for any type that is not configured, and just raise if pickle fails
   - tests?, examples?
-- Add in lazy loading of relationships
-  - should reduce need for some of the model views in examples e.g. id only views
-  - This would unlock the ability to define backpop relationships and use them in queries
 
 # Later
 - column constraints as annotations, like the select

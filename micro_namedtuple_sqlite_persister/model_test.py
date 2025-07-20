@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import NamedTuple, Optional, Union
+from typing import Any, NamedTuple, Optional, Union
 
 import pytest
 
@@ -333,3 +333,40 @@ def test_table_meta__failed_table_meta_context__meta_is_not_registered() -> None
     # After the context, the meta should not be registered
     assert is_registered_row_model(ModelA) is True
     assert is_registered_table_model(ModelA) is True
+
+
+def test_get_meta__any_type__is_permitted() -> None:
+    class T(NamedTuple):
+        id: int | None
+        data: Any
+
+    get_meta(T)
+
+
+def test_get_meta__optional_any_type__is_prohibited() -> None:
+    class T(NamedTuple):
+        id: int | None
+        data: Any | None
+
+    with pytest.raises(UnregisteredFieldTypeError, match="is not a valid type for persisting"):
+        get_meta(T)
+
+
+def test_get_table_meta__any_type__is_prohibited() -> None:
+    class T(NamedTuple):
+        id: int | None
+        data: Any
+
+    with pytest.raises(UnregisteredFieldTypeError, match="is not a valid type for persisting"):  # noqa: SIM117
+        with get_table_meta(T) as _meta:
+            pass  # this is where we would normally try to create the table.
+
+
+def test_get_table_meta__optional_any_type__is_prohibited() -> None:
+    class T(NamedTuple):
+        id: int | None
+        data: Any | None
+
+    with pytest.raises(UnregisteredFieldTypeError, match="is not a valid type for persisting"):  # noqa: SIM117
+        with get_table_meta(T) as _meta:
+            pass  # this is where we would normally try to create the table.

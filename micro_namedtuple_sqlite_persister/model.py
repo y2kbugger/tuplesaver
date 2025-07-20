@@ -174,7 +174,7 @@ def make_meta(Model: type[Row]) -> Meta:
         # skipp self-reference, it will be registered once/if it is in _meta
         if field.type is Model:
             continue
-        if field.type is Any:
+        if field.full_type is Any:
             continue  # Any is not a valid type for persisting, but can be used for reading
         if not is_registered_fieldtype(field.type):
             raise UnregisteredFieldTypeError(field.type)
@@ -195,7 +195,7 @@ def make_table_meta(Model: type[Row]) -> Meta:
     ## Validate Table Meta
 
     for field in meta.fields:
-        if field.type is Any:  # Any is not a valid type tables fields
+        if field.full_type is Any:  # Any is not a valid type tables fields
             raise UnregisteredFieldTypeError(field.type)
 
     # Check that the first field is `id: int | None`
