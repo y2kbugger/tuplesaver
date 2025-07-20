@@ -1,5 +1,4 @@
 # WIP
-- Modify example story of "queries", do raw sql first, then show query.py builder
 - Add example of using Any for reading
 - Add in lazy loading of relationships
   - should reduce need for some of the model views in examples e.g. id only views
@@ -48,6 +47,8 @@
 - Test CRUD on View Models
 - Validate in Meta creation that related models in fields of table models are actually table models and not view models
 - Test that everything works on when doing arbitrary view model queries that select FK in as model relationships
+- Test duplicate joins in query.select deduplicates
+- Test engine.save when updating a row with a lazy loading relationship (both before and after the lazy load)
 
 # Next
 - Harmonize names "view model" and "row model" in codebase and docs
@@ -410,6 +411,15 @@ Just a more concise version of the decorator version. might be hard to squeeze i
 ```python
 M, q = select(Athlete)(lambda: f"WHERE name LIKE '%e%'")
 ```
+
+## Bulk inserts
+
+    def insert_all[R: Row](self, Model: type[R], rows: Iterable[R]) -> None:
+        """Insert multiple rows at once."""
+        insert = get_meta(Model).insert
+        assert insert is not None, "Insert statement should be defined for the model."
+        with self.connection:
+            self.connection.executemany(insert, rows)
 
 
 # Probably Never
