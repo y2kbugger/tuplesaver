@@ -662,15 +662,26 @@ class TestBomSelfJoin:
             _retrieved_root = engine.find(self.BOM, inserted_root.id)
 
 
-def test_query_registers_row_but_not_table(engine: Engine) -> None:
+def test_engine_query__returns_cursor_proxy(engine: Engine) -> None:
     class ModelA(NamedTuple):
-        id: int | None
+        name: str
+
+    cur = engine.query(ModelA, "SELECT 'Alice' as name;")
+    assert cur.row_factory is not None
+
+    row = cur.fetchone()
+    assert isinstance(row, ModelA)
+    assert row == ModelA("Alice")
+
+
+def test_engine_query__when_querying_view_model__does_not_register_as_table_model(engine: Engine) -> None:
+    class ModelA(NamedTuple):
         name: str
 
     assert is_registered_row_model(ModelA) is False
     assert is_registered_table_model(ModelA) is False
 
-    cur = engine.query(ModelA, "SELECT 1 as id, 'Alice' as name;")
+    cur = engine.query(ModelA, "SELECT 'Alice' as name;")
 
     # I don't care either way, just documenring current behavior
     assert is_registered_row_model(ModelA) is False

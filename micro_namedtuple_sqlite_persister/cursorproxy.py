@@ -66,7 +66,7 @@ class TypedCursorProxy[R: Row](sqlite3.Cursor):
             return m
 
         cursor.row_factory = row_fac_deep
-        return cast(TypedCursorProxy, cursor)
+        return cast(TypedCursorProxy[R], cursor)
 
     def fetchone(self) -> R | None: ...
 

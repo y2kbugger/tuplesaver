@@ -1,122 +1,73 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, NamedTuple, assert_type
+from typing import NamedTuple, assert_type
+
+import pytest
 
 from .cursorproxy import TypedCursorProxy
-from .persister import Engine
 
 
-def test_engine_query_fetchone(engine: Engine) -> None:
-    class ModelX(NamedTuple):
-        id: int | None
-        name: str
-        age: int
-
-    engine.ensure_table_created(ModelX)
-    sql = "SELECT 1 as id, 'Alice' as name, 30 as age;"
-
-    cur = engine.query(ModelX, sql)
-    row = cur.fetchone()
-
-    assert row == ModelX(1, "Alice", 30)
-    assert type(row) is ModelX
-
-    assert_type(cur, TypedCursorProxy[ModelX])
-    assert_type(row, ModelX)
+class M(NamedTuple):
+    id: int | None
+    name: str
+    age: int
 
 
-def test_engine_query_fetchall(engine: Engine) -> None:
-    class ModelX(NamedTuple):
-        id: int | None
-        name: str
-        age: int
-
-    engine.ensure_table_created(ModelX)
-    sql = "SELECT 1 as id, 'Alice' as name, 30 as age UNION SELECT 2, 'Bob', 40;"
-
-    cur = engine.query(ModelX, sql)
-    rows = cur.fetchall()
-
-    assert rows == [ModelX(1, "Alice", 30), ModelX(2, "Bob", 40)]
-    assert type(rows[0]) is ModelX
-
-    assert_type(cur, TypedCursorProxy[ModelX])
-    assert_type(rows, list[ModelX])
+sql = "SELECT 1 as id, 'Alice' as name, 30 as age UNION SELECT 2, 'Bob', 40;"
 
 
-def test_engine_query_fetchmany(engine: Engine) -> None:
-    class ModelX(NamedTuple):
-        id: int | None
-        name: str
-        age: int
-
-    engine.ensure_table_created(ModelX)
-    sql = "SELECT 1 as id, 'Alice' as name, 30 as age UNION SELECT 2, 'Bob', 40;"
-
-    cur = engine.query(ModelX, sql)
-    rows = cur.fetchmany(1)
-
-    assert rows == [ModelX(1, "Alice", 30)]
-    assert type(rows[0]) is ModelX
-
-    assert_type(cur, TypedCursorProxy[ModelX])
-    assert_type(rows, list[ModelX])
+@pytest.fixture
+def proxy() -> TypedCursorProxy[M]:
+    connection = sqlite3.connect(":memory:")
+    cursor = connection.execute(sql)
+    proxy = TypedCursorProxy.proxy_cursor(M, cursor)
+    assert_type(proxy, TypedCursorProxy[M])  # type: ignore slight bug in pyright, masked by both fixure here and engine.query in persister.py
+    return proxy
 
 
-def test_engine_query_row_factory_persists_after_usage(engine: Engine) -> None:
-    class ModelX(NamedTuple):
-        id: int | None
-        name: str
-        age: int
-
-    engine.ensure_table_created(ModelX)
-    sql = "SELECT 1 as id, 'Alice' as name, 30 as age UNION SELECT 2, 'Bob', 40;"
-
-    cur = engine.query(ModelX, sql)
-
-    rows = cur.fetchmany(1)
-    assert rows == [ModelX(1, "Alice", 30)]
-    assert type(rows[0]) is ModelX
-
-    rows = cur.fetchmany(1)
-    assert rows == [ModelX(2, "Bob", 40)]
-    assert type(rows[0]) is ModelX
+def test_proxy_typehints(proxy: TypedCursorProxy[M]) -> None:
+    assert_type(proxy, TypedCursorProxy[M])
+    assert_type(proxy.fetchone(), M | None)
+    assert_type(proxy.fetchall(), list[M])
+    assert_type(proxy.fetchmany(1), list[M])
+    assert_type(proxy.rowcount, int)
+    assert_type(proxy.connection, sqlite3.Connection)
 
 
-def test_engine_query_cursorproxy_getattr_maintains_typehints(engine: Engine) -> None:
-    class ModelX(NamedTuple):
-        id: int | None
-        name: str
-        age: int
-
-    engine.ensure_table_created(ModelX)
-    sql = "SELECT 1 as id, 'Alice' as name, 30 as age;"
-
-    cur = engine.query(ModelX, sql)
-    assert_type(cur.fetchone(), ModelX | None)
-    assert_type(cur.fetchall(), list[ModelX])
-    assert_type(cur.fetchmany(1), list[ModelX])
-    assert_type(cur.rowcount, int)
-    assert_type(cur.connection, sqlite3.Connection)
+def test_proxy_fetchone(proxy: TypedCursorProxy[M]) -> None:
+    row = proxy.fetchone()
+    assert type(row) is M
+    assert row == M(1, "Alice", 30)
 
 
-def test_that_row_factory_doesnt_leak_to_other_cursors(engine: Engine) -> None:
-    class ModelX(NamedTuple):
-        id: int | None
-        name: str
+def test_proxy_fetchall(proxy: TypedCursorProxy[M]) -> None:
+    rows = proxy.fetchall()
+    assert rows == [M(1, "Alice", 30), M(2, "Bob", 40)]
 
-    sql = "SELECT 1 as id, 'Alice' as name"
 
-    # Engine.query gives back Model typed rows
-    cur = engine.query(ModelX, sql)
-    row = cur.fetchone()
-    assert_type(row, ModelX | None)
-    assert isinstance(row, ModelX)
+def test_proxy_fetchmany(proxy: TypedCursorProxy[M]) -> None:
+    rows = proxy.fetchmany(1)
+    assert rows == [M(1, "Alice", 30)]
 
-    # Engine.connection.cursor still gives back raw rows
-    cur = engine.connection.cursor()
-    cur.execute(sql)
-    row = cur.fetchone()
-    assert_type(row, Any)
-    assert not isinstance(row, ModelX)
+
+def test_proxy__after_usage__rowfactory_persists(proxy: TypedCursorProxy[M]) -> None:
+    row = proxy.fetchone()
+    assert row == M(1, "Alice", 30)
+
+    row = proxy.fetchone()
+    assert proxy.row_factory is not None
+    assert row == M(2, "Bob", 40)
+
+
+def test_proxy__after_usage__rowfactory_doesnt_leak_to_new_cursors() -> None:
+    connection = sqlite3.connect(":memory:")
+
+    # Proxy a cursor with custom row_factory
+    cursor = connection.cursor()
+    proxy = TypedCursorProxy.proxy_cursor(M, cursor)
+    assert proxy.row_factory is not None
+
+    # new cursors must come back completely standard
+    new_cursor = connection.cursor()
+    assert new_cursor.row_factory is None

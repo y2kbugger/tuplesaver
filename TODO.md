@@ -1,5 +1,4 @@
 # WIP
-- tighten TypedCursorProxy tests to just the cursorproxy.py
 - Add in lazy loading of relationships
   - should reduce need for some of the model views in examples e.g. id only views
   - This would unlock the ability to define backpop relationships and use them in queries
