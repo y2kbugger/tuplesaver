@@ -1,5 +1,4 @@
 # WIP
-- Add example of using Any for reading
 - Add in lazy loading of relationships
   - should reduce need for some of the model views in examples e.g. id only views
   - This would unlock the ability to define backpop relationships and use them in queries
@@ -420,6 +419,23 @@ M, q = select(Athlete)(lambda: f"WHERE name LIKE '%e%'")
         assert insert is not None, "Insert statement should be defined for the model."
         with self.connection:
             self.connection.executemany(insert, rows)
+
+## A way to package queries with models to make view like objects??
+Could be one or more queries for one model. Could have parameters. could want to
+reuse by adding where, or somethiing else??
+```python
+class TableInfo(NamedTuple):
+    cid: int
+    name: str
+    type: str
+    notnull: int
+    dflt_value: Any
+    pk: int
+
+sql = f"PRAGMA table_info({Athlete.__name__})"
+
+cols = engine.query(TableInfo, sql).fetchall()
+```
 
 
 # Probably Never
