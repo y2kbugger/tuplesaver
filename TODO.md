@@ -12,6 +12,7 @@
   - use test specific Models in a small scope
   - refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
   - group tests, and promote _some_ model reuse if it makes sense
+  - All test should use double underscore unit_under_test__when__effect style when possible
 - Test types on select (both decorator and non)
 - test for fetchone returning none
 - Test for cyclic data structures e.g. A -> B -> C -> A
@@ -61,6 +62,11 @@
   ```sql
   update MyModel set name = 'Apple' where id = 42;
   ```
+- Make "ensure table created" concept part of migrations instead of engine??
+  - e.g. i don't want all those tests for schema mixed in with CRUD
+  - or maybe just refactor files
+  - or maybe make the schema mutation as part of migration, but leave "ensure table created" as a just a check in engine that registers table meta
+  - or could ensure happen implicity on first use??, (and recursively for all relationships)
 
 ## engine.upsert
 | Upsert          | `Model.upsert(attrs, unique_by)`  | Insert or update based on unique key |

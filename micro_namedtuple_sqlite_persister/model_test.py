@@ -5,6 +5,8 @@ from typing import NamedTuple, Optional, Union
 
 import pytest
 
+from micro_namedtuple_sqlite_persister.persister import Engine, FieldZeroIdRequired, UnregisteredFieldTypeError
+
 from .model import (
     Meta,
     MetaField,
@@ -216,3 +218,49 @@ def test_column_definition() -> None:
 
     assert _sql_columndef("moda", False, ModelA) == "moda [ModelA_ID] NOT NULL"
     assert _sql_columndef("moda", True, ModelA) == "moda [ModelA_ID] NULL"
+
+
+def test_forgetting_id_column_as_first_field_raises(engine: Engine) -> None:
+    class TblNoId(NamedTuple):
+        name: str
+
+    with pytest.raises(FieldZeroIdRequired):
+        engine.ensure_table_created(TblNoId)
+
+
+def test_creating_table_including_optional_unknown_model_type_raises_error(engine: Engine) -> None:
+    class ModelUnknownType(NamedTuple):
+        id: int | None
+        name: str
+
+    class Model(NamedTuple):
+        id: int | None
+        name: str
+        unknown: ModelUnknownType | None
+
+    with pytest.raises(UnregisteredFieldTypeError, match="is a NamedTuple Row Model"):
+        engine.ensure_table_created(Model)
+
+
+def test_creating_table_with_unknown_type_raises_error(engine: Engine) -> None:
+    class NewType: ...
+
+    class ModelUnknownType(NamedTuple):
+        id: int | None
+        name: str
+        unknown: NewType
+
+    with pytest.raises(UnregisteredFieldTypeError, match="has not been registered with an adapter and converter"):
+        engine.ensure_table_created(ModelUnknownType)
+
+
+def test_creating_table_with_optional_unknown_type_raises_error(engine: Engine) -> None:
+    class NewType: ...
+
+    class ModelUnknownType(NamedTuple):
+        id: int | None
+        name: str
+        unknown: NewType | None
+
+    with pytest.raises(UnregisteredFieldTypeError, match="has not been registered with an adapter and converter"):
+        engine.ensure_table_created(ModelUnknownType)

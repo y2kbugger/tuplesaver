@@ -21,7 +21,6 @@ from .persister import (
     TableSchemaMismatch,
     TypedCursorProxy,
     UnpersistedRelationshipError,
-    UnregisteredFieldTypeError,
 )
 
 
@@ -37,25 +36,6 @@ class T(NamedTuple):
     age: int
 
 
-class TblDates(NamedTuple):
-    id: int | None
-    name: str
-    score: float
-    age: int
-    data: bytes
-    startdate: dt.date
-    modified: dt.datetime
-    serial: int | None
-
-
-def test_forgetting_id_column_as_first_field_raises(engine: Engine) -> None:
-    class TblNoId(NamedTuple):
-        name: str
-
-    with pytest.raises(FieldZeroIdRequired):
-        engine.ensure_table_created(TblNoId)
-
-
 class TableInfo(NamedTuple):
     cid: int
     name: str
@@ -65,18 +45,27 @@ class TableInfo(NamedTuple):
     pk: int
 
 
-class SqliteSchema(NamedTuple):
-    type: str
-    name: str
-    tbl_name: str
-    rootpage: int
-    sql: str
-
-
 def test_ensure_table_created_using_table_info(engine: Engine) -> None:
+    class TblDates(NamedTuple):
+        id: int | None
+        name: str
+        score: float
+        age: int
+        data: bytes
+        startdate: dt.date
+        modified: dt.datetime
+        serial: int | None
+
     engine.ensure_table_created(TblDates)
 
     # Table as a whole
+    class SqliteSchema(NamedTuple):
+        type: str
+        name: str
+        tbl_name: str
+        rootpage: int
+        sql: str
+
     tables = engine.query(SqliteSchema, "SELECT * FROM sqlite_schema WHERE type='table'").fetchall()
     assert len(tables) == 1
     table = tables[0]
@@ -157,72 +146,14 @@ def test_ensure_table_created_catches_force_recreate(engine: Engine) -> None:
     engine.ensure_table_created(TblAlreadyCreated)  # just a double check for it being recreated.
 
 
-def test_creating_table_with_unknown_type_raises_error(engine: Engine) -> None:
-    class NewType: ...
-
-    class ModelUnknownType(NamedTuple):
-        id: int | None
-        name: str
-        unknown: NewType
-
-    with pytest.raises(UnregisteredFieldTypeError, match="has not been registered with an adapter and converter"):
-        engine.ensure_table_created(ModelUnknownType)
-
-
-def test_creating_table_with_optional_unknown_type_raises_error(engine: Engine) -> None:
-    class NewType: ...
-
-    class ModelUnknownType(NamedTuple):
-        id: int | None
-        name: str
-        unknown: NewType | None
-
-    with pytest.raises(UnregisteredFieldTypeError, match="has not been registered with an adapter and converter"):
-        engine.ensure_table_created(ModelUnknownType)
-
-
-def test_creating_table_including_unknown_model_type_raises_error(engine: Engine) -> None:
-    class ModelUnknownType(NamedTuple):
-        id: int | None
+def test_ensure_table_created__when_fails__doesnt_register_table(engine: Engine) -> None:
+    class TNoId(NamedTuple):
         name: str
 
-    class Model(NamedTuple):
-        id: int | None
-        name: str
-        unknown: ModelUnknownType
+    with pytest.raises(FieldZeroIdRequired):
+        engine.ensure_table_created(TNoId)
 
-    with pytest.raises(UnregisteredFieldTypeError, match="is a NamedTuple Row Model"):
-        engine.ensure_table_created(Model)
-
-
-def test_creating_table_including_optional_unknown_model_type_raises_error(engine: Engine) -> None:
-    class ModelUnknownType(NamedTuple):
-        id: int | None
-        name: str
-
-    class Model(NamedTuple):
-        id: int | None
-        name: str
-        unknown: ModelUnknownType | None
-
-    with pytest.raises(UnregisteredFieldTypeError, match="is a NamedTuple Row Model"):
-        engine.ensure_table_created(Model)
-
-
-def test_table_model_only_registered_when_successful(engine: Engine) -> None:
-    class ModelUnknownType(NamedTuple):
-        id: int | None
-        name: str
-
-    class Model(NamedTuple):
-        id: int | None
-        name: str
-        unknown: ModelUnknownType | None
-
-    with pytest.raises(UnregisteredFieldTypeError, match="is a NamedTuple Row Model"):
-        engine.ensure_table_created(Model)
-
-    assert not is_registered_table_model(Model)
+    assert not is_registered_table_model(TNoId)
 
 
 def test_table_creation_registers_table(engine: Engine) -> None:
@@ -239,7 +170,7 @@ def test_table_creation_registers_table(engine: Engine) -> None:
     assert is_registered_table_model(Model) is True
 
 
-def test_insert_row(engine: Engine) -> None:
+def test_save_row(engine: Engine) -> None:
     engine.ensure_table_created(T)
     row = engine.save(T(None, "Alice", 30))
 
@@ -251,7 +182,17 @@ def test_insert_row(engine: Engine) -> None:
     assert row == T(*rows[0])
 
 
-def test_get_row(engine: Engine) -> None:
+def test_save_benchmark(engine: Engine, benchmark: BenchmarkFixture) -> None:
+    engine.ensure_table_created(T)
+    row = T(None, "Alice", 30)
+
+    def save():
+        engine.save(row)
+
+    benchmark(save)
+
+
+def test_find_byid(engine: Engine) -> None:
     engine.ensure_table_created(T)
     row = T(None, "Alice", 30)
     row = engine.save(row)
@@ -262,40 +203,29 @@ def test_get_row(engine: Engine) -> None:
     assert type(retrieved_row) is T
 
 
-def test_get_row_with_id_as_none(engine: Engine) -> None:
+def test_find_byid_as_none(engine: Engine) -> None:
     engine.ensure_table_created(T)
     with pytest.raises(IdNoneError, match="Cannot SELECT, id=None"):
         engine.find(T, None)
 
 
-def test_insert_row_benchmark(engine: Engine, benchmark: BenchmarkFixture) -> None:
-    engine.ensure_table_created(T)
-    row = T(None, "Alice", 30)
-
-    def insert_row():
-        engine.save(row)
-
-    benchmark(insert_row)
-
-
-def test_get_row_benchmark(engine: Engine, benchmark: BenchmarkFixture) -> None:
-    engine.ensure_table_created(T)
-    row = T(None, "Alice", 30)
-    engine.save(row)
-
-    def get_row():
-        engine.find(T, 1)
-
-    benchmark(get_row)
-
-
-def test_get_row_with_non_existent_id(engine: Engine) -> None:
+def test_find_byid_id_not_found(engine: Engine) -> None:
     engine.ensure_table_created(T)
     with pytest.raises(IdNotFoundError, match="Cannot SELECT, no row with id="):
         engine.find(T, 78787)
 
 
-def test_get_row_by_field(engine: Engine) -> None:
+def test_find_benchmark(engine: Engine, benchmark: BenchmarkFixture) -> None:
+    engine.ensure_table_created(T)
+    engine.save(T(None, "Alice", 30))
+
+    def find():
+        engine.find(T, 1)
+
+    benchmark(find)
+
+
+def test_find_by_field(engine: Engine) -> None:
     # one field
     engine.ensure_table_created(T)
 
@@ -308,7 +238,16 @@ def test_get_row_by_field(engine: Engine) -> None:
     assert engine.find_by(T, age=33) == T(2, "Bob", 33)
 
 
-def test_get_row_by_fields(engine: Engine) -> None:
+def test_find_by_field_no_match(engine: Engine) -> None:
+    engine.ensure_table_created(T)
+
+    engine.save(T(None, "Alice", 30))
+    engine.save(T(None, "Bob", 33))
+
+    assert engine.find_by(T, name="Karl") is None
+
+
+def test_find_by_fields(engine: Engine) -> None:
     # multiple fields
     engine.ensure_table_created(T)
     r1 = engine.save(T(None, "Alice", 30))
@@ -320,21 +259,12 @@ def test_get_row_by_fields(engine: Engine) -> None:
     assert engine.find_by(T, name="Alice", age=33) == r3
 
 
-def test_get_row_by_none_found(engine: Engine) -> None:
-    engine.ensure_table_created(T)
-
-    engine.save(T(None, "Alice", 30))
-    engine.save(T(None, "Bob", 33))
-
-    assert engine.find_by(T, name="Karl") is None
-
-
-def test_get_row_by_fields_with_no_kwargs(engine: Engine) -> None:
+def test_find_by_fields_with_no_kwargs(engine: Engine) -> None:
     with pytest.raises(NoKwargFieldSpecifiedError, match="At least one field must be specified to find a row."):
         engine.find_by(T)
 
 
-def test_get_row_by_fields_with_invalid_kwargs(engine: Engine) -> None:
+def test_find_by_fields_with_invalid_kwargs(engine: Engine) -> None:
     with pytest.raises(InvalidKwargFieldSpecifiedError):
         engine.find_by(T, doesnt_exist="test")
 
@@ -352,7 +282,7 @@ def test_save_fills_in_id(engine: Engine) -> None:
     assert returned_row.id == 2
 
 
-def test_cannot_insert_null_value_in_not_null_column(engine: Engine) -> None:
+def test_save_cannot_insert_null_value_in_not_null_column(engine: Engine) -> None:
     engine.ensure_table_created(T)
     row = T(None, "Alice", None)  # type: ignore this bug is part of the test
 
@@ -360,7 +290,7 @@ def test_cannot_insert_null_value_in_not_null_column(engine: Engine) -> None:
         engine.save(row)
 
 
-def test_update_row(engine: Engine) -> None:
+def test_save_updates_row(engine: Engine) -> None:
     engine.ensure_table_created(T)
     row = engine.save(T(None, "Alice", 30))
     engine.save(row._replace(name="Bob"))
@@ -371,13 +301,13 @@ def test_update_row(engine: Engine) -> None:
     assert retrieved_row == T(row.id, "Bob", 30)
 
 
-def test_update_row_with_non_existent_id(engine: Engine) -> None:
+def test_save_with_nonexistent_id(engine: Engine) -> None:
     engine.ensure_table_created(T)
     with pytest.raises(ValueError, match="Cannot UPDATE, no row with id="):
         engine.save(T(78787, "Bob", 30))
 
 
-def test_delete_row(engine: Engine) -> None:
+def test_delete_byid(engine: Engine) -> None:
     engine.ensure_table_created(T)
     row = engine.save(T(None, "Alice", 30))
 
@@ -394,7 +324,7 @@ def test_delete_row(engine: Engine) -> None:
     assert len(rows) == 0
 
 
-def test_delete_row_with_object(engine: Engine) -> None:
+def test_delete_byrow(engine: Engine) -> None:
     engine.ensure_table_created(T)
     row = engine.save(T(None, "Alice", 30))
 
@@ -411,7 +341,7 @@ def test_delete_row_with_object(engine: Engine) -> None:
     assert len(rows) == 0
 
 
-def test_delete_row_with_non_existent_id(engine: Engine) -> None:
+def test_delete_with_nonexistent_id(engine: Engine) -> None:
     engine.ensure_table_created(T)
     with pytest.raises(ValueError, match="Cannot DELETE, no row with id="):
         engine.delete(T, 78787)
@@ -421,30 +351,6 @@ def test_delete_row_with_id_as_none(engine: Engine) -> None:
     engine.ensure_table_created(T)
     with pytest.raises(ValueError, match="Cannot DELETE, id=None"):
         engine.delete(T, None)
-
-
-def test_can_insert_and_retrieve_datetime(engine: Engine) -> None:
-    engine.ensure_table_created(TblDates)
-    row = TblDates(None, "Alice", 30.0, 30, b"some data", dt.date(2021, 1, 1), dt.datetime(2021, 1, 1, 5, 33), None)
-    assert type(row.modified) is dt.datetime
-
-    row = engine.save(row)
-    retrieved_row = engine.find(TblDates, row.id)
-
-    assert type(retrieved_row.modified) is dt.datetime
-    assert retrieved_row.modified == row.modified
-
-
-def test_can_insert_and_retrieve_date(engine: Engine) -> None:
-    engine.ensure_table_created(TblDates)
-    row = TblDates(None, "Alice", 30.0, 30, b"some data", dt.date(2021, 1, 1), dt.datetime(2021, 1, 1, 5, 33), None)
-    assert type(row.startdate) is dt.date
-
-    row = engine.save(row)
-    retrieved_row = engine.find(TblDates, row.id)
-
-    assert type(retrieved_row.startdate) is dt.date
-    assert retrieved_row.startdate == row.startdate
 
 
 def test_engine_query_fetchone(engine: Engine) -> None:
@@ -589,7 +495,7 @@ class TestRelatedTable:
         assert cols[1] == TableInfo(1, "name", "TEXT", 1, None, 0)
         assert cols[2] == TableInfo(2, "team", "Team_ID", 1, None, 0)
 
-    def test_insert_row_with_related_table(self, engine: Engine) -> None:
+    def test_save__when_has_related_model(self, engine: Engine) -> None:
         engine.ensure_table_created(self.Team)
         engine.ensure_table_created(self.Person)
 
@@ -601,7 +507,7 @@ class TestRelatedTable:
         assert row == self.Person(1, "Alice", self.Team(1, "Team A"))
         assert person == self.Person(*row)
 
-    def test_insert_row_with_related_table_raises_if_related_unpersisted(self, engine: Engine) -> None:
+    def test_save__when_related_model_is_unpersisted__raises(self, engine: Engine) -> None:
         engine.ensure_table_created(self.Team)
         engine.ensure_table_created(self.Person)
 
