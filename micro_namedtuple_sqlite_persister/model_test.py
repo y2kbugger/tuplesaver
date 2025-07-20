@@ -5,21 +5,21 @@ from typing import NamedTuple, Optional, Union
 
 import pytest
 
-from micro_namedtuple_sqlite_persister.persister import Engine, FieldZeroIdRequired, UnregisteredFieldTypeError
-
 from .model import (
+    FieldZeroIdMalformed,
+    FieldZeroIdRequired,
     Meta,
     MetaField,
-    ModelDefinitionError,
+    UnregisteredFieldTypeError,
     _sql_columndef,
     _sql_typename,
     _unwrap_optional_type,
     clear_modelmeta_registrations,
     get_meta,
+    get_table_meta,
     is_registered_row_model,
     is_registered_table_model,
     is_row_model,
-    register_table_model,
 )
 
 
@@ -123,12 +123,30 @@ def test_get_sqltypename() -> None:
     assert _sql_typename(ModelA) == "ModelA_ID"
 
 
+def test_get_meta() -> None:
+    class ModelA(NamedTuple):
+        name: str
+
+    assert get_meta(ModelA) == Meta(
+        Model=ModelA,
+        model_name="ModelA",
+        table_name="ModelA",
+        is_table=False,
+        select="SELECT ModelA.name FROM ModelA",
+        select_by_id="SELECT ModelA.name FROM ModelA\nWHERE id = ?",
+        insert=None,
+        fields=(MetaField(name="name", type=str, full_type=str, nullable=False, is_fk=False, is_pk=False, sql_typename="TEXT", sql_columndef="name [TEXT] NOT NULL"),),
+    )
+
+
 def test_get_table_meta() -> None:
     class ModelA(NamedTuple):
         id: int | None
         name: str
 
-    register_table_model(ModelA)
+    with get_table_meta(ModelA) as _meta:
+        pass  # this is where we would normally try to create the table.
+
     assert get_meta(ModelA) == Meta(
         Model=ModelA,
         model_name="ModelA",
@@ -150,7 +168,8 @@ def test_get_alternateview_meta() -> None:
         name: str
         score: float
 
-    register_table_model(ModelA)
+    with get_table_meta(ModelA) as _meta:
+        pass  # this is where we would normally try to create the table.
 
     class ModelA_NameOnly(NamedTuple):
         id: int | None
@@ -163,7 +182,7 @@ def test_get_alternateview_meta() -> None:
         is_table=False,
         select="SELECT ModelA.id, ModelA.name FROM ModelA",
         select_by_id="SELECT ModelA.id, ModelA.name FROM ModelA\nWHERE id = ?",
-        insert="INSERT INTO ModelA (\n    id, name\n) VALUES (\n    ?, ?\n)",
+        insert=None,
         fields=(
             MetaField(name="id", type=int, full_type=int | None, nullable=True, is_fk=False, is_pk=True, sql_typename="INTEGER", sql_columndef="id [INTEGER] PRIMARY KEY NOT NULL"),
             MetaField(name="name", type=str, full_type=str, nullable=False, is_fk=False, is_pk=False, sql_typename="TEXT", sql_columndef="name [TEXT] NOT NULL"),
@@ -184,7 +203,8 @@ def test_register_table_model() -> None:
     assert is_registered_row_model(ModelA) is True
     assert is_registered_table_model(ModelA) is False
 
-    register_table_model(ModelA)
+    with get_table_meta(ModelA) as _meta:
+        pass  # this is where we would normally try to create the table.
 
     assert is_registered_row_model(ModelA) is True
     assert is_registered_table_model(ModelA) is True
@@ -206,7 +226,7 @@ def test_clear_modelmeta_registrations() -> None:
 
 def test_column_definition() -> None:
     assert _sql_columndef('id', True, int) == "id [INTEGER] PRIMARY KEY NOT NULL"
-    with pytest.raises(ModelDefinitionError):
+    with pytest.raises(FieldZeroIdMalformed):
         _sql_columndef('id', False, int)
 
     assert _sql_columndef("value", False, float) == "value [REAL] NOT NULL"
@@ -220,29 +240,67 @@ def test_column_definition() -> None:
     assert _sql_columndef("moda", True, ModelA) == "moda [ModelA_ID] NULL"
 
 
-def test_forgetting_id_column_as_first_field_raises(engine: Engine) -> None:
-    class TblNoId(NamedTuple):
+def test_meta__model_missing_id() -> None:
+    class TBadID(NamedTuple):
         name: str
 
-    with pytest.raises(FieldZeroIdRequired):
-        engine.ensure_table_created(TblNoId)
+    get_meta(TBadID)  # this is ok, view models don't need an id
 
 
-def test_creating_table_including_optional_unknown_model_type_raises_error(engine: Engine) -> None:
-    class ModelUnknownType(NamedTuple):
+def test_meta__model_malformed_id_raises() -> None:
+    class TBadID(NamedTuple):
+        id: str | None  # id is not int
+        name: str
+
+    with pytest.raises(FieldZeroIdMalformed):
+        get_meta(TBadID)  # even though this is a view model, if it has an id, it must be int | None
+
+
+def test_table_meta__model_missing_id() -> None:
+    class TBadID(NamedTuple):
+        name: str
+
+    with pytest.raises(FieldZeroIdRequired):  # noqa: SIM117
+        with get_table_meta(TBadID) as _meta:
+            pass  # this is where we would normally try to create the table.
+
+
+def test_table_meta__id_isnt_int() -> None:
+    class TBadID(NamedTuple):
+        id: str | None  # id is not int
+        name: str
+
+    with pytest.raises(FieldZeroIdMalformed):  # noqa: SIM117
+        with get_table_meta(TBadID) as _meta:
+            pass  # this is where we would normally try to create the table.
+
+
+def test_table_meta__id_isnt_optional() -> None:
+    class TBadID(NamedTuple):
+        id: int  # id is not optional
+        name: str
+
+    with pytest.raises(FieldZeroIdMalformed):  # noqa: SIM117
+        with get_table_meta(TBadID) as _meta:
+            pass  # this is where we would normally try to create the table.
+
+
+def test_table_meta__unregistered_related_model() -> None:
+    # TODO: one day we could recursively register the unknown model, but for now we just raise an error
+    class UnregisteredTableModel(NamedTuple):
         id: int | None
         name: str
 
-    class Model(NamedTuple):
+    class ModelWithUnregisteredTableModelField(NamedTuple):
         id: int | None
         name: str
-        unknown: ModelUnknownType | None
+        unknown: UnregisteredTableModel
 
     with pytest.raises(UnregisteredFieldTypeError, match="is a NamedTuple Row Model"):
-        engine.ensure_table_created(Model)
+        get_meta(ModelWithUnregisteredTableModelField)
 
 
-def test_creating_table_with_unknown_type_raises_error(engine: Engine) -> None:
+def test_table_meta__unregistered_field_type() -> None:
     class NewType: ...
 
     class ModelUnknownType(NamedTuple):
@@ -251,16 +309,27 @@ def test_creating_table_with_unknown_type_raises_error(engine: Engine) -> None:
         unknown: NewType
 
     with pytest.raises(UnregisteredFieldTypeError, match="has not been registered with an adapter and converter"):
-        engine.ensure_table_created(ModelUnknownType)
+        get_meta(ModelUnknownType)
 
 
-def test_creating_table_with_optional_unknown_type_raises_error(engine: Engine) -> None:
-    class NewType: ...
-
-    class ModelUnknownType(NamedTuple):
+def test_table_meta__failed_table_meta_context__meta_is_not_registered() -> None:
+    class ModelA(NamedTuple):
         id: int | None
         name: str
-        unknown: NewType | None
 
-    with pytest.raises(UnregisteredFieldTypeError, match="has not been registered with an adapter and converter"):
-        engine.ensure_table_created(ModelUnknownType)
+    with pytest.raises(RuntimeError, match="This is a test"):  # noqa: SIM117
+        # ensure that get_table_meta indeed bubbles up exceptions by re-raising them.
+        with get_table_meta(ModelA) as _meta:
+            raise RuntimeError("This is a test to ensure that the meta is not registered if the context fails")
+
+    # After the context, the meta should not be registered
+    assert is_registered_row_model(ModelA) is False
+    assert is_registered_table_model(ModelA) is False
+
+    # ok, let's try to register it again, successfully this time
+    with get_table_meta(ModelA) as _meta:
+        pass
+
+    # After the context, the meta should not be registered
+    assert is_registered_row_model(ModelA) is True
+    assert is_registered_table_model(ModelA) is True

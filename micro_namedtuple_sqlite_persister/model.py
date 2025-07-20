@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import inspect
 import logging
+import sqlite3
 import types
+from collections.abc import Iterator
+from contextlib import contextmanager
 from textwrap import dedent
 from typing import Any, NamedTuple, Union, get_args, get_origin, get_type_hints
 
@@ -16,6 +19,37 @@ type Row = NamedTuple
 
 class ModelDefinitionError(Exception):
     pass
+
+
+class FieldZeroIdRequired(ModelDefinitionError):
+    def __init__(self, model_name: str, field_zero_name: str, field_zero_typehint: Any) -> None:
+        super().__init__(
+            self,
+            f"Field 0 of {model_name} is required to be `id: int | None` but instead is `{field_zero_name}: {field_zero_typehint}`",
+        )
+
+
+class FieldZeroIdMalformed(ModelDefinitionError):
+    def __init__(self, field_zero_typehint: Any) -> None:
+        super().__init__(
+            self,
+            f"`id` field is required to be `id: int | None` but instead is `id: {field_zero_typehint}`",
+        )
+
+
+class UnregisteredFieldTypeError(ModelDefinitionError):
+    def __init__(self, field_type: type | Any) -> None:
+        if is_row_model(field_type):
+            msg = (
+                f"Field Type `{field_type}` is a NamedTuple Row Model, but it has not been registered with the Persister Engine.\n"
+                "Use `engine.ensure_table_created({field_type.__name__})` to register it"
+            )
+        elif field_type is Any:
+            msg = "Field Type `Any` is not a valid type for persisting, it can only be used for reading"
+        else:
+            msg = f"Field Type `{field_type}` has not been registered with an adapter and converter.\n `register_adapt_convert` to register it"
+
+        super().__init__(msg)
 
 
 def is_row_model(cls: object) -> bool:
@@ -54,7 +88,7 @@ class Meta(NamedTuple):
     is_table: bool
     select: str
     select_by_id: str
-    insert: str
+    insert: str | None
     fields: tuple[MetaField, ...]
 
 
@@ -77,11 +111,28 @@ def clear_modelmeta_registrations() -> None:
 
 
 def get_meta(Model: type[Row]) -> Meta:
+    """Simple cached getter for Meta"""
     try:
         return _meta[Model]
     except KeyError:
-        pass
+        _meta[Model] = make_meta(Model)
+        return _meta[Model]
 
+
+@contextmanager
+def get_table_meta(Model: type[Row]) -> Iterator[Meta]:
+    """Context manager for cache table meta if and only if the manager exits without exception, ie the table is created successfully."""
+    meta = make_table_meta(Model)
+    try:
+        yield meta
+    except Exception:
+        raise  # propagate
+    else:
+        _meta[Model] = meta
+        sqlite3.register_adapter(Model, lambda row: row[0])  # insert Model as its id when used as FK related field in other tables
+
+
+def make_meta(Model: type[Row]) -> Meta:
     table_name = Model.__name__.split('_')[0]
     annotations = _get_resolved_annotations(Model)
     fieldnames = Model._fields
@@ -104,27 +155,60 @@ def get_meta(Model: type[Row]) -> Meta:
 
     select = f"SELECT {', '.join(table_name + '.' + f for f in Model._fields)} FROM {table_name}"
     select_by_id = select + "\nWHERE id = ?"
-    insert = dedent(f"""
-            INSERT INTO {table_name} (
-                {', '.join(fieldnames)}
-            ) VALUES (
-                {', '.join("?" for _ in fieldnames)}
-            )""").strip()
-    _meta[Model] = Meta(
+
+    meta = Meta(
         Model=Model,
         model_name=Model.__name__,
         table_name=table_name,
         is_table=False,
         select=select,
         select_by_id=select_by_id,
-        insert=insert,
+        insert=None,
         fields=fields,
     )
-    return _meta[Model]
+
+    ## Validate Meta
+
+    # Check that all fields are registered
+    for field in meta.fields:
+        # skipp self-reference, it will be registered once/if it is in _meta
+        if field.type is Model:
+            continue
+        if field.type is Any:
+            continue  # Any is not a valid type for persisting, but can be used for reading
+        if not is_registered_fieldtype(field.type):
+            raise UnregisteredFieldTypeError(field.type)
+
+    return meta
 
 
-def register_table_model(Model: type[Row]) -> None:
-    _meta[Model] = get_meta(Model)._replace(is_table=True)
+def make_table_meta(Model: type[Row]) -> Meta:
+    meta = make_meta(Model)
+
+    insert = dedent(f"""
+        INSERT INTO {meta.table_name} (
+            {', '.join(f.name for f in meta.fields)}
+        ) VALUES (
+            {', '.join("?" for _ in meta.fields)}
+        )""").strip()
+
+    ## Validate Table Meta
+
+    for field in meta.fields:
+        if field.type is Any:  # Any is not a valid type tables fields
+            raise UnregisteredFieldTypeError(field.type)
+
+    # Check that the first field is `id: int | None`
+    field_zero = meta.fields[0]
+    if field_zero.name != "id" or field_zero.full_type != (int | None):
+        raise FieldZeroIdRequired(meta.model_name, field_zero.name, field_zero.full_type)
+
+    meta = meta._replace(
+        is_table=True,
+        insert=insert,
+    )
+
+    return meta
 
 
 _native_columntypes: dict[type, str] = {
@@ -150,8 +234,8 @@ def _sql_typename(FieldType: type) -> str:
 
 def _sql_columndef(field_name: str, nullable: bool, FieldType: type) -> str:
     if field_name == "id":
-        if FieldType is not int or not nullable:
-            raise ModelDefinitionError("id field must be of type `int | None`")
+        if not (FieldType is int and nullable):
+            raise FieldZeroIdMalformed(FieldType)
         return "id [INTEGER] PRIMARY KEY NOT NULL"
 
     if nullable:

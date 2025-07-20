@@ -11,21 +11,12 @@ from typing import Any, cast, overload
 from .model import (
     Row,
     get_meta,
-    is_registered_fieldtype,
+    get_table_meta,
     is_registered_table_model,
     is_row_model,
-    register_table_model,
 )
 
 logger = logging.getLogger(__name__)
-
-
-class FieldZeroIdRequired(Exception):
-    def __init__(self, model_name: str, field_zero_name: str, field_zero_typehint: Any) -> None:
-        super().__init__(
-            self,
-            f"Field 0 of {model_name} is required to be `id: int | None` but instead is `{field_zero_name}: {field_zero_typehint}`",
-        )
 
 
 class TableSchemaMismatch(Exception):
@@ -33,18 +24,6 @@ class TableSchemaMismatch(Exception):
         super().__init__(
             f"Table `{table_name}` already exists but the schema does not match the expected schema.\njExisting schema:\n\t{existing_table_schema}.\nExpected schema:\n\t{new_table_schema}"
         )
-
-
-class UnregisteredFieldTypeError(Exception):
-    def __init__(self, field_type: type) -> None:
-        if is_row_model(field_type):
-            msg = (
-                f"Field Type {field_type} is a NamedTuple Row Model, but it has not been registered with the Persister Engine.\n"
-                "Use `engine.ensure_table_created({field_type.__name__})` to register it"
-            )
-        else:
-            msg = f"Field Type {field_type} has not been registered with an adapter and converter.\n `register_adapt_convert` to register it"
-        super().__init__(msg)
 
 
 class UnpersistedRelationshipError(Exception):
@@ -76,54 +55,39 @@ class Engine:
         self.connection = sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES)
         self.connection.execute("PRAGMA journal_mode=WAL")
 
-    def _get_sql_for_existing_table(self, table_name: str) -> str:
-        query = f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table_name}'"
-        cursor = self.connection.execute(query)
-        return cursor.fetchone()[0]
-
     def ensure_table_created(self, Model: type[Row], *, force_recreate: bool = False) -> None:
-        meta = get_meta(Model)
-        field_zero = meta.fields[0]
-        if field_zero.name != "id" or field_zero.full_type != (int | None):
-            raise FieldZeroIdRequired(meta.model_name, field_zero.name, field_zero.full_type)
+        with get_table_meta(Model) as meta:
+            ddl = dedent(f"""
+                CREATE TABLE {meta.table_name} (
+                {', '.join(f.sql_columndef for f in meta.fields)}
+                )""").strip()
 
-        # Check that all fields are registered
-        for field in meta.fields:
-            # skipping self reference, it will be registered later
-            if field.type is Model:
-                continue
-            if not is_registered_fieldtype(field.type):
-                raise UnregisteredFieldTypeError(field.type)
+            try:
+                self.connection.execute(ddl)
+            except sqlite3.OperationalError as e:
+                if f"table {meta.table_name} already exists" in str(e):
+                    # Force Recreate
+                    if force_recreate:
+                        self.connection.execute(f"DROP TABLE {meta.table_name}")
+                        self.connection.execute(ddl)
 
-        query = dedent(f"""
-            CREATE TABLE {meta.table_name} (
-            {', '.join(f.sql_columndef for f in meta.fields)}
-            )""").strip()
+                    # Check existing table, it might be ok
+                    def _normalize_whitespace(s: str) -> str:
+                        return re.sub(r'\s+', ' ', s).strip()
 
-        try:
-            self.connection.execute(query)
-        except sqlite3.OperationalError as e:
-            if f"table {meta.table_name} already exists" in str(e):
-                # Force Recreate
-                if force_recreate:
-                    self.connection.execute(f"DROP TABLE {meta.table_name}")
-                    self.connection.execute(query)
+                    def _get_sql_for_existing_table(table_name: str) -> str:
+                        query = f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table_name}'"
+                        cursor = self.connection.execute(query)
+                        return cursor.fetchone()[0]
 
-                # Check existing table, it might be ok
-                def normalize_whitespace(s: str) -> str:
-                    return re.sub(r'\s+', ' ', s).strip()
+                    existing_table_schema = _normalize_whitespace(_get_sql_for_existing_table(meta.table_name))
+                    new_table_schema = _normalize_whitespace(ddl)
 
-                existing_table_schema = normalize_whitespace(self._get_sql_for_existing_table(meta.table_name))
-                new_table_schema = normalize_whitespace(query)
-
-                if existing_table_schema != new_table_schema:
-                    raise TableSchemaMismatch(meta.table_name, existing_table_schema, new_table_schema) from e
-            else:
-                # error is not about the table already existing
-                raise
-
-        register_table_model(Model)
-        sqlite3.register_adapter(Model, lambda row: row[0])  # Register to be able to insert Model instances as foreign keys
+                    if existing_table_schema != new_table_schema:
+                        raise TableSchemaMismatch(meta.table_name, existing_table_schema, new_table_schema) from e
+                else:
+                    # error is not about the table already existing
+                    raise
 
     #### Writing
     def save[R: Row](self, row: R, *, deep: bool = False) -> R:
@@ -137,7 +101,9 @@ class Engine:
                 raise UnpersistedRelationshipError(type(row).__name__, "related row", row)
 
         if row[0] is None:
-            cur = self.connection.execute(get_meta(type(row)).insert, row)
+            insert = get_meta(type(row)).insert
+            assert insert is not None, "Insert statement should be defined for the model."
+            cur = self.connection.execute(insert, row)
             return row._replace(id=cur.lastrowid)
         else:
             query = dedent(f"""

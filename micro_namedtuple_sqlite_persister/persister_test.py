@@ -10,10 +10,9 @@ from pytest_benchmark.plugin import BenchmarkFixture
 
 from micro_namedtuple_sqlite_persister.conftest import SqlLog
 
-from .model import is_registered_row_model, is_registered_table_model
+from .model import FieldZeroIdRequired, is_registered_row_model, is_registered_table_model
 from .persister import (
     Engine,
-    FieldZeroIdRequired,
     IdNoneError,
     IdNotFoundError,
     InvalidKwargFieldSpecifiedError,
@@ -146,7 +145,7 @@ def test_ensure_table_created_catches_force_recreate(engine: Engine) -> None:
     engine.ensure_table_created(TblAlreadyCreated)  # just a double check for it being recreated.
 
 
-def test_ensure_table_created__when_fails__doesnt_register_table(engine: Engine) -> None:
+def test_ensure_table_created__fails__doesnt_register_table_model(engine: Engine) -> None:
     class TNoId(NamedTuple):
         name: str
 
@@ -156,7 +155,7 @@ def test_ensure_table_created__when_fails__doesnt_register_table(engine: Engine)
     assert not is_registered_table_model(TNoId)
 
 
-def test_table_creation_registers_table(engine: Engine) -> None:
+def test_ensure_table_created__is_successful__registers_table_model(engine: Engine) -> None:
     class Model(NamedTuple):
         id: int | None
         name: str

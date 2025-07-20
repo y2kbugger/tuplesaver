@@ -1,10 +1,11 @@
 # WIP
 - I want to be able to persist an Enum without configuration
   - tests?, examples?
-- Test for id as a str, and int but not int | None to raise FieldZeroIdRequired
+- Test that Any can only be used for read-only fields
+  - e.g. `Any` is not a valid type for persisting, but can be used for reading
 
 # Bugs
-- Meta caches invalid models e.g. missing id, or missing adapters
+
 
 # Testing
 - Test cleanup
@@ -13,6 +14,20 @@
   - refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
   - group tests, and promote _some_ model reuse if it makes sense
   - All test should use double underscore unit_under_test__when__effect style when possible
+  - split out TypedCursorProxy into a separate file
+    - tighten the tests to just the cursor proxy
+  - Make "ensure table created" concept part of migrations instead of engine??
+    - e.g. i don't want all those tests for schema mixed in with CRUD
+    - or maybe just refactor files
+    - or maybe make the schema mutation as part of migration, but leave "ensure table created" as a just a check in engine that registers table meta
+    - or could ensure happen implicity on first use??, (and recursively for all relationships)
+      - What about FK relationships? does this mean we can only recurse when making tables, but not when gettting table meta?
+        - or can we be smart?
+      - remember to go and remove the test fixure in query that ensure table meta is created in the right order
+- Test that non Fields greater than zero cannot be called id
+- test is_registered_fieldtype
+  - unknown types, unregistered models, both Optional and non-Optional variants
+
 - Test types on select (both decorator and non)
 - test for fetchone returning none
 - Test for cyclic data structures e.g. A -> B -> C -> A
@@ -30,10 +45,12 @@
 - use the assert_type from typing to check type hints throughout all tests
 - Benchmark and test connection creation and closing
 - I want to instrument sqlite to log and profile queries.
+- Test CRUD on View Models
 
 # Next
 - Modify example story of "queries", do raw sql first, then show query.py builder
 - Remove demos of error handling in example.ipynb
+- Add example of using Any for reading
 - Ensure that we use named placeholder when possible
   https://docs.python.org/3/library/sqlite3.html#sqlite3-placeholders
     cur.executemany("INSERT INTO lang VALUES(:name, :year)", data)
@@ -52,6 +69,8 @@
   https://sqlite.org/syntax/column-constraint.html
   Somthing like this
       name: Annotated[str, Constraint("UNIQUE")]
+- Consider dropping "force recreate" from ensure_table_created
+  - This is hack until we have better migrations
 - joined loads
   - approx 20% perf boost for execute many on 20k rows, not worth it, yet
 - engine.update
@@ -62,11 +81,6 @@
   ```sql
   update MyModel set name = 'Apple' where id = 42;
   ```
-- Make "ensure table created" concept part of migrations instead of engine??
-  - e.g. i don't want all those tests for schema mixed in with CRUD
-  - or maybe just refactor files
-  - or maybe make the schema mutation as part of migration, but leave "ensure table created" as a just a check in engine that registers table meta
-  - or could ensure happen implicity on first use??, (and recursively for all relationships)
 
 ## engine.upsert
 | Upsert          | `Model.upsert(attrs, unique_by)`  | Insert or update based on unique key |

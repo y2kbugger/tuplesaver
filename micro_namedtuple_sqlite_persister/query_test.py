@@ -3,6 +3,8 @@ from typing import NamedTuple
 
 import pytest
 
+from micro_namedtuple_sqlite_persister.model import get_meta
+
 from .query import QueryError, select
 
 
@@ -21,6 +23,13 @@ class Athlete(NamedTuple):
     id: int | None
     name: str
     team: Team
+
+
+@pytest.fixture(autouse=True)  # autouse for this test module
+def ensure_meta_is_registered_in_the_correct_order() -> None:
+    get_meta(League)
+    get_meta(Team)
+    get_meta(Athlete)
 
 
 def dd(sql: str) -> str:
