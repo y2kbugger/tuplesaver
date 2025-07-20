@@ -21,7 +21,7 @@ sql = "SELECT 1 as id, 'Alice' as name, 30 as age UNION SELECT 2, 'Bob', 40;"
 def proxy() -> TypedCursorProxy[M]:
     connection = sqlite3.connect(":memory:")
     cursor = connection.execute(sql)
-    proxy = TypedCursorProxy.proxy_cursor(M, cursor)
+    proxy = TypedCursorProxy.proxy_cursor_deep(M, cursor)
     assert_type(proxy, TypedCursorProxy[M])  # type: ignore slight bug in pyright, masked by both fixure here and engine.query in persister.py
     return proxy
 
@@ -65,7 +65,7 @@ def test_proxy__after_usage__rowfactory_doesnt_leak_to_new_cursors() -> None:
 
     # Proxy a cursor with custom row_factory
     cursor = connection.cursor()
-    proxy = TypedCursorProxy.proxy_cursor(M, cursor)
+    proxy = TypedCursorProxy.proxy_cursor_deep(M, cursor)
     assert proxy.row_factory is not None
 
     # new cursors must come back completely standard

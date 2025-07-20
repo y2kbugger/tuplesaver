@@ -1,7 +1,9 @@
 # WIP
 - Add in lazy loading of relationships
-  - should reduce need for some of the model views in examples e.g. id only views
-  - This would unlock the ability to define backpop relationships and use them in queries
+  - Test the deepness of proxy_cursor_deep ( move from persister to cursorproxy )
+  - Test the lazyness of proxy_cursor_lazy
+  - Turn it on by default in the engine.query
+  - Rework examples of View Models to a differnt use case (right now demoed with BOM)
 
 # Bugs
 
@@ -49,6 +51,8 @@
 - Test engine.save when updating a row with a lazy loading relationship (both before and after the lazy load)
 
 # Next
+- maybe look at that decorator that tells typing checkers that a class is only for types
+- Invert location of adaptconvert_columntypes from adaptconvert to model, source tree of deps better
 - Harmonize names "view model" and "row model" in codebase and docs
 - More standard adaptconverters Enum, set, tuple, time, frozenset, Path, UUID, Decimal, bytes
   - tests?, examples?

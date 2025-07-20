@@ -208,6 +208,17 @@ def make_table_meta(Model: type[Row]) -> Meta:
         insert=insert,
     )
 
+    # monkey-patch Model so any Lazy field is transparently unwrapped
+    from .cursorproxy import Lazy
+
+    def _unwrap_lazyproxy_getattr(self: NamedTuple, attr: str):
+        value = object.__getattribute__(self, attr)
+        if isinstance(value, Lazy):
+            return value._obj()  # materialise & return real row  # noqa: SLF001
+        return value
+
+    Model.__getattribute__ = _unwrap_lazyproxy_getattr
+
     return meta
 
 

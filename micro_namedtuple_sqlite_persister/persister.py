@@ -177,6 +177,9 @@ class Engine:
 
         return row
 
-    def query[R: Row](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple()) -> TypedCursorProxy[R]:
+    def query[R: Row](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple(), *, deep: bool = True) -> TypedCursorProxy[R]:
         cursor = self.connection.execute(sql, parameters)
-        return TypedCursorProxy.proxy_cursor(Model, cursor)
+        if deep:
+            return TypedCursorProxy.proxy_cursor_deep(Model, cursor)
+        else:
+            return TypedCursorProxy.proxy_cursor_lazy(Model, cursor, self)

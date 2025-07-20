@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
-# NOTE: cursor.py should only know about .model
+# NOTE: cursorproxy.py should only know about .model
 from .model import Row, get_meta, is_registered_table_model
+
+if TYPE_CHECKING:
+    from .persister import Engine
 
 
 def _make_model_deep[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.Row) -> R:
@@ -50,9 +53,43 @@ def _make_model_deep[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sq
     raise AssertionError("Stack unexpectedly empty before returning the root model.")
 
 
+class Lazy[Model]:
+    __slots__ = ("_cached", "_engine", "_id", "_model")
+
+    def __init__(self, engine: Engine, model: type[Row], id_: int):
+        self._engine = engine
+        self._model = model
+        self._id = id_
+        self._cached = None
+
+    def _obj(self) -> Model:
+        if self._cached is None:
+            self._cached = self._engine.find(self._model, self._id)
+        return cast(Model, self._cached)
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}[{self._model.__name__}]:{self._id}>" if self._cached is None else repr(self._cached)
+
+
+def _make_model_lazy[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.Row, engine: Engine) -> R:
+    """Lazy loading of relationships, only fetches sub-models when accessed."""
+    # First just create the root RootModel with FKs in related fields
+    row = RootModel._make(root_row)
+
+    # Now iterate over the fields and replace any foreign keys with Lazy proxies
+    for idx, field in enumerate(get_meta(RootModel).fields):
+        if field.type is not None and is_registered_table_model(field.type):
+            # Replace with Lazy proxy
+            fk_value = root_row[idx]
+            if fk_value is not None:
+                row = row._replace(**{field.name: Lazy(engine, field.type, fk_value)})
+
+    return row  # Return the root model with lazy-loaded relationships
+
+
 class TypedCursorProxy[R: Row](sqlite3.Cursor):
     @staticmethod
-    def proxy_cursor(Model: type[R], cursor: sqlite3.Cursor) -> TypedCursorProxy[R]:
+    def proxy_cursor_deep(Model: type[R], cursor: sqlite3.Cursor, *, deep: bool = False) -> TypedCursorProxy[R]:
         def row_fac_deep(c: sqlite3.Cursor, r: sqlite3.Row) -> R:
             # Disable the row factory to let us handle making the inner models ourselves
             root_row_factory = c.row_factory
@@ -66,6 +103,16 @@ class TypedCursorProxy[R: Row](sqlite3.Cursor):
             return m
 
         cursor.row_factory = row_fac_deep
+
+        return cast(TypedCursorProxy[R], cursor)
+
+    @staticmethod
+    def proxy_cursor_lazy(Model: type[R], cursor: sqlite3.Cursor, engine: Engine) -> TypedCursorProxy[R]:
+        def row_fac_lazy(c: sqlite3.Cursor, r: sqlite3.Row) -> R:
+            return _make_model_lazy(Model, c, r, engine)
+
+        cursor.row_factory = row_fac_lazy
+
         return cast(TypedCursorProxy[R], cursor)
 
     def fetchone(self) -> R | None: ...
