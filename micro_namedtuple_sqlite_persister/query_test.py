@@ -3,8 +3,7 @@ from typing import NamedTuple
 
 import pytest
 
-from micro_namedtuple_sqlite_persister.model import get_meta
-
+from .model import get_meta
 from .query import QueryError, select
 
 

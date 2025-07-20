@@ -1,4 +1,5 @@
 # WIP
+- tighten TypedCursorProxy tests to just the cursorproxy.py
 - Add in lazy loading of relationships
   - should reduce need for some of the model views in examples e.g. id only views
   - This would unlock the ability to define backpop relationships and use them in queries
@@ -7,9 +8,8 @@
 
 
 # Testing
+- Test `engine.save` that updated related models can be `deep`ly updated.
 - Test cleanup
-  - split out TypedCursorProxy into a separate file
-    - tighten the tests to just the cursor proxy
   - Make "ensure table created" concept part of migrations instead of engine??
     - e.g. i don't want all those tests for schema mixed in with CRUD
     - or maybe just refactor files
