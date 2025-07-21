@@ -4,6 +4,7 @@
   - Test the lazyness of proxy_cursor_lazy
   - Turn it on by default in the engine.query
   - Rework examples of View Models to a differnt use case (right now demoed with BOM)
+  - Test engine.save when updating a row with a lazy loading relationship (both before and after the lazy load)
 
 # Bugs
 
@@ -48,7 +49,6 @@
 - Validate in Meta creation that related models in fields of table models are actually table models and not view models
 - Test that everything works on when doing arbitrary view model queries that select FK in as model relationships
 - Test duplicate joins in query.select deduplicates
-- Test engine.save when updating a row with a lazy loading relationship (both before and after the lazy load)
 
 # Next
 - maybe look at that decorator that tells typing checkers that a class is only for types
