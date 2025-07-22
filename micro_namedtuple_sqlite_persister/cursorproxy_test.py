@@ -5,7 +5,7 @@ from typing import NamedTuple, assert_type
 
 import pytest
 
-from .cursorproxy import TypedCursorProxy
+from .cursorproxy import Lazy, TypedCursorProxy
 
 
 class M(NamedTuple):
@@ -71,3 +71,63 @@ def test_proxy__after_usage__rowfactory_doesnt_leak_to_new_cursors() -> None:
     # new cursors must come back completely standard
     new_cursor = connection.cursor()
     assert new_cursor.row_factory is None
+
+
+def test_lazy__same_model_and_id__are_equal() -> None:
+    l1 = Lazy(None, M, 1)  # type: ignore engine is not needed for this test
+    l2 = Lazy(None, M, 1)  # type: ignore
+    assert l1 == l2
+
+
+def test_lazy__different_model_and_id__are_not_equal() -> None:
+    l1 = Lazy(None, M, 1)  # type: ignore
+    l2 = Lazy(None, M, 2)  # type: ignore
+    assert l1 != l2
+
+    l3 = Lazy(None, M, 1)  # type: ignore
+    l4 = Lazy(None, str, 1)  # type: ignore
+    assert l3 != l4
+
+
+def test_lazy__lazyid_and_int_same__are_equal() -> None:
+    l1 = Lazy(None, M, 1)  # type: ignore
+    assert l1 == 1
+    assert 1 == l1  # noqa: SIM300
+    assert l1 != 2
+    assert 2 != l1  # noqa: SIM300
+
+
+def test_lazy__ids_same__are_equal() -> None:
+    l1 = Lazy(None, M, 1)  # type: ignore
+    m1 = M(1, "Alice", 30)
+    m1 = M(1, "Alice", 30)
+    assert l1 == m1
+    assert m1 == l1
+
+
+def test_lazy__ids_different__are_not_equal() -> None:
+    l1 = Lazy(None, M, 1)  # type: ignore
+    m1 = M(2, "Bob", 40)
+    assert l1 != m1
+    assert m1 != l1
+
+
+def test_lazy__models_different__are_not_equal() -> None:
+    class N(NamedTuple):
+        id: int | None
+
+    l1 = Lazy(None, M, 1)  # type: ignore
+    l2 = Lazy(None, N, 1)  # type: ignore
+    assert l1 != l2
+    assert l2 != l1
+
+
+def test_lazy__lazymodel_and_model_different__are_not_equal() -> None:
+    class N(NamedTuple):
+        id: int | None
+
+    l1 = Lazy(None, M, 1)  # type: ignore
+    n1 = N(1)
+
+    assert l1 != n1
+    assert n1 != l1

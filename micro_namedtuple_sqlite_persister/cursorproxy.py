@@ -67,8 +67,22 @@ class Lazy[Model]:
             self._cached = self._engine.find(self._model, self._id)
         return cast(Model, self._cached)
 
+    def __hash__(self):
+        return hash((self._model, self._id))
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, int):
+            return self._id == other
+        elif type(other) is self._model:
+            return self._id == other[0]
+        elif isinstance(other, Lazy):
+            return self._model == other._model and self._id == other._id
+        return False
+
     def __repr__(self):
-        return f"<{self.__class__.__name__}[{self._model.__name__}]:{self._id}>" if self._cached is None else repr(self._cached)
+        if self._cached is None:
+            return f"<{self.__class__.__name__}[{self._model.__name__}]:{self._id} (pending)>"
+        return f"<{self.__class__.__name__}:{self._cached!r}>"
 
 
 def _make_model_lazy[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.Row, engine: Engine) -> R:

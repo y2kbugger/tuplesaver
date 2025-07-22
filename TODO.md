@@ -1,15 +1,15 @@
 # WIP
 - Add in lazy loading of relationships
-  - Test the deepness of proxy_cursor_deep ( move from persister to cursorproxy )
-  - Test the lazyness of proxy_cursor_lazy
-  - Turn it on by default in the engine.query
   - Rework examples of View Models to a differnt use case (right now demoed with BOM)
   - Test engine.save when updating a row with a lazy loading relationship (both before and after the lazy load)
+  - Maybe Lazy and Eager can both be used to make deep queries
+    - right now lazy is equal to int, but maybe eager replaces that and so is like typedID concept in a way
 
 # Bugs
 
 
 # Testing
+- Test the find and find by return models
 - Test `engine.save` that updated related models can be `deep`ly updated.
 - Test cleanup
   - Make "ensure table created" concept part of migrations instead of engine??
@@ -20,11 +20,9 @@
       - What about FK relationships? does this mean we can only recurse when making tables, but not when gettting table meta?
         - or can we be smart?
       - remember to go and remove the test fixure in query that ensure table meta is created in the right order
-  - Harmonize the def-scoped Model class names in the tests
-  - use test specific Models in a small scope
-  - refactor tests to be more granualar, e.g. test one table column at a time using smaller specific models, but also use parametrize to make test matrices
-  - group tests, and promote _some_ model reuse if it makes sense
-  - All test should use double underscore unit_under_test__when__effect style when possible
+- Test querying view models
+    - could move some of the query view bom tests to more unit test style
+- Could make a unit test for self join also
 - Test that non Fields greater than zero cannot be called id
 - test is_registered_fieldtype
   - unknown types, unregistered models, both Optional and non-Optional variants
@@ -51,6 +49,7 @@
 - Test duplicate joins in query.select deduplicates
 
 # Next
+- recompare api with RoR AR for find and find_by. raise or none when something is not found? None is actually safer now because type checking reminds you that it can be None. but it also annoying because you have to check for None all the time, if if you know it will always be there.
 - maybe look at that decorator that tells typing checkers that a class is only for types
 - Invert location of adaptconvert_columntypes from adaptconvert to model, source tree of deps better
 - Harmonize names "view model" and "row model" in codebase and docs
@@ -195,6 +194,7 @@ multi-row apis like update_all, delete_all, etc.
     - Context manager on cursor?
   - connection pooling?
 - mutable id object as id which can mutate when saved.
+- engine.find_by() to use dict with Model.field as keys (allow refactoring)
 - Consider dropping the injected Engine, and goto a fluent RoR AR style interface
   - e.g. `row.save()` ipo `engine.save(row)`
 - Consider Concurrency in both read and write

@@ -144,18 +144,18 @@ class Engine:
             raise IdNotFoundError(f"Cannot DELETE, no row with id={row_id} in table `{Model.__name__}`")
 
     ##### Reading
-    def find[R: Row](self, Model: type[R], row_id: int | None) -> R:
+    def find[R: Row](self, Model: type[R], row_id: int | None, *, deep: bool = False) -> R:
         if row_id is None:
             raise IdNoneError("Cannot SELECT, id=None")
 
-        row = self.query(Model, get_meta(Model).select_by_id, (row_id,)).fetchone()
+        row = self.query(Model, get_meta(Model).select_by_id, (row_id,), deep=deep).fetchone()
 
         if row is None:
             raise IdNotFoundError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
 
         return row
 
-    def find_by[R: Row](self, Model: type[R], **kwargs: Any) -> R:
+    def find_by[R: Row](self, Model: type[R], *, deep: bool = False, **kwargs: Any) -> R | None:
         """Find a row by its fields, e.g. `find_by(Model, name="Alice")`"""
         if not kwargs:
             raise NoKwargFieldSpecifiedError()
@@ -165,19 +165,19 @@ class Engine:
             raise InvalidKwargFieldSpecifiedError(Model, kwargs)
 
         # Build the WHERE clause
-        where_clause = " AND ".join(f"{k} = ?" for k in kwargs)
+        where_clause = " AND ".join(f"{k} = :{k}" for k in kwargs)
         select = get_meta(Model).select
         sql = dedent(f"""
             {select}
             WHERE {where_clause}
             """).strip()
 
-        cursor = self.connection.execute(sql, tuple(kwargs.values()))
+        cursor = self.query(Model, sql, kwargs, deep=deep)
         row = cursor.fetchone()
 
         return row
 
-    def query[R: Row](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple(), *, deep: bool = True) -> TypedCursorProxy[R]:
+    def query[R: Row](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple(), *, deep: bool = False) -> TypedCursorProxy[R]:
         cursor = self.connection.execute(sql, parameters)
         if deep:
             return TypedCursorProxy.proxy_cursor_deep(Model, cursor)

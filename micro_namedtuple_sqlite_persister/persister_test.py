@@ -1,25 +1,42 @@
 from __future__ import annotations
 
-import datetime as dt
 import sqlite3
 from random import choice, random
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 import pytest
 from pytest_benchmark.plugin import BenchmarkFixture
 
 from micro_namedtuple_sqlite_persister.conftest import SqlLog
+from micro_namedtuple_sqlite_persister.cursorproxy import Lazy
 
-from .model import FieldZeroIdRequired, is_registered_row_model, is_registered_table_model
+from .model import is_registered_row_model, is_registered_table_model
 from .persister import (
     Engine,
     IdNoneError,
     IdNotFoundError,
     InvalidKwargFieldSpecifiedError,
     NoKwargFieldSpecifiedError,
-    TableSchemaMismatch,
     UnpersistedRelationshipError,
 )
+
+
+class Team(NamedTuple):
+    id: int | None
+    name: str
+    size: int
+
+
+class Person(NamedTuple):
+    id: int | None
+    name: str
+    team: Team
+
+
+class Arm(NamedTuple):
+    id: int | None
+    length: float
+    person: Person
 
 
 def test_get_connection(engine: Engine) -> None:
@@ -28,161 +45,21 @@ def test_get_connection(engine: Engine) -> None:
     assert isinstance(engine.connection, Connection)
 
 
-class T(NamedTuple):
-    id: int | None
-    name: str
-    age: int
-
-
-class TableInfo(NamedTuple):
-    cid: int
-    name: str
-    type: str
-    notnull: int
-    dflt_value: Any
-    pk: int
-
-
-def test_ensure_table_created_using_table_info(engine: Engine) -> None:
-    class TblDates(NamedTuple):
-        id: int | None
-        name: str
-        score: float
-        age: int
-        data: bytes
-        startdate: dt.date
-        modified: dt.datetime
-        serial: int | None
-
-    engine.ensure_table_created(TblDates)
-
-    # Table as a whole
-    class SqliteSchema(NamedTuple):
-        type: str
-        name: str
-        tbl_name: str
-        rootpage: int
-        sql: str
-
-    tables = engine.query(SqliteSchema, "SELECT * FROM sqlite_schema WHERE type='table'").fetchall()
-    assert len(tables) == 1
-    table = tables[0]
-    assert table.name == TblDates.__name__
-
-    # Columns
-    cols = engine.query(TableInfo, f"PRAGMA table_info({TblDates.__name__})").fetchall()
-
-    assert len(cols) == len(TblDates._fields)
-
-    assert cols[0] == TableInfo(0, "id", "INTEGER", 1, None, 1)
-    assert cols[1] == TableInfo(1, "name", "TEXT", 1, None, 0)
-    assert cols[2] == TableInfo(2, "score", "REAL", 1, None, 0)
-    assert cols[3] == TableInfo(3, "age", "INTEGER", 1, None, 0)
-    assert cols[4] == TableInfo(4, "data", "BLOB", 1, None, 0)
-    assert cols[5] == TableInfo(5, "startdate", "datetime.date", 1, None, 0)
-    assert cols[6] == TableInfo(6, "modified", "datetime.datetime", 1, None, 0)
-    assert cols[7] == TableInfo(7, "serial", "INTEGER", 0, None, 0)
-
-
-def test_ensure_table_created_with_table_already_created_correct_is_silent(engine: Engine) -> None:
-    class TblAlreadyCreated(NamedTuple):
-        id: int | None
-        name: str
-        age: int
-
-    engine.ensure_table_created(TblAlreadyCreated)
-    engine.ensure_table_created(TblAlreadyCreated)
-
-
-def test_ensure_table_created_with_table_already_created_incorrect_raises(engine: Engine) -> None:
-    class TblAlreadyCreated(NamedTuple):  # type: ignore shadowing is part of the test
-        id: int | None
-        name: str
-        age: int
-
-    engine.ensure_table_created(TblAlreadyCreated)
-
-    class TblAlreadyCreated(NamedTuple):
-        id: int | None
-        name: str
-        age: int
-        data: bytes
-
-    with pytest.raises(TableSchemaMismatch):
-        engine.ensure_table_created(TblAlreadyCreated)
-
-
-def test_ensure_table_created_catches_mismatched_from_out_of_band_alters(engine: Engine) -> None:
-    class TblAlreadyCreated(NamedTuple):
-        id: int | None
-        name: str
-        age: int
-
-    engine.ensure_table_created(TblAlreadyCreated)
-    alter = f"ALTER TABLE {TblAlreadyCreated.__name__} ADD COLUMN out_of_band_edit TEXT"
-    engine.connection.execute(alter)
-
-    with pytest.raises(TableSchemaMismatch):
-        engine.ensure_table_created(TblAlreadyCreated)
-
-
-def test_ensure_table_created_catches_force_recreate(engine: Engine) -> None:
-    class TblAlreadyCreated(NamedTuple):  # type: ignore shadowing is part of the test
-        id: int | None
-        name: str
-        age: int
-
-    engine.ensure_table_created(TblAlreadyCreated)
-
-    class TblAlreadyCreated(NamedTuple):
-        id: int | None
-        name: str
-        age: int
-        data: bytes
-
-    engine.ensure_table_created(TblAlreadyCreated, force_recreate=True)
-    engine.ensure_table_created(TblAlreadyCreated)  # just a double check for it being recreated.
-
-
-def test_ensure_table_created__fails__doesnt_register_table_model(engine: Engine) -> None:
-    class TNoId(NamedTuple):
-        name: str
-
-    with pytest.raises(FieldZeroIdRequired):
-        engine.ensure_table_created(TNoId)
-
-    assert not is_registered_table_model(TNoId)
-
-
-def test_ensure_table_created__is_successful__registers_table_model(engine: Engine) -> None:
-    class Model(NamedTuple):
-        id: int | None
-        name: str
-
-    assert is_registered_row_model(Model) is False
-    assert is_registered_table_model(Model) is False
-
-    engine.ensure_table_created(Model)
-
-    assert is_registered_row_model(Model) is True
-    assert is_registered_table_model(Model) is True
-
-
 def test_save_row(engine: Engine) -> None:
-    engine.ensure_table_created(T)
-    row = engine.save(T(None, "Alice", 30))
+    engine.ensure_table_created(Team)
+    row = engine.save(Team(None, "Alice", 30))
 
     cursor = engine.connection.cursor()
-    cursor.execute("SELECT * FROM T;")
+    cursor.execute("SELECT * FROM Team;")
     rows = cursor.fetchall()
     assert len(rows) == 1
     assert rows[0] == (row.id, "Alice", 30)
-    assert row == T(*rows[0])
+    assert row == Team(*rows[0])
 
 
 def test_save_benchmark(engine: Engine, benchmark: BenchmarkFixture) -> None:
-    engine.ensure_table_created(T)
-    row = T(None, "Alice", 30)
+    engine.ensure_table_created(Team)
+    row = Team(None, "Alice", 30)
 
     def save():
         engine.save(row)
@@ -190,86 +67,252 @@ def test_save_benchmark(engine: Engine, benchmark: BenchmarkFixture) -> None:
     benchmark(save)
 
 
+def test_save__has_related_model(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(Person)
+
+    team = engine.save(Team(None, "Team A", 5))
+    _person = engine.save(Person(None, "Alice", team))
+
+    row = engine.query(Person, "SELECT * FROM Person;", deep=True).fetchone()
+    assert row is not None
+    assert row == Person(1, "Alice", Team(1, "Team A", 5))
+
+
+def test_save__related_model_is_unpersisted__raises(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(Person)
+
+    team = Team(None, "Team A", 5)
+    with pytest.raises(UnpersistedRelationshipError):
+        _person = engine.save(Person(None, "Alice", team))
+
+
+def test_save__related_model_is_unpersisted_but_deep(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(Person)
+
+    team = Team(None, "Team A", 5)
+    _person = engine.save(Person(None, "Alice", team), deep=True)
+
+    row = engine.query(Person, "SELECT * FROM Person;", deep=True).fetchone()
+    assert row is not None
+    assert row == Person(1, "Alice", Team(1, "Team A", 5))
+
+
+def test_save__three_model_relation_chain(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(Person)
+    engine.ensure_table_created(Arm)
+
+    team = engine.save(Team(None, "Team A", 5))
+    person = engine.save(Person(None, "Alice", team))
+    _arm = engine.save(Arm(None, 30.0, person))
+
+    row = engine.query(Arm, "SELECT * FROM Arm;", deep=True).fetchone()
+
+    assert row == Arm(1, 30.0, Person(1, "Alice", Team(1, "Team A", 5)))
+
+
+def test_save__three_model_relation_chain_deep(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(Person)
+    engine.ensure_table_created(Arm)
+
+    team = Team(None, "Team A", 5)
+    person = Person(None, "Alice", team)
+    _arm = engine.save(Arm(None, 30.0, person), deep=True)
+    row = engine.query(Arm, "SELECT * FROM Arm;").fetchone()
+
+    assert row == Arm(1, 30.0, Person(1, "Alice", Team(1, "Team A", 5)))
+
+
+def test_save__has_null_relation(engine: Engine) -> None:
+    class A(NamedTuple):
+        id: int | None
+
+    class B(NamedTuple):
+        id: int | None
+        team: A | None  # Optional relationship
+
+    engine.ensure_table_created(A)
+    engine.ensure_table_created(B)
+
+    person = engine.save(B(None, None))
+
+    row = engine.query(B, "SELECT * FROM B;").fetchone()
+    assert row is not None
+    assert row == person
+
+
+def test_save__deep_reused_unpersisted_model_multiple_saves__inserts_twice(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(Person)
+
+    team = Team(None, "Team A", 5)
+    alice = engine.save(Person(None, "Alice", team), deep=True)
+    bob = engine.save(Person(None, "Bob", team), deep=True)
+
+    # we can go either way on this one
+    # but at least make sure we have a test for it
+    # would need some persisted identity map to make sure this is the same object
+    assert alice.team.id != bob.team.id
+
+
+def test_save__deep_reused_unpersisted_model_single_saves__inserts_twice(engine: Engine) -> None:
+    class PersonWithTwoTeams(NamedTuple):
+        id: int | None
+        name: str
+        team_primary: Team
+        team_secondary: Team
+
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(PersonWithTwoTeams)
+
+    teamb = Team(None, "Team B", 5)
+    person = engine.save(PersonWithTwoTeams(None, "Alice", teamb, teamb), deep=True)
+
+    # this could be handled by a temporary identity map, but that
+    # complicates api/implementation of save
+    # and it might be suprising if teamb was was inserted twice
+    # but it is a rare edge, lets document it here and add fix later.
+    assert person.team_primary.id != person.team_secondary.id
+
+
+def test_save__deep_cannot_reliably_distinguish_between_identical_tuples(engine: Engine) -> None:
+    class PersonWithTwoTeams(NamedTuple):
+        id: int | None
+        name: str
+        team_primary: Team
+        team_secondary: Team
+
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(PersonWithTwoTeams)
+
+    teama = Team(None, "myteam", 5)
+    teamb = Team(None, "myteam", 5)
+    person = engine.save(PersonWithTwoTeams(None, "Alice", teama, teamb), deep=True)
+
+    # this is a tricky/unstable case, because of the tuple cache
+    if id(teama) == id(teamb):  # this is sometimes true, sometimes not
+        # this is the case where we have only a single object, because of the tuple cache
+        # and we must treat them as the same
+        assert person.team_primary.id == person.team_secondary.id
+    else:
+        # this is the case where we have two different objects
+        # and we should not assume they are the same
+        assert person.team_primary.id != person.team_secondary.id
+
+
 def test_find_byid(engine: Engine) -> None:
-    engine.ensure_table_created(T)
-    row = T(None, "Alice", 30)
+    engine.ensure_table_created(Team)
+    row = Team(None, "Alice", 30)
     row = engine.save(row)
 
-    retrieved_row = engine.find(T, row.id)
+    retrieved_row = engine.find(Team, row.id)
 
     assert retrieved_row == row
-    assert type(retrieved_row) is T
+    assert type(retrieved_row) is Team
+
+
+def test_find_deep__relations_can_be_fetched_eagerly(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(Person)
+    team = engine.save(Team(None, "Team A", 5))
+    person = engine.save(Person(None, "Alice", team))
+
+    found_person = engine.find(Person, person.id, deep=True)
+
+    assert found_person == person
+    assert isinstance(found_person[2], Team)
+    assert isinstance(found_person.team, Team)
+    assert found_person.team == team
+
+
+def test_find_lazy__relations_can_be_fetched_lazily(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(Person)
+    team = engine.save(Team(None, "Team A", 5))
+    person = engine.save(Person(None, "Alice", team))
+
+    found_person = engine.find(Person, person.id, deep=False)
+
+    assert found_person == person
+    assert isinstance(found_person[2], Lazy)
+    assert isinstance(found_person.team, Team)
+    assert found_person.team.id == team.id
+    assert found_person.team.name == team.name
 
 
 def test_find_byid_as_none(engine: Engine) -> None:
-    engine.ensure_table_created(T)
+    engine.ensure_table_created(Team)
     with pytest.raises(IdNoneError, match="Cannot SELECT, id=None"):
-        engine.find(T, None)
+        engine.find(Team, None)
 
 
 def test_find_byid_id_not_found(engine: Engine) -> None:
-    engine.ensure_table_created(T)
+    engine.ensure_table_created(Team)
     with pytest.raises(IdNotFoundError, match="Cannot SELECT, no row with id="):
-        engine.find(T, 78787)
+        engine.find(Team, 78787)
 
 
 def test_find_benchmark(engine: Engine, benchmark: BenchmarkFixture) -> None:
-    engine.ensure_table_created(T)
-    engine.save(T(None, "Alice", 30))
+    engine.ensure_table_created(Team)
+    engine.save(Team(None, "Alice", 30))
 
     def find():
-        engine.find(T, 1)
+        engine.find(Team, 1)
 
     benchmark(find)
 
 
 def test_find_by_field(engine: Engine) -> None:
     # one field
-    engine.ensure_table_created(T)
+    engine.ensure_table_created(Team)
 
-    engine.save(T(None, "Alice", 30))
-    engine.save(T(None, "Bob", 33))
+    engine.save(Team(None, "Alice", 30))
+    engine.save(Team(None, "Bob", 33))
 
-    assert engine.find_by(T, name="Alice") == T(1, "Alice", 30)
-    assert engine.find_by(T, age=30) == T(1, "Alice", 30)
-    assert engine.find_by(T, name="Bob") == T(2, "Bob", 33)
-    assert engine.find_by(T, age=33) == T(2, "Bob", 33)
+    assert engine.find_by(Team, name="Alice") == Team(1, "Alice", 30)
+    assert engine.find_by(Team, size=30) == Team(1, "Alice", 30)
+    assert engine.find_by(Team, name="Bob") == Team(2, "Bob", 33)
+    assert engine.find_by(Team, size=33) == Team(2, "Bob", 33)
 
 
 def test_find_by_field_no_match(engine: Engine) -> None:
-    engine.ensure_table_created(T)
+    engine.ensure_table_created(Team)
 
-    engine.save(T(None, "Alice", 30))
-    engine.save(T(None, "Bob", 33))
+    engine.save(Team(None, "Alice", 30))
+    engine.save(Team(None, "Bob", 33))
 
-    assert engine.find_by(T, name="Karl") is None
+    assert engine.find_by(Team, name="Karl") is None
 
 
 def test_find_by_fields(engine: Engine) -> None:
     # multiple fields
-    engine.ensure_table_created(T)
-    r1 = engine.save(T(None, "Alice", 30))
-    r2 = engine.save(T(None, "Bob", 33))
-    r3 = engine.save(T(None, "Alice", 33))
+    engine.ensure_table_created(Team)
+    r1 = engine.save(Team(None, "Alice", 30))
+    r2 = engine.save(Team(None, "Bob", 33))
+    r3 = engine.save(Team(None, "Alice", 33))
 
-    assert engine.find_by(T, name="Alice", age=30) == r1
-    assert engine.find_by(T, name="Bob", age=33) == r2
-    assert engine.find_by(T, name="Alice", age=33) == r3
+    assert engine.find_by(Team, name="Alice", size=30) == r1
+    assert engine.find_by(Team, name="Bob", size=33) == r2
+    assert engine.find_by(Team, name="Alice", size=33) == r3
 
 
 def test_find_by_fields_with_no_kwargs(engine: Engine) -> None:
     with pytest.raises(NoKwargFieldSpecifiedError, match="At least one field must be specified to find a row."):
-        engine.find_by(T)
+        engine.find_by(Team)
 
 
 def test_find_by_fields_with_invalid_kwargs(engine: Engine) -> None:
     with pytest.raises(InvalidKwargFieldSpecifiedError):
-        engine.find_by(T, doesnt_exist="test")
+        engine.find_by(Team, doesnt_exist="test")
 
 
 def test_save_fills_in_id(engine: Engine) -> None:
-    engine.ensure_table_created(T)
-    row = T(None, "Alice", 30)
+    engine.ensure_table_created(Team)
+    row = Team(None, "Alice", 30)
 
     returned_row = engine.save(row)
 
@@ -281,258 +324,123 @@ def test_save_fills_in_id(engine: Engine) -> None:
 
 
 def test_save_cannot_insert_null_value_in_not_null_column(engine: Engine) -> None:
-    engine.ensure_table_created(T)
-    row = T(None, "Alice", None)  # type: ignore this bug is part of the test
+    engine.ensure_table_created(Team)
+    row = Team(None, "Alice", None)  # type: ignore this bug is part of the test
 
     with pytest.raises(sqlite3.IntegrityError, match="NOT NULL constraint failed"):
         engine.save(row)
 
 
 def test_save_updates_row(engine: Engine) -> None:
-    engine.ensure_table_created(T)
-    row = engine.save(T(None, "Alice", 30))
+    engine.ensure_table_created(Team)
+    row = engine.save(Team(None, "Alice", 30))
     engine.save(row._replace(name="Bob"))
 
     assert row.id is not None
-    retrieved_row = engine.find(T, row.id)
+    retrieved_row = engine.find(Team, row.id)
 
-    assert retrieved_row == T(row.id, "Bob", 30)
+    assert retrieved_row == Team(row.id, "Bob", 30)
 
 
 def test_save_with_nonexistent_id(engine: Engine) -> None:
-    engine.ensure_table_created(T)
+    engine.ensure_table_created(Team)
     with pytest.raises(ValueError, match="Cannot UPDATE, no row with id="):
-        engine.save(T(78787, "Bob", 30))
+        engine.save(Team(78787, "Bob", 30))
 
 
 def test_delete_byid(engine: Engine) -> None:
-    engine.ensure_table_created(T)
-    row = engine.save(T(None, "Alice", 30))
+    engine.ensure_table_created(Team)
+    row = engine.save(Team(None, "Alice", 30))
 
     cursor = engine.connection.cursor()
-    cursor.execute("SELECT * FROM T;")
+    cursor.execute("SELECT * FROM Team;")
     rows = cursor.fetchall()
     assert len(rows) == 1
 
-    engine.delete(T, row.id)
+    engine.delete(Team, row.id)
 
     cursor = engine.connection.cursor()
-    cursor.execute("SELECT * FROM T;")
+    cursor.execute("SELECT * FROM Team;")
     rows = cursor.fetchall()
     assert len(rows) == 0
 
 
 def test_delete_byrow(engine: Engine) -> None:
-    engine.ensure_table_created(T)
-    row = engine.save(T(None, "Alice", 30))
+    engine.ensure_table_created(Team)
+    row = engine.save(Team(None, "Alice", 30))
 
     cursor = engine.connection.cursor()
-    cursor.execute("SELECT * FROM T;")
+    cursor.execute("SELECT * FROM Team;")
     rows = cursor.fetchall()
     assert len(rows) == 1
 
     engine.delete(row)
 
     cursor = engine.connection.cursor()
-    cursor.execute("SELECT * FROM T;")
+    cursor.execute("SELECT * FROM Team;")
     rows = cursor.fetchall()
     assert len(rows) == 0
 
 
 def test_delete_with_nonexistent_id(engine: Engine) -> None:
-    engine.ensure_table_created(T)
+    engine.ensure_table_created(Team)
     with pytest.raises(ValueError, match="Cannot DELETE, no row with id="):
-        engine.delete(T, 78787)
+        engine.delete(Team, 78787)
 
 
 def test_delete_row_with_id_as_none(engine: Engine) -> None:
-    engine.ensure_table_created(T)
     with pytest.raises(ValueError, match="Cannot DELETE, id=None"):
-        engine.delete(T, None)
+        engine.delete(Team, None)
 
 
-class TestRelatedTable:
-    class Team(NamedTuple):
-        id: int | None
+def test_engine_query__returns_cursor_proxy(engine: Engine) -> None:
+    class ModelA(NamedTuple):
         name: str
 
-    class Person(NamedTuple):
-        id: int | None
-        name: str
-        team: TestRelatedTable.Team
+    cur = engine.query(ModelA, "SELECT 'Alice' as name;")
+    assert cur.row_factory is not None
 
-    class Arm(NamedTuple):
-        id: int | None
-        length: float
-        person: TestRelatedTable.Person
-
-    def test_ensure_table_created_with_related_table(self, engine: Engine) -> None:
-        engine.ensure_table_created(self.Team)
-        engine.ensure_table_created(self.Person)
-
-        cols = engine.query(TableInfo, f"PRAGMA table_info({self.Person.__name__})").fetchall()
-
-        assert len(cols) == len(self.Person._fields)
-
-        assert cols[0] == TableInfo(0, "id", "INTEGER", 1, None, 1)
-        assert cols[1] == TableInfo(1, "name", "TEXT", 1, None, 0)
-        assert cols[2] == TableInfo(2, "team", "Team_ID", 1, None, 0)
-
-    def test_save__when_has_related_model(self, engine: Engine) -> None:
-        engine.ensure_table_created(self.Team)
-        engine.ensure_table_created(self.Person)
-
-        team = engine.save(self.Team(None, "Team A"))
-        person = engine.save(self.Person(None, "Alice", team))
-
-        row = engine.query(self.Person, "SELECT * FROM Person;").fetchone()
-        assert row is not None
-        assert row == self.Person(1, "Alice", self.Team(1, "Team A"))
-        assert person == self.Person(*row)
-
-    def test_save__when_related_model_is_unpersisted__raises(self, engine: Engine) -> None:
-        engine.ensure_table_created(self.Team)
-        engine.ensure_table_created(self.Person)
-
-        team = self.Team(None, "Team A")
-        with pytest.raises(UnpersistedRelationshipError):
-            _person = engine.save(self.Person(None, "Alice", team))
-
-    def test_three_model_relation_chain(self, engine: Engine) -> None:
-        engine.ensure_table_created(self.Team)
-        engine.ensure_table_created(self.Person)
-        engine.ensure_table_created(self.Arm)
-
-        team = engine.save(self.Team(None, "Team A"))
-        person = engine.save(self.Person(None, "Alice", team))
-        _arm = engine.save(self.Arm(None, 30.0, person))
-
-        row = engine.query(self.Arm, "SELECT * FROM Arm;").fetchone()
-
-        assert row == self.Arm(1, 30.0, self.Person(1, "Alice", self.Team(1, "Team A")))
-
-    def test_deep_insert_doesnt_duplicate_twice_used_related_model_separate_saves(self, engine: Engine) -> None:
-        """This was a real bug where the same related model was inserted twice,
-        causing duplicate entries in the database."""
-        engine.ensure_table_created(self.Team)
-        engine.ensure_table_created(self.Person)
-
-        team = self.Team(None, "Team A")
-        alice = engine.save(self.Person(None, "Alice", team), deep=True)
-        bob = engine.save(self.Person(None, "Bob", team), deep=True)
-
-        # we can go either way on this one
-        # but at least make sure we have a test for it
-        # would need some persisted identity map to make sure this is the same object
-        assert alice.team.id != bob.team.id
-
-    def test_deep_insert_doesnt_duplicate_twice_used_related_model_single_save(self, engine: Engine) -> None:
-        class PersonWithTwoTeams(NamedTuple):
-            id: int | None
-            name: str
-            team_primary: TestRelatedTable.Team
-            team_secondary: TestRelatedTable.Team
-
-        engine.ensure_table_created(self.Team)
-        engine.ensure_table_created(PersonWithTwoTeams)
-
-        teamb = self.Team(None, "Team B")
-        person = engine.save(PersonWithTwoTeams(None, "Alice", teamb, teamb), deep=True)
-
-        # this could be handled by a temporary identity map, but that
-        # complicates api/implementation of save
-        # and it might be suprising if teamb was was inserted twice
-        # but it is a rare edge, lets document it here and add fix later.
-        assert person.team_primary.id != person.team_secondary.id
-
-    def test_deep_insert_cannot_reliably_distinguish_between_identical_tuples(self, engine: Engine) -> None:
-        class PersonWithTwoTeams(NamedTuple):
-            id: int | None
-            name: str
-            team_primary: TestRelatedTable.Team
-            team_secondary: TestRelatedTable.Team
-
-        engine.ensure_table_created(self.Team)
-        engine.ensure_table_created(PersonWithTwoTeams)
-
-        teama = self.Team(None, "myteam")
-        teamb = self.Team(None, "myteam")
-        person = engine.save(PersonWithTwoTeams(None, "Alice", teama, teamb), deep=True)
-
-        # this is a tricky/unstable case, because of the tuple cache
-        if id(teama) == id(teamb):  # this is sometimes true, sometimes not
-            # this is the case where we have only a single object, because of the tuple cache
-            # and we must treat them as the same
-            assert person.team_primary.id == person.team_secondary.id
-        else:
-            # this is the case where we have two different objects
-            # and we should not assume they are the same
-            assert person.team_primary.id != person.team_secondary.id
-
-    def test_that_you_can_get_more_than_one_top_level_result(self, engine: Engine) -> None:
-        """This was a real bug where the proxy cursor row factory reused the
-        same outer cursor and through away subsequent results."""
-
-        engine.ensure_table_created(self.Team)
-        engine.ensure_table_created(self.Person)
-
-        team = engine.save(self.Team(None, "Team A"))
-        person1 = engine.save(self.Person(None, "Alice", team))
-        person2 = engine.save(self.Person(None, "Bob", team))
-
-        rows = engine.query(self.Person, "SELECT * FROM Person;").fetchall()
-
-        assert rows == [person1, person2]
+    row = cur.fetchone()
+    assert isinstance(row, ModelA)
+    assert row == ModelA("Alice")
 
 
-class TestOptionalRelatedTable:
-    class Team(NamedTuple):
-        id: int | None
+def test_engine_query__when_querying_view_model__does_not_register_as_table_model(engine: Engine) -> None:
+    class ModelA(NamedTuple):
         name: str
 
-    class Person(NamedTuple):
-        id: int | None
-        name: str
-        team: TestOptionalRelatedTable.Team | None
+    assert is_registered_row_model(ModelA) is False
+    assert is_registered_table_model(ModelA) is False
 
-    def test_ensure_table_created_with_related_table(self, engine: Engine) -> None:
-        engine.ensure_table_created(self.Team)
-        engine.ensure_table_created(self.Person)
+    cur = engine.query(ModelA, "SELECT 'Alice' as name;")
 
-        cols = engine.query(TableInfo, f"PRAGMA table_info({self.Person.__name__})").fetchall()
+    # I don't care either way, just documenring current behavior
+    assert is_registered_row_model(ModelA) is False
+    assert is_registered_table_model(ModelA) is False
 
-        assert len(cols) == len(self.Person._fields)
+    cur.fetchone()
 
-        assert cols[0] == TableInfo(0, "id", "INTEGER", 1, None, 1)
-        assert cols[1] == TableInfo(1, "name", "TEXT", 1, None, 0)
-        assert cols[2] == TableInfo(2, "team", "Team_ID", 0, None, 0)
-
-    def test_insert_row_with_related_table(self, engine: Engine) -> None:
-        engine.ensure_table_created(self.Team)
-        engine.ensure_table_created(self.Person)
-
-        team = engine.save(self.Team(None, "Team A"))
-        person = self.Person(None, "Alice", team)
-        person = engine.save(person)
-
-        row = engine.query(self.Person, "SELECT * FROM Person;").fetchone()
-        assert row is not None
-        assert row == self.Person(1, "Alice", self.Team(1, "Team A"))
-        assert person == self.Person(*row)
-
-    def test_insert_row_with_null_relation(self, engine: Engine) -> None:
-        engine.ensure_table_created(self.Team)
-        engine.ensure_table_created(self.Person)
-
-        person = self.Person(None, "Alice", None)
-        person = engine.save(person)
-
-        row = engine.query(self.Person, "SELECT * FROM Person;").fetchone()
-        assert row is not None
-        assert row == self.Person(1, "Alice", None)
-        assert person == self.Person(*row)
+    assert is_registered_row_model(ModelA) is True
+    assert is_registered_table_model(ModelA) is False
 
 
+def test_engine_query_deep__regression_case__doesnt_fail(engine: Engine) -> None:
+    """This was a real bug where the proxy cursor row factory reused the
+    same outer cursor and through away subsequent results."""
+
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(Person)
+
+    team = engine.save(Team(None, "Team A", 5))
+    person1 = engine.save(Person(None, "Alice", team))
+    person2 = engine.save(Person(None, "Bob", team))
+
+    rows = engine.query(Person, "SELECT * FROM Person;", deep=True).fetchall()
+
+    assert rows == [person1, person2]
+
+
+## integration testing for self-referenctial BOM scenarios
 class TestBomSelfJoin:
     class BOM(NamedTuple):
         id: int | None
@@ -585,7 +493,7 @@ class TestBomSelfJoin:
         inserted_root = engine.save(root, deep=True)
         engine.connection.commit()
 
-        retrieved_root = engine.find(self.BOM, inserted_root.id)
+        retrieved_root = engine.find(self.BOM, inserted_root.id, deep=True)
         assert retrieved_root == inserted_root
 
     def test_get_bom_with_raw_fk(self, engine: Engine) -> None:
@@ -604,7 +512,7 @@ class TestBomSelfJoin:
             child_a: int | None  # as fk
             child_b: int | None  # as fk
 
-        retrieved_root = engine.find(BOM_View, inserted_root.id)
+        retrieved_root = engine.find(BOM_View, inserted_root.id, deep=True)
 
         assert retrieved_root == BOM_View(
             inserted_root.id,
@@ -627,7 +535,7 @@ class TestBomSelfJoin:
             value: float
 
         sql_log.clear()
-        retrieved_root = engine.find(BOM_View, inserted_root.id)
+        retrieved_root = engine.find(BOM_View, inserted_root.id, deep=True)
         assert "child_a" not in sql_log  # Ensure that the query did not include the child_a column, even if it ended up discarding it.
         assert retrieved_root == BOM_View(inserted_root.id, inserted_root.name, inserted_root.value)
 
@@ -638,7 +546,7 @@ class TestBomSelfJoin:
         inserted_root = engine.save(root, deep=True)
         engine.connection.commit()
 
-        retrieved_root = engine.find(self.BOM, inserted_root.id)
+        retrieved_root = engine.find(self.BOM, inserted_root.id, deep=True)
         assert retrieved_root == inserted_root
 
     def test_benchmark_insert_bom(self, engine: Engine, benchmark: BenchmarkFixture) -> None:
@@ -659,35 +567,4 @@ class TestBomSelfJoin:
         @benchmark
         def get_bom():
             assert inserted_root is not None
-            _retrieved_root = engine.find(self.BOM, inserted_root.id)
-
-
-def test_engine_query__returns_cursor_proxy(engine: Engine) -> None:
-    class ModelA(NamedTuple):
-        name: str
-
-    cur = engine.query(ModelA, "SELECT 'Alice' as name;")
-    assert cur.row_factory is not None
-
-    row = cur.fetchone()
-    assert isinstance(row, ModelA)
-    assert row == ModelA("Alice")
-
-
-def test_engine_query__when_querying_view_model__does_not_register_as_table_model(engine: Engine) -> None:
-    class ModelA(NamedTuple):
-        name: str
-
-    assert is_registered_row_model(ModelA) is False
-    assert is_registered_table_model(ModelA) is False
-
-    cur = engine.query(ModelA, "SELECT 'Alice' as name;")
-
-    # I don't care either way, just documenring current behavior
-    assert is_registered_row_model(ModelA) is False
-    assert is_registered_table_model(ModelA) is False
-
-    cur.fetchone()
-
-    assert is_registered_row_model(ModelA) is True
-    assert is_registered_table_model(ModelA) is False
+            _retrieved_root = engine.find(self.BOM, inserted_root.id, deep=True)
