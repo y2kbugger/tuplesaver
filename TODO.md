@@ -1,27 +1,12 @@
 # WIP
-- Add in lazy loading of relationships
-  - Rework examples of View Models to a differnt use case (right now demoed with BOM)
-  - Test engine.save when updating a row with a lazy loading relationship (both before and after the lazy load)
-  - Maybe Lazy and Eager can both be used to make deep queries
-    - right now lazy is equal to int, but maybe eager replaces that and so is like typedID concept in a way
+- Rework examples of View Models to a differnt use case (right now demoed with shallow BOM)
 
 # Bugs
 
 
 # Testing
-- Test the find and find by return models
-- Test `engine.save` that updated related models can be `deep`ly updated.
-- Test cleanup
-  - Make "ensure table created" concept part of migrations instead of engine??
-    - e.g. i don't want all those tests for schema mixed in with CRUD
-    - or maybe just refactor files
-    - or maybe make the schema mutation as part of migration, but leave "ensure table created" as a just a check in engine that registers table meta
-    - or could ensure happen implicity on first use??, (and recursively for all relationships)
-      - What about FK relationships? does this mean we can only recurse when making tables, but not when gettting table meta?
-        - or can we be smart?
-      - remember to go and remove the test fixure in query that ensure table meta is created in the right order
 - Test querying view models
-    - could move some of the query view bom tests to more unit test style
+  - could move some of the query view bom tests to more unit test style
 - Could make a unit test for self join also
 - Test that non Fields greater than zero cannot be called id
 - test is_registered_fieldtype
@@ -50,7 +35,8 @@
 
 # Next
 - recompare api with RoR AR for find and find_by. raise or none when something is not found? None is actually safer now because type checking reminds you that it can be None. but it also annoying because you have to check for None all the time, if if you know it will always be there.
-- maybe look at that decorator that tells typing checkers that a class is only for types
+- drop "force recreate" from ensure_table_created, this was just hack until we have better migrations.
+  - instead i just made examples.ipynb use `:memory:`
 - Invert location of adaptconvert_columntypes from adaptconvert to model, source tree of deps better
 - Harmonize names "view model" and "row model" in codebase and docs
 - More standard adaptconverters Enum, set, tuple, time, frozenset, Path, UUID, Decimal, bytes
@@ -63,157 +49,14 @@
   `foreign key (team_id) references Team(id)`
 - I want to fall back to pickles for any type that is not configured, and just raise if pickle fails
   - tests?, examples?
+- maybe look at that decorator that tells typing checkers that a class is only for types for cursor proxy
 
 # Later
-- column constraints as annotations, like the select
-  https://sqlite.org/syntax/column-def.html
-  https://sqlite.org/syntax/column-constraint.html
-  Somthing like this
-      name: Annotated[str, Constraint("UNIQUE")]
-- Consider dropping "force recreate" from ensure_table_created
-  - This is hack until we have better migrations
-- joined loads
-  - approx 20% perf boost for execute many on 20k rows, not worth it, yet
-- engine.update
-  To only some fields, on a single existing row, pull id from row:
-  ```python
-  engine.update(row, name="Apple")
-  ```
-  ```sql
-  update MyModel set name = 'Apple' where id = 42;
-  ```
-
-## engine.upsert
-| Upsert          | `Model.upsert(attrs, unique_by)`  | Insert or update based on unique key |
-|                 | `Model.find_or_initialize_by(attr: val)` | Find or create new object  (simulated upsert)|
-
-```sql
-create table XXX (
-    id integer primary key,
-    name text,
-    place text,
-    value int
-);
--- the obligate unique constraint
-CREATE UNIQUE INDEX IF NOT EXISTS XXX_name_place ON XXX (name, place);
-
--- make upsert on name,place combo
-insert into XXX (name, place, value) values ('a', 'b', 777)
-on conflict(name, place) do update set value = excluded.value;
--- or even just allow it to happen on any conflict (just set all non-id fields)
--- This gets a little tricky with existing data, but if we follow api of insert
---   and up, this makes sense, all fields are persisted (in either case insert or
---   update)
-insert into XXX (name, place, value) values ('a', 'b', 888)
-on conflict
-    do update
-        set name = excluded.name, place = excluded.place, value = excluded.value;
-```
-
-This is the user code
-```python
-class XXX(NamedTuple):
-    id: int | None
-    name: str
-    place: str
-    value: int
-
-    _meta = Meta(
-        unique_contraints=[('name','place')]
-    )
-
-engine.ensure_table_created(XXX)
-engine.upsert(XXX(name='a', place='b', value=777))
-engine.upsert(XXX(name='a', place='c', value=888))
-```
-
 
 ## Explain Model
 I want to be able to explain model function. This would explain what the type annotation is., what the sqllite column type is, And why?. Like it would tell you that an INT is a built-in Python SQLite type., but a model is another model, And a list of a built-in type is stored as json., And then what it would attempt to pickle if there would be a pickle if it's unknown..
 This would help distinguish between a list of model and a list of something else. 
 This is cool cuz it blends casa no sql with SQL. We could probably even make a refactoring tool to switch between the two.
-
-
-## Migrations
-- consider https://martinfowler.com/articles/evodb.html
-- Auto add column(s) to table if they don't exist
-  - or maybe just let this be the easy way to teach people to use explicit migrations
-- Maybe store all versions of models in the db in additions to migrations script.
-  - What about when "blowing away" the db?
-  - what value does this add?
-    - Could it help generate scripts?
-    - could it just give insight to recent changes during dev?
-- Have a dedicated external entrypoint to control migrations and rollback ala RoR AR
-- Use sqlite backup api to snapshot safely the DB while connected before a migration, this will allow easy rollback
-
-
-## multi-row Model based api
-multi-row apis like update_all, delete_all, etc.
-
-## ROR Persistence api (double check with real docs)
-| Action          | API Signature                     | Notes                              |
-| --------------- | --------------------------------- | ---------------------------------- |
-| Insert (create) | `Model.create(attrs)`             | Creates and saves one new record   |
-|                 | `Model.new(attrs)` + `obj.save`   | Two-step create                    |
-| Update          | `obj.update(attrs)`               | Sets and saves attrs               |
-|                 | `obj.update_attribute(attr, val)` | No validations/callbacks           |
-|                 | `Model.update(id, attrs)`         | Update by ID                       |
-|                 | `Model.update_all(attrs)`         | Bulk update; no callbacks          |
-| Delete          | `obj.destroy`                     | Deletes with callbacks             |
-|                 | `obj.delete`                      | Deletes without callbacks          |
-|                 | `Model.delete(id)`                | One-liner delete                   |
-|                 | `Model.delete_all`                | Deletes all (no callbacks)         |
-| Save            | `obj.save`                        | Insert or update, runs validations |
-| Force Save      | `obj.save!`                       | Same, raises exception on failure  |
-| Reload          | `obj.reload`                      | Re-fetch from DB                   |
-| Upsert          | `Model.upsert(attrs, unique_by)`  | Insert or update based on unique key |
-|                 | `Model.find_or_initialize_by(attr: val)` | Find or create new object  (simulated upsert)|
-## ROR Retrieval api (double check with real docs)
-| Action        | API Signature                    | Notes                       |
-| ------------- | -------------------------------- | --------------------------- |
-| Get by ID     | `Model.find(id)`                 | Raises if not found         |
-| Optional get  | `Model.find_by(attr: val)`       | Returns nil if not found    |
-| Where clause  | `Model.where(attr: val)`         | Returns a Relation          |
-| All rows      | `Model.all`                      | Lazy-loaded Relation        |
-| First/Last    | `Model.first`, `Model.last`      | Based on PK sorting         |
-| Limit         | `Model.limit(n)`                 | Chainable                   |
-| Order         | `Model.order(:attr)`             | Chainable                   |
-| Select fields | `Model.select(:attr1, :attr2)`   | Partial row loading         |
-| Pluck fields  | `Model.pluck(:attr)`             | Returns array of raw values |
-| Exists?       | `Model.exists?(attr: val)`       | Boolean                     |
-| Count         | `Model.count`                    | Integer                     |
-| Batch read    | `Model.find_each(batch_size: n)` | Iterates in chunks          |
-
-
-
-# One Day Maybe
-- Consider connection/transaction management
-  - context manager?
-  - how long is sqlite connection good for? application lifetime?
-  - closing cursors? commit? difference between?
-    - Context manager on cursor?
-  - connection pooling?
-- mutable id object as id which can mutate when saved.
-- engine.find_by() to use dict with Model.field as keys (allow refactoring)
-- Consider dropping the injected Engine, and goto a fluent RoR AR style interface
-  - e.g. `row.save()` ipo `engine.save(row)`
-- Consider Concurrency in both read and write
-  – SQLite supports concurrent reads but locks on writes.
-  - what happens if two threads try to write to the same table at the same time?
-  - How to actually test this?
-  - Is there a connection setting (check same thread) that can be used to at least detect this?
-  - https://www.sqlite.org/wal.html
-- Non recursive engine.save(root, deep=True), eliminate stackoverflow for deep recursive models e.g. depth=2000 BOM
-
-
-## Fully qualified field names that are rename symbol safe in queries kwargs
-i.e.
-
-    mylist  = e.find_by(List, List.name == list_name)
-
-ipo
-
-    mylist  = e.find_by(List, name = list_name)
 
 
 ## Backpop
@@ -301,6 +144,158 @@ It also side steps the issue of double querying to fill in the forward reference
       employee: Employee
       role: str
   ```
+
+## engine.update
+To only some fields, on a single existing row, pull id from row:
+```python
+engine.update(id, name="Apple")
+```
+```sql
+update MyModel set name = 'Apple' where id = 42;
+```
+
+## engine.upsert
+| Upsert          | `Model.upsert(attrs, unique_by)`  | Insert or update based on unique key |
+|                 | `Model.find_or_initialize_by(attr: val)` | Find or create new object  (simulated upsert)|
+
+```sql
+create table XXX (
+    id integer primary key,
+    name text,
+    place text,
+    value int
+);
+-- the obligate unique constraint
+CREATE UNIQUE INDEX IF NOT EXISTS XXX_name_place ON XXX (name, place);
+
+-- make upsert on name,place combo
+insert into XXX (name, place, value) values ('a', 'b', 777)
+on conflict(name, place) do update set value = excluded.value;
+-- or even just allow it to happen on any conflict (just set all non-id fields)
+-- This gets a little tricky with existing data, but if we follow api of insert
+--   and up, this makes sense, all fields are persisted (in either case insert or
+--   update)
+insert into XXX (name, place, value) values ('a', 'b', 888)
+on conflict
+    do update
+        set name = excluded.name, place = excluded.place, value = excluded.value;
+```
+
+This is the user code
+```python
+class XXX(NamedTuple):
+    id: int | None
+    name: str
+    place: str
+    value: int
+
+    _meta = Meta(
+        unique_contraints=[('name','place')]
+    )
+
+engine.ensure_table_created(XXX)
+engine.upsert(XXX(name='a', place='b', value=777))
+engine.upsert(XXX(name='a', place='c', value=888))
+```
+
+
+## DDL 2.0, e.g. future of `engine.ensure_table_created`
+  - maybe leave mutation/creation up to migrations. Then either
+    - leave "ensure table created" to register Model
+    - or register Model lazily upon first use. **favorite**
+
+## Migrations
+- consider https://martinfowler.com/articles/evodb.html
+- Auto add column(s) to table if they don't exist
+  - or maybe just let this be the easy way to teach people to use explicit migrations
+- Maybe store all versions of models in the db in additions to migrations script.
+  - What about when "blowing away" the db?
+  - what value does this add?
+    - Could it help generate scripts?
+    - could it just give insight to recent changes during dev?
+- Have a dedicated external entrypoint to control migrations and rollback ala RoR AR
+- Use sqlite backup api to snapshot safely the DB while connected before a migration, this will allow easy rollback
+
+
+## multi-row Model based api
+multi-row apis like update_all, delete_all, etc.
+
+## ROR Persistence api (double check with real docs)
+| Action          | API Signature                     | Notes                              |
+| --------------- | --------------------------------- | ---------------------------------- |
+| Insert (create) | `Model.create(attrs)`             | Creates and saves one new record   |
+|                 | `Model.new(attrs)` + `obj.save`   | Two-step create                    |
+| Update          | `obj.update(attrs)`               | Sets and saves attrs               |
+|                 | `obj.update_attribute(attr, val)` | No validations/callbacks           |
+|                 | `Model.update(id, attrs)`         | Update by ID                       |
+|                 | `Model.update_all(attrs)`         | Bulk update; no callbacks          |
+| Delete          | `obj.destroy`                     | Deletes with callbacks             |
+|                 | `obj.delete`                      | Deletes without callbacks          |
+|                 | `Model.delete(id)`                | One-liner delete                   |
+|                 | `Model.delete_all`                | Deletes all (no callbacks)         |
+| Save            | `obj.save`                        | Insert or update, runs validations |
+| Force Save      | `obj.save!`                       | Same, raises exception on failure  |
+| Reload          | `obj.reload`                      | Re-fetch from DB                   |
+| Upsert          | `Model.upsert(attrs, unique_by)`  | Insert or update based on unique key |
+|                 | `Model.find_or_initialize_by(attr: val)` | Find or create new object  (simulated upsert)|
+## ROR Retrieval api (double check with real docs)
+| Action        | API Signature                    | Notes                       |
+| ------------- | -------------------------------- | --------------------------- |
+| Get by ID     | `Model.find(id)`                 | Raises if not found         |
+| Optional get  | `Model.find_by(attr: val)`       | Returns nil if not found    |
+| Where clause  | `Model.where(attr: val)`         | Returns a Relation          |
+| All rows      | `Model.all`                      | Lazy-loaded Relation        |
+| First/Last    | `Model.first`, `Model.last`      | Based on PK sorting         |
+| Limit         | `Model.limit(n)`                 | Chainable                   |
+| Order         | `Model.order(:attr)`             | Chainable                   |
+| Select fields | `Model.select(:attr1, :attr2)`   | Partial row loading         |
+| Pluck fields  | `Model.pluck(:attr)`             | Returns array of raw values |
+| Exists?       | `Model.exists?(attr: val)`       | Boolean                     |
+| Count         | `Model.count`                    | Integer                     |
+| Batch read    | `Model.find_each(batch_size: n)` | Iterates in chunks          |
+
+## Connection Management and Concurrency
+- one connection per thread, like RoR AR
+- Another options is to have two thread pools, one for reads and one for writes
+  - This is more complex, but elimnates Busy errors
+  -
+   https://kerkour.com/sqlite-for-servers
+- SQLite supports concurrent reads but locks on writes.
+  - Can be configured to block instead of raising an error on write contention
+    https://sqlite.org/c3ref/busy_timeout.html
+- Make sure to check for WAL mode for better concurrency
+  - https://www.sqlite.org/wal.html
+- https://kerkour.com/sqlite-for-servers
+  - A 2024 guide to SQLite use and tuning on backend
+  - `PRAGMA busy_timeout = 5000;` 5 seconds for app, 15 seconds for API
+    - Allows waiting for a write lock to be released before raising an error
+
+## transaction management
+Offer a context manager for transactions, cursors, and committing
+
+# One Day Maybe
+- mutable id object as id which can mutate when saved.
+- engine.find_by() to use dict with Model.field as keys (allow refactoring)
+- Consider dropping the injected Engine, and goto a fluent RoR AR style interface
+  - e.g. `row.save()` ipo `engine.save(row)`
+- Non recursive engine.save(root, deep=True), eliminate stackoverflow for deep recursive models e.g. depth=2000 BOM
+
+## column constraints infered from DB
+https://sqlite.org/syntax/column-def.html
+https://sqlite.org/syntax/column-constraint.html
+We can just use migrations to add constraints and make db the source of truth.
+We don't actually even need to read them in except to add validation on upserts (ie, only allow upserting on sets of unique columns)
+
+## Fully qualified field names that are rename symbol safe in queries kwargs
+i.e.
+
+    mylist  = e.find_by(List, List.name == list_name)
+
+ipo
+
+    mylist  = e.find_by(List, name = list_name)
+
+
 
 ## View Model Reuse/Composition
 I believe a View Model can reference another one.
@@ -414,15 +409,6 @@ Just a more concise version of the decorator version. might be hard to squeeze i
 M, q = select(Athlete)(lambda: f"WHERE name LIKE '%e%'")
 ```
 
-## Bulk inserts
-
-    def insert_all[R: Row](self, Model: type[R], rows: Iterable[R]) -> None:
-        """Insert multiple rows at once."""
-        insert = get_meta(Model).insert
-        assert insert is not None, "Insert statement should be defined for the model."
-        with self.connection:
-            self.connection.executemany(insert, rows)
-
 ## A way to package queries with models to make view like objects??
 Could be one or more queries for one model. Could have parameters. could want to
 reuse by adding where, or somethiing else??
@@ -439,6 +425,33 @@ sql = f"PRAGMA table_info({Athlete.__name__})"
 
 cols = engine.query(TableInfo, sql).fetchall()
 ```
+## Performance
+- https://kerkour.com/sqlite-for-servers
+  - `PRAGMA synchronous = NORMAL;`
+  - `PRAGMA journal_mode = WAL;`
+  - `PRAGMA cache_size = 10000;`
+  - `PRAGMA cache_size = 1000000000`
+- https://gcollazo.com/optimal-sqlite-settings-for-django/
+- joined loads
+approx 20% perf boost for execute many on 20k rows, not worth it, yet
+- Bulk inserts
+
+```python
+def insert_all[R: Row](self, Model: type[R], rows: Iterable[R]) -> None:
+    """Insert multiple rows at once."""
+    insert = get_meta(Model).insert
+    assert insert is not None, "Insert statement should be defined for the model."
+    with self.connection:
+        self.connection.executemany(insert, rows)
+```
+
+
+
+## Foreign Key enforcement
+Off by default, but can be enabled with
+- `PRAGMA foreign_keys = true;`
+
+
 
 
 # Probably Never

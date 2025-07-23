@@ -6,6 +6,8 @@ from typing import NamedTuple, assert_type
 import pytest
 
 from .cursorproxy import Lazy, TypedCursorProxy
+from .persister import Engine
+from .persister_test import Person, Team
 
 
 class M(NamedTuple):
@@ -131,3 +133,82 @@ def test_lazy__lazymodel_and_model_different__are_not_equal() -> None:
 
     assert l1 != n1
     assert n1 != l1
+
+
+def test_proxy__relations_can_be_fetched_eagerly(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(Person)
+    team = engine.save(Team(None, "Team A", 5))
+    person = engine.save(Person(None, "Alice", team))
+
+    found_person = engine.find(Person, person.id, deep=True)
+
+    assert found_person == person
+    assert isinstance(found_person[2], Team)
+    assert isinstance(found_person.team, Team)
+    assert found_person.team == team
+
+
+def test_proxy__relations_can_be_fetched_lazily(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(Person)
+    team = engine.save(Team(None, "Team A", 5))
+    person = engine.save(Person(None, "Alice", team))
+
+    found_person = engine.find(Person, person.id, deep=False)
+
+    assert found_person == person  # equal despite not having relationship loaded
+    assert isinstance(found_person[2], Lazy)
+    assert isinstance(found_person.team, Team)
+    assert found_person.team.id == team.id
+    assert found_person.team.name == team.name
+    assert found_person == person  # Still equal after lazy loading
+
+
+def test_proxy__lazy_and_eager__are_equal(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(Person)
+    person = engine.save(Person(None, "Alice", Team(None, "Team A", 5)), deep=True)
+
+    found_person_lazy = engine.find(Person, person.id, deep=False)
+    found_person_eager = engine.find(Person, person.id, deep=True)
+
+    assert found_person_lazy == found_person_eager
+    assert found_person_eager == found_person_lazy
+
+
+def test_proxy__deep_regression_case__doesnt_fail(engine: Engine) -> None:
+    """This was a real bug where the proxy cursor row factory reused the
+    same outer cursor and through away subsequent results."""
+
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(Person)
+
+    team = engine.save(Team(None, "Team A", 5))
+    person1 = engine.save(Person(None, "Alice", team))
+    person2 = engine.save(Person(None, "Bob", team))
+
+    rows = engine.query(Person, "SELECT * FROM Person;", deep=True).fetchall()
+
+    assert rows == [person1, person2]
+
+
+def test_proxy__when_querying_view_model__does_not_register_as_table_model(engine: Engine) -> None:
+    class ModelA(NamedTuple):
+        name: str
+
+    from .model import is_registered_row_model, is_registered_table_model
+
+    assert is_registered_row_model(ModelA) is False
+    assert is_registered_table_model(ModelA) is False
+
+    cur = engine.query(ModelA, "SELECT 'Alice' as name;")
+
+    # I don't care either way, just documenring current behavior
+    assert is_registered_row_model(ModelA) is False
+    assert is_registered_table_model(ModelA) is False
+
+    cur.fetchone()
+
+    assert is_registered_row_model(ModelA) is True
+    assert is_registered_table_model(ModelA) is False

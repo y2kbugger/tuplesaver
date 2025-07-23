@@ -173,6 +173,7 @@ class Engine:
             """).strip()
 
         cursor = self.query(Model, sql, kwargs, deep=deep)
+
         row = cursor.fetchone()
 
         return row
