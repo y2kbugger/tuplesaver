@@ -81,6 +81,71 @@ https://docs.python.org/3/howto/annotations.html#annotations-howto
 https://github.com/python/cpython/issues/102405
 https://peps.python.org/pep-0649/
 
+## API Comparison
+
+|   | Feature                                | tuplesaver                                                             | Rails ActiveRecord                                               |
+|:--|:---------------------------------------|:-----------------------------------------------------------------------|:-----------------------------------------------------------------|
+|   | **Model Definition**                   |                                                                        |                                                                  |
+|   | Model class                            | `class Post(NamedTuple): ...`                                          | `class Post < ApplicationRecord`                                 |
+|   | Field definitions                      | `name: str`  (type annotation)                                         | Inferred from database schema                                    |
+|   | Foreign key definition                 | `band: Band` (type annotation)                                         | `belongs_to :band`                                               |
+|   | Model instantiation                    | `post = Post(None, "Hi", dt.now())`                                    | `post = Post.new(name: "Hi")`                                    |
+|   | Modify fields                          | `post._replace(name="Hello")`                                          | `post.name = "Hello"`                                            |
+|   |                                        |                                                                        |                                                                  |
+|   | **Basic CRUD Read**                    |                                                                        |                                                                  |
+|   | Find one by Id                         | `engine.find(Post, 1)`                                                 | `Post.find(1)`                                                   |
+|   | Find one by field                      | `engine.find_by(Post, name="Hi")`                                      | `Model.find_by(name: "Hi")`                                      |
+|   | Find one or Create                     | Not planned                                                            | `Post.find_or_create_by(a: 1, b: 2)`                             |
+|   | Find many                              | @select(Post): f"WHERE {Post.name} = 'Hi'"                             | `Post.where(name: "Hi")`                                         |
+|   | __Querying__                           |                                                                        |                                                                  |
+|   | Raw SQL                                | `engine.query(Model, sql)`                                             | `Model.find_by_sql(sql)`                                         |
+|   | Query builder                          | `@select(Model)` decorator                                             | `Model.where(...).order(...)`                                    |
+|   | joins                                  | implicit for predicates, nothing explict yet                           | `joins(:team => :league)`                                        |
+| * | Aggregations                           | View models with annotations                                           | `Model.group(...).sum(...)`                                      |
+|   |                                        |                                                                        |                                                                  |
+|   | **Basic CRUD Write**                   |                                                                        |                                                                  |
+|   | Save (Insert or Update)                | `engine.save(post)`                                                    | `post.save`                                                      |
+|   | Save (one-liner)                       | `engine.save(Post(None, "Hi", dt.now()))`                              | `Post.create(name: "Hi")`                                        |
+| * | Update by Id                           | `engine.update(id, name="Apple")`                                      | `post.update(name: "Apple")`                                     |
+| * | Upsert (Single statement, UQ cols req) | `engine.upsert(Post, {a:1, b:2}, unique_by=['a'])`                     | `Post.upsert({a: 1, b: 2}, unique_by: ['a'])`                    |
+| * | Upsert (Select+Update/Insert, no UQ)   | `engine.update_or_create_by(Post, {a:1, b:2}, unique_by=['a'])`        | `Post.update_or_create_by(...)`                                  |
+|   | Delete by Id                           | `engine.delete(Post, 1)`                                               | `Post.delete(1)`                                                 |
+|   | Delete by instance                     | `engine.delete(post)`                                                  | `post.destroy`                                                   |
+| * | Insert many                            | `engine.insert_all(Post, [Post(1,2), Post(3,4)])`                      | `Post.insert_all([{a: 1, b: 2}, {a: 3, b: 4}])`                  |
+| * | Update many                            | `engine.update_all(Post, {name: "y2k"}, where={title="snails"})`       | `Book.where(:title => 'snails').update_all(name: 'y2k')`         |
+| * | Update many (full query)               | @update(Post, {name: 'y2k'}): f"WHERE {Post.title} LIKE '%snails%'"    | `Book.where('title LIKE ?', '%snails%').update_all(name: 'y2k')` |
+| * | Delete many                            | `engine.delete_all(Post, where={title="snails"})`                      | `Book.where(:title => 'snails').delete_all`                      |
+|   | Delete many (full query)               | @delete(Post): f"WHERE {Post.title} LIKE '%snails%'"                   | `Book.where('title LIKE ?', '%snails%').delete_all`              |
+|   |                                        |                                                                        |                                                                  |
+|   | **Relationships**                      |                                                                        |                                                                  |
+|   | Recursive save                         | `engine.save(member, deep=True)`                                       | `member.save` (automatic) ???                                    |
+|   | Recursive loading                      | Automatic by default                                                   | Lazy loading with `includes`                                     |
+| * | Backref relationships                  | `teams: list[Person]`                                                  | `has_many :people`                                               |
+| * | Many-to-many                           | Through join models                                                    | `has_and_belongs_to_many`                                        |
+|   |                                        |                                                                        |                                                                  |
+|   | **Type System**                        |                                                                        |                                                                  |
+|   | Type safety                            | Full static typing with mypy                                           | Runtime with Sorbet (optional)                                   |
+|   | Custom types                           | `register_adapt_convert()`                                             | ActiveRecord serializers                                         |
+|   | JSON fields                            | `list/dict` auto-serialized                                            | `serialize` or `json` column type                                |
+|   |                                        |                                                                        |                                                                  |
+|   | **Schema Management**                  |                                                                        |                                                                  |
+|   | Table creation                         | `engine.ensure_table_created(Model)`                                   | Rails migrations                                                 |
+| * | Migrations                             | Dedicated migration system                                             | `rails generate migration`                                       |
+| * | Foreign key constraints                | Auto-generated                                                         | Manual in migrations                                             |
+|   |                                        |                                                                        |                                                                  |
+|   | **Connection Management**              |                                                                        |                                                                  |
+|   | Connection handling                    | Explicit `Engine` instance                                             | Implicit connection pool                                         |
+|   | Transactions                           | Manual `engine.connection.commit()`                                    | `Model.transaction do ... end`                                   |
+| * | Connection pooling                     | Per-thread connections                                                 | per-thread connection                                            |
+| * | Transaction context mgr                | `with engine.transaction():`                                           | `Model.transaction do ... end`                                   |
+|   |                                        |                                                                        |                                                                  |
+|   | **Advanced Features**                  |                                                                        |                                                                  |
+|   | Validations                            | Not planned                                                            | Built-in validations                                             |
+|   | Callbacks/Hooks                        | Not planned                                                            | before_save, after_create, etc.                                  |
+| * | N+1 problem mitigation                 | Direct DB calls (fast SQLite)                                          | `includes()` eager loading                                       |
+
+
+
 ## Notes from RoR Active Record
 ### Connection Handling
 Implicit Connection Handling: Active Record uses a global connection pool and thread-local connections instead of an explicitly passed session object. On the first database call in a given thread (e.g. a web request thread), Active Record will check out a connection from the pool and associate it with that thread

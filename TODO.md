@@ -13,6 +13,7 @@
   - unknown types, unregistered models, both Optional and non-Optional variants
 - Test types on select (both decorator and non)
 - test for fetchone returning none
+- Test that both find and find_by raise if no row is found
 - Test for cyclic data structures e.g. A -> B -> C -> A
 - test that you cannot insert, update, or delete, a view model, only a table model
   - test that mutation queries don't even get set for the view meta
@@ -30,7 +31,7 @@
 - I want to instrument sqlite to log and profile queries.
 - Test CRUD on View Models
 - Validate in Meta creation that related models in fields of table models are actually table models and not view models
-- Test that everything works on when doing arbitrary view model queries that select FK in as model relationships
+- ematest that everything works on when doing arbitrary view model queries that select FK in as model relationships
 - Test duplicate joins in query.select deduplicates
 
 # Next
@@ -216,44 +217,6 @@ engine.upsert(XXX(name='a', place='c', value=888))
 - Have a dedicated external entrypoint to control migrations and rollback ala RoR AR
 - Use sqlite backup api to snapshot safely the DB while connected before a migration, this will allow easy rollback
 
-
-## multi-row Model based api
-multi-row apis like update_all, delete_all, etc.
-
-## ROR Persistence api (double check with real docs)
-| Action          | API Signature                     | Notes                              |
-| --------------- | --------------------------------- | ---------------------------------- |
-| Insert (create) | `Model.create(attrs)`             | Creates and saves one new record   |
-|                 | `Model.new(attrs)` + `obj.save`   | Two-step create                    |
-| Update          | `obj.update(attrs)`               | Sets and saves attrs               |
-|                 | `obj.update_attribute(attr, val)` | No validations/callbacks           |
-|                 | `Model.update(id, attrs)`         | Update by ID                       |
-|                 | `Model.update_all(attrs)`         | Bulk update; no callbacks          |
-| Delete          | `obj.destroy`                     | Deletes with callbacks             |
-|                 | `obj.delete`                      | Deletes without callbacks          |
-|                 | `Model.delete(id)`                | One-liner delete                   |
-|                 | `Model.delete_all`                | Deletes all (no callbacks)         |
-| Save            | `obj.save`                        | Insert or update, runs validations |
-| Force Save      | `obj.save!`                       | Same, raises exception on failure  |
-| Reload          | `obj.reload`                      | Re-fetch from DB                   |
-| Upsert          | `Model.upsert(attrs, unique_by)`  | Insert or update based on unique key |
-|                 | `Model.find_or_initialize_by(attr: val)` | Find or create new object  (simulated upsert)|
-## ROR Retrieval api (double check with real docs)
-| Action        | API Signature                    | Notes                       |
-| ------------- | -------------------------------- | --------------------------- |
-| Get by ID     | `Model.find(id)`                 | Raises if not found         |
-| Optional get  | `Model.find_by(attr: val)`       | Returns nil if not found    |
-| Where clause  | `Model.where(attr: val)`         | Returns a Relation          |
-| All rows      | `Model.all`                      | Lazy-loaded Relation        |
-| First/Last    | `Model.first`, `Model.last`      | Based on PK sorting         |
-| Limit         | `Model.limit(n)`                 | Chainable                   |
-| Order         | `Model.order(:attr)`             | Chainable                   |
-| Select fields | `Model.select(:attr1, :attr2)`   | Partial row loading         |
-| Pluck fields  | `Model.pluck(:attr)`             | Returns array of raw values |
-| Exists?       | `Model.exists?(attr: val)`       | Boolean                     |
-| Count         | `Model.count`                    | Integer                     |
-| Batch read    | `Model.find_each(batch_size: n)` | Iterates in chunks          |
-
 ## Connection Management and Concurrency
 - one connection per thread, like RoR AR
 - Another options is to have two thread pools, one for reads and one for writes
@@ -276,6 +239,9 @@ Offer a context manager for transactions, cursors, and committing
 # One Day Maybe
 - mutable id object as id which can mutate when saved.
 - engine.find_by() to use dict with Model.field as keys (allow refactoring)
+- find and find_by to utilize LIMIT 1 to return a single row
+- how to express more complex updates like this:
+    `Book.where('title LIKE ?', '%Rails%').update_all(author: 'David')`
 - Consider dropping the injected Engine, and goto a fluent RoR AR style interface
   - e.g. `row.save()` ipo `engine.save(row)`
 - Non recursive engine.save(root, deep=True), eliminate stackoverflow for deep recursive models e.g. depth=2000 BOM
