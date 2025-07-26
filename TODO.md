@@ -1,5 +1,4 @@
 # WIP
-- Invert location of adaptconvert_columntypes from adaptconvert to model, source tree of deps better
 
 # Bugs
 
