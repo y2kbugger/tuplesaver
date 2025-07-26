@@ -62,6 +62,13 @@ def test_proxy__after_usage__rowfactory_persists(proxy: TypedCursorProxy[M]) -> 
     assert row == M(2, "Bob", 40)
 
 
+def test_proxy__fetchone_returns_none(proxy: TypedCursorProxy[M]) -> None:
+    proxy.fetchone()
+    proxy.fetchone()
+    row = proxy.fetchone()
+    assert row is None
+
+
 def test_proxy__after_usage__rowfactory_doesnt_leak_to_new_cursors() -> None:
     connection = sqlite3.connect(":memory:")
 

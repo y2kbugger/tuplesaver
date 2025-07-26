@@ -1,20 +1,20 @@
 # WIP
+- Test querying view models
+  - CRUD on View Models
+  - could move some of the query view bom tests to more unit test style
+  - test that you cannot insert, update, or delete, a view model, only a table model
+  - test that mutation queries don't even get set for the view meta
 
 # Bugs
 
 
 # Testing
-- Test querying view models
-  - could move some of the query view bom tests to more unit test style
 - Could make a unit test for self join also
 - Test that non Fields greater than zero cannot be called id
 - test is_registered_fieldtype
   - unknown types, unregistered models, both Optional and non-Optional variants
 - Test types on select (both decorator and non)
-- test for fetchone returning none
 - Test for cyclic data structures e.g. A -> B -> C -> A
-- test that you cannot insert, update, or delete, a view model, only a table model
-  - test that mutation queries don't even get set for the view meta
 - Test the foreign key may only be a union with None i.e. Optional BUT NOT with int or something else
 - Investigate/ Test what Happens when specifying Model | int, should this raise??
 - how handle unions of two valid types, e.g. int | str
@@ -24,13 +24,13 @@
   e.g. int instead of Node in a Person_IntFK model
 - Test you can have two field of same type,e.g. right_node, left_node
 - How to test that we don't trigger lazy queries ourselves?
-- use the assert_type from typing to check type hints throughout all tests
 - Benchmark and test connection creation and closing
-- I want to instrument sqlite to log and profile queries.
-- Test CRUD on View Models
 - Validate in Meta creation that related models in fields of table models are actually table models and not view models
 - ematest that everything works on when doing arbitrary view model queries that select FK in as model relationships
 - Test duplicate joins in query.select deduplicates
+## testingmeta
+- I want to instrument sqlite to log and profile queries.
+- use the assert_type from typing to check type hints
 
 # Next
 - Harmonize names "view model" and "row model" in codebase and docs
