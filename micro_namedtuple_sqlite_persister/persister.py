@@ -57,7 +57,7 @@ class Engine:
         self.connection = sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES)
         self.connection.execute("PRAGMA journal_mode=WAL")
 
-    def ensure_table_created(self, Model: type[Row], *, force_recreate: bool = False) -> None:
+    def ensure_table_created(self, Model: type[Row]) -> None:
         with get_table_meta(Model) as meta:
             ddl = dedent(f"""
                 CREATE TABLE {meta.table_name} (
@@ -68,11 +68,6 @@ class Engine:
                 self.connection.execute(ddl)
             except sqlite3.OperationalError as e:
                 if f"table {meta.table_name} already exists" in str(e):
-                    # Force Recreate
-                    if force_recreate:
-                        self.connection.execute(f"DROP TABLE {meta.table_name}")
-                        self.connection.execute(ddl)
-
                     # Check existing table, it might be ok
                     def _normalize_whitespace(s: str) -> str:
                         return re.sub(r'\s+', ' ', s).strip()

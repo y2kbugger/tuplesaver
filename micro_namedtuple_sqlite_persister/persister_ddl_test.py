@@ -139,24 +139,6 @@ def test_ensure_table_created_catches_mismatched_from_out_of_band_alters(engine:
         engine.ensure_table_created(TblAlreadyCreated)
 
 
-def test_ensure_table_created_catches_force_recreate(engine: Engine) -> None:
-    class TblAlreadyCreated(NamedTuple):  # type: ignore shadowing is part of the test
-        id: int | None
-        name: str
-        age: int
-
-    engine.ensure_table_created(TblAlreadyCreated)
-
-    class TblAlreadyCreated(NamedTuple):
-        id: int | None
-        name: str
-        age: int
-        data: bytes
-
-    engine.ensure_table_created(TblAlreadyCreated, force_recreate=True)
-    engine.ensure_table_created(TblAlreadyCreated)  # just a double check for it being recreated.
-
-
 def test_ensure_table_created__fails__doesnt_register_table_model(engine: Engine) -> None:
     class TNoId(NamedTuple):
         name: str

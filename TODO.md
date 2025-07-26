@@ -1,4 +1,5 @@
 # WIP
+- Invert location of adaptconvert_columntypes from adaptconvert to model, source tree of deps better
 
 # Bugs
 
@@ -33,9 +34,6 @@
 - Test duplicate joins in query.select deduplicates
 
 # Next
-- drop "force recreate" from ensure_table_created, this was just hack until we have better migrations.
-  - instead i just made examples.ipynb use `:memory:`
-- Invert location of adaptconvert_columntypes from adaptconvert to model, source tree of deps better
 - Harmonize names "view model" and "row model" in codebase and docs
 - More standard adaptconverters Enum, set, tuple, time, frozenset, Path, UUID, Decimal, bytes
   - tests?, examples?
