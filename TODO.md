@@ -1,9 +1,15 @@
 # WIP
-- Test querying view models
-  - CRUD on View Models
-  - could move some of the query view bom tests to more unit test style
-  - test that you cannot insert, update, or delete, a view model, only a table model
+- Test querying nontable models
+  - save
+  - find
+  - find_by
+  - ensure_table_created
+  - delete
+  - query
+  - query with extra field
+  - query with arbitrary fields (no table or table model at all)
   - test that mutation queries don't even get set for the view meta
+  - could move some of the query view bom tests to more unit test style
 
 # Bugs
 
@@ -33,7 +39,7 @@
 - use the assert_type from typing to check type hints
 
 # Next
-- Harmonize names "view model" and "row model" in codebase and docs
+- Harmonize names "view model" and "row model" in codebase and docs as "nontable models"
 - More standard adaptconverters Enum, set, tuple, time, frozenset, Path, UUID, Decimal, bytes
   - tests?, examples?
 - Ensure that we use named placeholder when possible
@@ -235,6 +241,8 @@ Offer a context manager for transactions, cursors, and committing
 
 
 # One Day Maybe
+- Instead of using view models to reduce number of columns, just inject raising Lazy Stubs for deselected columns
+  - Reduce boilerplate, adds magic
 - mutable id object as id which can mutate when saved.
 - find and find_by to utilize LIMIT 1 to return a single row
 - how to express more complex updates like this:
