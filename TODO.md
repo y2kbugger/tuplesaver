@@ -1,5 +1,5 @@
 # WIP
-- Rework examples of View Models to a differnt use case (right now demoed with shallow BOM)
+- recompare api with RoR AR for find and find_by. raise or none when something is not found? None is actually safer now because type checking reminds you that it can be None. but it also annoying because you have to check for None all the time, if if you know it will always be there.
 
 # Bugs
 
@@ -35,7 +35,6 @@
 - Test duplicate joins in query.select deduplicates
 
 # Next
-- recompare api with RoR AR for find and find_by. raise or none when something is not found? None is actually safer now because type checking reminds you that it can be None. but it also annoying because you have to check for None all the time, if if you know it will always be there.
 - drop "force recreate" from ensure_table_created, this was just hack until we have better migrations.
   - instead i just made examples.ipynb use `:memory:`
 - Invert location of adaptconvert_columntypes from adaptconvert to model, source tree of deps better
