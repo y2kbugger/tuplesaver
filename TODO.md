@@ -1,5 +1,4 @@
 # WIP
-- recompare api with RoR AR for find and find_by. raise or none when something is not found? None is actually safer now because type checking reminds you that it can be None. but it also annoying because you have to check for None all the time, if if you know it will always be there.
 
 # Bugs
 
@@ -13,7 +12,6 @@
   - unknown types, unregistered models, both Optional and non-Optional variants
 - Test types on select (both decorator and non)
 - test for fetchone returning none
-- Test that both find and find_by raise if no row is found
 - Test for cyclic data structures e.g. A -> B -> C -> A
 - test that you cannot insert, update, or delete, a view model, only a table model
   - test that mutation queries don't even get set for the view meta
@@ -54,11 +52,6 @@
 # Later
 ## Consider moving all sql generation to sql.py (combo of query.py and insert/update/create stuff from engine and model)
 ## how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?
-## Consider if find and find by are actually needed
-why not just use where and limit 1?
-- find_by is just a shortcut for where and limit 1
-- find is just a shortcut for find_by with id
-  rails has something like engine.where(id=1).first()
 
 ## Explain Model
 I want to be able to explain model function. This would explain what the type annotation is., what the sqllite column type is, And why?. Like it would tell you that an INT is a built-in Python SQLite type., but a model is another model, And a list of a built-in type is stored as json., And then what it would attempt to pickle if there would be a pickle if it's unknown..
@@ -163,7 +156,7 @@ update MyModel set name = 'Apple' where id = 42;
 
 ## engine.upsert
 | Upsert          | `Model.upsert(attrs, unique_by)`  | Insert or update based on unique key |
-|                 | `Model.find_or_initialize_by(attr: val)` | Find or create new object  (simulated upsert)|
+|                 | `Model.find_or_create_by(attr: val)` | Find or create new object  (simulated upsert)|
 
 ```sql
 create table XXX (
@@ -246,7 +239,6 @@ Offer a context manager for transactions, cursors, and committing
 
 # One Day Maybe
 - mutable id object as id which can mutate when saved.
-- engine.find_by() to use dict with Model.field as keys (allow refactoring)
 - find and find_by to utilize LIMIT 1 to return a single row
 - how to express more complex updates like this:
     `Book.where('title LIKE ?', '%Rails%').update_all(author: 'David')`
@@ -265,6 +257,7 @@ Offer a context manager for transactions, cursors, and committing
 - scalar accessors, e.g. RoR AR's pick. get one value from one row and one
   column (technically pick also allows multiple colums) don't see why not just use
   find/find_by then access the field
+- RoR annotate (and sql comments so that later we can use it during observabilites)
 
 
 
@@ -275,6 +268,8 @@ We can just use migrations to add constraints and make db the source of truth.
 We don't actually even need to read them in except to add validation on upserts (ie, only allow upserting on sets of unique columns)
 
 ## Fully qualified field names that are rename symbol safe in queries kwargs
+- engine.find_by() to use dict with Model.field as keys (allow refactoring/avoid stringly typed columns)
+  - engine.find_by(MyModel, {MyModel.name: "Bart"})
 i.e.
 
     mylist  = e.find_by(List, List.name == list_name)

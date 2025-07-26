@@ -47,7 +47,7 @@ class IdNoneError(ValueError):
     pass
 
 
-class IdNotFoundError(ValueError):
+class MatchNotFoundError(ValueError):
     pass
 
 
@@ -115,7 +115,7 @@ class Engine:
                 """).strip()
             cur = self.connection.execute(query, (*row, row[0]))
             if cur.rowcount == 0:
-                raise IdNotFoundError(f"Cannot UPDATE, no row with id={row[0]} in table `{row.__class__.__name__}`")
+                raise MatchNotFoundError(f"Cannot UPDATE, no row with id={row[0]} in table `{row.__class__.__name__}`")
             return row
 
     @overload
@@ -141,7 +141,7 @@ class Engine:
             """).strip()
         cur = self.connection.execute(query, (row_id,))
         if cur.rowcount == 0:
-            raise IdNotFoundError(f"Cannot DELETE, no row with id={row_id} in table `{Model.__name__}`")
+            raise MatchNotFoundError(f"Cannot DELETE, no row with id={row_id} in table `{Model.__name__}`")
 
     ##### Reading
     def find[R: Row](self, Model: type[R], row_id: int | None, *, deep: bool = False) -> R:
@@ -151,7 +151,7 @@ class Engine:
         row = self.query(Model, get_meta(Model).select_by_id, (row_id,), deep=deep).fetchone()
 
         if row is None:
-            raise IdNotFoundError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
+            raise MatchNotFoundError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
 
         return row
 
@@ -172,9 +172,11 @@ class Engine:
             WHERE {where_clause}
             """).strip()
 
-        cursor = self.query(Model, sql, kwargs, deep=deep)
+        row = self.query(Model, sql, kwargs, deep=deep).fetchone()
 
-        row = cursor.fetchone()
+        if row is None:
+            kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
+            raise MatchNotFoundError(f"Cannot SELECT, no row with {kwargs_str} in table `{Model.__name__}`")
 
         return row
 

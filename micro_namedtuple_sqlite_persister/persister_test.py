@@ -11,8 +11,8 @@ from .conftest import SqlLog
 from .persister import (
     Engine,
     IdNoneError,
-    IdNotFoundError,
     InvalidKwargFieldSpecifiedError,
+    MatchNotFoundError,
     NoKwargFieldSpecifiedError,
     UnpersistedRelationshipError,
 )
@@ -315,13 +315,13 @@ def test_find__id_is_none(engine: Engine) -> None:
         engine.find(Team, None)
 
 
-def test_find__id_not_found(engine: Engine) -> None:
+def test_find__id_no_match(engine: Engine) -> None:
     engine.ensure_table_created(Team)
-    with pytest.raises(IdNotFoundError, match="Cannot SELECT, no row with id="):
+    with pytest.raises(MatchNotFoundError, match="Cannot SELECT, no row with id="):
         engine.find(Team, 78787)
 
 
-def test_find__by_field(engine: Engine) -> None:
+def test_find_by__field(engine: Engine) -> None:
     # one field
     engine.ensure_table_created(Team)
 
@@ -337,16 +337,17 @@ def test_find__by_field(engine: Engine) -> None:
     assert engine.find_by(Team, size=33) == Team(2, "Bob", 33)
 
 
-def test_find__by_field_no_match(engine: Engine) -> None:
+def test_find_by__field_no_match(engine: Engine) -> None:
     engine.ensure_table_created(Team)
 
     engine.save(Team(None, "Alice", 30))
     engine.save(Team(None, "Bob", 33))
 
-    assert engine.find_by(Team, name="Karl") is None
+    with pytest.raises(MatchNotFoundError, match="Cannot SELECT, no row with name='Karl' in table `Team`"):
+        assert engine.find_by(Team, name="Karl") is None
 
 
-def test_find__by_fields(engine: Engine) -> None:
+def test_find_by__fields(engine: Engine) -> None:
     # multiple fields
     engine.ensure_table_created(Team)
     r1 = engine.save(Team(None, "Alice", 30))
@@ -358,12 +359,12 @@ def test_find__by_fields(engine: Engine) -> None:
     assert engine.find_by(Team, name="Alice", size=33) == r3
 
 
-def test_find__by_fields_with_no_kwargs(engine: Engine) -> None:
+def test_find_by__fields_with_no_kwargs(engine: Engine) -> None:
     with pytest.raises(NoKwargFieldSpecifiedError, match="At least one field must be specified to find a row."):
         engine.find_by(Team)
 
 
-def test_find__by_fields_with_invalid_kwargs(engine: Engine) -> None:
+def test_find_by__fields_with_invalid_kwargs(engine: Engine) -> None:
     with pytest.raises(InvalidKwargFieldSpecifiedError):
         engine.find_by(Team, doesnt_exist="test")
 
