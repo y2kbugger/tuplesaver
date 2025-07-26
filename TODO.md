@@ -53,6 +53,13 @@
 - maybe look at that decorator that tells typing checkers that a class is only for types for cursor proxy
 
 # Later
+## Consider moving all sql generation to sql.py (combo of query.py and insert/update/create stuff from engine and model)
+## how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?
+## Consider if find and find by are actually needed
+why not just use where and limit 1?
+- find_by is just a shortcut for where and limit 1
+- find is just a shortcut for find_by with id
+  rails has something like engine.where(id=1).first()
 
 ## Explain Model
 I want to be able to explain model function. This would explain what the type annotation is., what the sqllite column type is, And why?. Like it would tell you that an INT is a built-in Python SQLite type., but a model is another model, And a list of a built-in type is stored as json., And then what it would attempt to pickle if there would be a pickle if it's unknown..
@@ -236,6 +243,8 @@ engine.upsert(XXX(name='a', place='c', value=888))
 ## transaction management
 Offer a context manager for transactions, cursors, and committing
 
+
+
 # One Day Maybe
 - mutable id object as id which can mutate when saved.
 - engine.find_by() to use dict with Model.field as keys (allow refactoring)
@@ -245,6 +254,20 @@ Offer a context manager for transactions, cursors, and committing
 - Consider dropping the injected Engine, and goto a fluent RoR AR style interface
   - e.g. `row.save()` ipo `engine.save(row)`
 - Non recursive engine.save(root, deep=True), eliminate stackoverflow for deep recursive models e.g. depth=2000 BOM
+- Auto detect or provide a way to santize/escape LIKE params. e.g.  of % or _
+- Allow query builder to allow partial paths in f-strings
+  - e.g. `f"{RelatedModel.field}"` ipo full path of `f"{Model.related_model.field}"` in queries
+  - then we can let sqlite fail if abigous? (does it fail or just guess?
+  - Also we would need to guess the join and fail if it is ambiguous, or require the join to be specified
+- Strict mode to disallow certain lazy ops, require explict eager loads
+  https://guides.rubyonrails.org/active_record_querying.html#strict-loading
+- strict mode sanitize models before passing to template engines??
+- engine.exists (rails has relation.exists, e.g. Customer.where(first_name: "Ryan").exist
+- scalar accessors, e.g. RoR AR's pick. get one value from one row and one
+  column (technically pick also allows multiple colums) don't see why not just use
+  find/find_by then access the field
+
+
 
 ## column constraints infered from DB
 https://sqlite.org/syntax/column-def.html
@@ -264,6 +287,7 @@ ipo
 
 
 ## View Model Reuse/Composition
+This would be like relations in RoR AR
 I believe a View Model can reference another one.
 This seems in theory possible, but might have impossible edge cases
 ```python
@@ -391,6 +415,18 @@ sql = f"PRAGMA table_info({Athlete.__name__})"
 
 cols = engine.query(TableInfo, sql).fetchall()
 ```
+Note: this is like RoR AR's scopes
+  scope :in_print, -> { where(out_of_print: false) }
+  scope :out_of_print, -> { where(out_of_print: true) }
+  scope :old, -> { where(year_published: ...50.years.ago.year) }
+  scope :out_of_print_and_expensive, -> { out_of_print.where("price > 500") }
+  scope :costs_more_than, ->(amount) { where("price > ?", amount) }
+
+also allows a default scope
+
+  default_scope { where(out_of_print: false) }
+
+
 ## Performance
 - https://kerkour.com/sqlite-for-servers
   - `PRAGMA synchronous = NORMAL;`
@@ -398,7 +434,7 @@ cols = engine.query(TableInfo, sql).fetchall()
   - `PRAGMA cache_size = 10000;`
   - `PRAGMA cache_size = 1000000000`
 - https://gcollazo.com/optimal-sqlite-settings-for-django/
-- joined loads
+- types of eager loads, see https://guides.rubyonrails.org/active_record_querying.html#eager-loading-associations
 approx 20% perf boost for execute many on 20k rows, not worth it, yet
 - Bulk inserts
 
