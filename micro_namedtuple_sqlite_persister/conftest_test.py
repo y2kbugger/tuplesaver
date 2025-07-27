@@ -11,7 +11,7 @@ from .adaptconvert import (
     adaptconvert_columntypes,
     register_adapt_convert,
 )
-from .persister import Engine
+from .engine import Engine
 
 
 class TestInitAndResetFixures:

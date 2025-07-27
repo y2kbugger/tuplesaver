@@ -9,8 +9,8 @@ import pytest
 from pytest_benchmark.plugin import BenchmarkFixture
 
 from .adaptconvert import clear_adapt_convert_registrations, register_standard_adaptconverters
+from .engine import Engine
 from .model import clear_modelmeta_registrations
-from .persister import Engine
 
 
 @pytest.fixture

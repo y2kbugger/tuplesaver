@@ -13,8 +13,8 @@ from .adaptconvert import (
     register_adapt_convert,
     register_pickleable_adapt_convert,
 )
+from .engine import Engine
 from .model import UnregisteredFieldTypeError
-from .persister import Engine
 
 
 def test_registering_adapt_convert_pair(engine: Engine) -> None:

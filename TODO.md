@@ -1,5 +1,4 @@
 # WIP
-- Rename persister to engine
 - Move create and update ddl to model.py
 - Harmonize names of model types throughout the codebase
   - "table model" - Backed by a table in the database

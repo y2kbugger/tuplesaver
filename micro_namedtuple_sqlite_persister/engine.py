@@ -9,7 +9,7 @@ from typing import Any, overload
 
 from .cursorproxy import TypedCursorProxy
 
-# NOTE: persister.py should only know about .model, but not .query
+# NOTE: engine.py should only know about .model, but not .query
 from .model import (
     Row,
     get_meta,

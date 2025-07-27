@@ -6,8 +6,8 @@ from typing import NamedTuple, assert_type
 import pytest
 
 from .cursorproxy import Lazy, TypedCursorProxy
-from .persister import Engine
-from .persister_test import Person, Team
+from .engine import Engine
+from .engine_test import Person, Team
 
 
 class M(NamedTuple):
@@ -24,7 +24,7 @@ def proxy() -> TypedCursorProxy[M]:
     connection = sqlite3.connect(":memory:")
     cursor = connection.execute(sql)
     proxy = TypedCursorProxy.proxy_cursor_deep(M, cursor)
-    assert_type(proxy, TypedCursorProxy[M])  # type: ignore slight bug in pyright, masked by both fixure here and engine.query in persister.py
+    assert_type(proxy, TypedCursorProxy[M])  # type: ignore slight bug in pyright, masked by both fixure here and engine.query in engine.py
     return proxy
 
 

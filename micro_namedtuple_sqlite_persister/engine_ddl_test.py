@@ -5,8 +5,8 @@ from typing import Any, NamedTuple
 
 import pytest
 
+from .engine import Engine, TableSchemaMismatch
 from .model import FieldZeroIdRequired, InvalidTableName, is_registered_row_model, is_registered_table_model
-from .persister import Engine, TableSchemaMismatch
 
 
 class TableInfo(NamedTuple):

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 from .model import Row, get_meta, is_registered_table_model
 
 if TYPE_CHECKING:
-    from .persister import Engine
+    from .engine import Engine
 
 
 def _make_model_deep[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sqlite3.Row) -> R:

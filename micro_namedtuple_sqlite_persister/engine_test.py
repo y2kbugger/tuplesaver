@@ -7,7 +7,7 @@ from typing import NamedTuple
 import pytest
 from pytest_benchmark.plugin import BenchmarkFixture
 
-from .persister import (
+from .engine import (
     Engine,
     IdNoneError,
     InvalidKwargFieldSpecifiedError,
