@@ -44,19 +44,19 @@ def test_engine_connection(engine: Engine) -> None:
 
 def test_save__on_success__inserts_record_to_db(engine: Engine) -> None:
     engine.ensure_table_created(Team)
-    row = engine.save(Team(None, "Alice", 30))
+    row = engine.save(Team(None, "Lions", 30))
 
     cursor = engine.connection.cursor()
     cursor.execute("SELECT * FROM Team;")
     rows = cursor.fetchall()
     assert len(rows) == 1
-    assert rows[0] == (row.id, "Alice", 30)
+    assert rows[0] == (row.id, "Lions", 30)
     assert row == Team(*rows[0])
 
 
 def test_save__on_success__returns_model_with_filled_in_id(engine: Engine) -> None:
     engine.ensure_table_created(Team)
-    row = Team(None, "Alice", 30)
+    row = Team(None, "Lions", 30)
 
     returned_row = engine.save(row)
 
@@ -69,7 +69,7 @@ def test_save__on_success__returns_model_with_filled_in_id(engine: Engine) -> No
 
 def test_save__benchmark(engine: Engine, benchmark: BenchmarkFixture) -> None:
     engine.ensure_table_created(Team)
-    row = Team(None, "Alice", 30)
+    row = Team(None, "Lions", 30)
 
     def save():
         engine.save(row)
@@ -80,26 +80,26 @@ def test_save__benchmark(engine: Engine, benchmark: BenchmarkFixture) -> None:
 def test_save__nonexistent_id(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     with pytest.raises(ValueError, match="Cannot UPDATE, no row with id="):
-        engine.save(Team(78787, "Bob", 30))
+        engine.save(Team(78787, "Lions", 30))
 
 
 def test_save__related_model(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Person)
 
-    team = engine.save(Team(None, "Team A", 5))
+    team = engine.save(Team(None, "Lions", 5))
     _person = engine.save(Person(None, "Alice", team))
 
     row = engine.query(Person, "SELECT * FROM Person;", deep=True).fetchone()
     assert row is not None
-    assert row == Person(1, "Alice", Team(1, "Team A", 5))
+    assert row == Person(1, "Alice", Team(1, "Lions", 5))
 
 
 def test_save__unpersisted_relation__raises(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Person)
 
-    team = Team(None, "Team A", 5)
+    team = Team(None, "Lions", 5)
     with pytest.raises(UnpersistedRelationshipError):
         _person = engine.save(Person(None, "Alice", team))
 
@@ -108,12 +108,12 @@ def test_save__unpersisted_relation_with_deep_flag(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Person)
 
-    team = Team(None, "Team A", 5)
+    team = Team(None, "Lions", 5)
     _person = engine.save(Person(None, "Alice", team), deep=True)
 
     row = engine.query(Person, "SELECT * FROM Person;", deep=True).fetchone()
     assert row is not None
-    assert row == Person(1, "Alice", Team(1, "Team A", 5))
+    assert row == Person(1, "Alice", Team(1, "Lions", 5))
 
 
 def test_save__three_model_relation_chain(engine: Engine) -> None:
@@ -121,13 +121,13 @@ def test_save__three_model_relation_chain(engine: Engine) -> None:
     engine.ensure_table_created(Person)
     engine.ensure_table_created(Arm)
 
-    team = engine.save(Team(None, "Team A", 5))
+    team = engine.save(Team(None, "Lions", 5))
     person = engine.save(Person(None, "Alice", team))
     _arm = engine.save(Arm(None, 30.0, person))
 
     row = engine.query(Arm, "SELECT * FROM Arm;", deep=True).fetchone()
 
-    assert row == Arm(1, 30.0, Person(1, "Alice", Team(1, "Team A", 5)))
+    assert row == Arm(1, 30.0, Person(1, "Alice", Team(1, "Lions", 5)))
 
 
 def test_save__three_model_relation_chain_deep(engine: Engine) -> None:
@@ -135,12 +135,12 @@ def test_save__three_model_relation_chain_deep(engine: Engine) -> None:
     engine.ensure_table_created(Person)
     engine.ensure_table_created(Arm)
 
-    team = Team(None, "Team A", 5)
+    team = Team(None, "Lions", 5)
     person = Person(None, "Alice", team)
     _arm = engine.save(Arm(None, 30.0, person), deep=True)
     row = engine.query(Arm, "SELECT * FROM Arm;").fetchone()
 
-    assert row == Arm(1, 30.0, Person(1, "Alice", Team(1, "Team A", 5)))
+    assert row == Arm(1, 30.0, Person(1, "Alice", Team(1, "Lions", 5)))
 
 
 def test_save__null_relation(engine: Engine) -> None:
@@ -163,7 +163,7 @@ def test_save__null_relation(engine: Engine) -> None:
 
 def test_save__none_in_not_null_column__raises(engine: Engine) -> None:
     engine.ensure_table_created(Team)
-    row = Team(None, "Alice", None)  # type: ignore this bug is part of the test
+    row = Team(None, "Lions", None)  # type: ignore this bug is part of the test
 
     with pytest.raises(sqlite3.IntegrityError, match="NOT NULL constraint failed"):
         engine.save(row)
@@ -171,69 +171,69 @@ def test_save__none_in_not_null_column__raises(engine: Engine) -> None:
 
 def test_save__updates_row(engine: Engine) -> None:
     engine.ensure_table_created(Team)
-    row = engine.save(Team(None, "Alice", 30))
-    engine.save(row._replace(name="Bob"))
+    row = engine.save(Team(None, "Lions", 30))
+    engine.save(row._replace(name="Alice"))
 
     assert row.id is not None
     retrieved_row = engine.find(Team, row.id)
 
-    assert retrieved_row == Team(row.id, "Bob", 30)
+    assert retrieved_row == Team(row.id, "Alice", 30)
 
 
-def test_save_shallow__related_row_changed__doesnt_update(engine: Engine) -> None:
+def test_save__shallow_related_row_changed__doesnt_update(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Person)
 
-    team = engine.save(Team(None, "Team A", 5))
+    team = engine.save(Team(None, "Lions", 5))
     person = engine.save(Person(None, "Alice", team))
 
     # Change the team name
-    team = team._replace(name="Team B")
+    team = team._replace(name="Tigers")
     person = person._replace(team=team)
     engine.save(person, deep=False)  # Shallow save, should not update Team
 
     found_person = engine.find(Person, person.id, deep=True)
 
-    assert found_person.team.name == "Team A"  # Should still be Team A
+    assert found_person.team.name == "Lions"  # Should still be Lions
 
 
-def test_save_deep__related_row_changed__updates(engine: Engine) -> None:
+def test_save__deep_related_row_changed__updates(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Person)
 
-    team = engine.save(Team(None, "Team A", 5))
+    team = engine.save(Team(None, "Lions", 5))
     person = engine.save(Person(None, "Alice", team))
 
     # Change the team name
-    team = team._replace(name="Team B")
+    team = team._replace(name="Tigers")
     person = person._replace(team=team)
     engine.save(person, deep=True)  # Deep save, should update Team
     found_person = engine.find(Person, person.id, deep=True)
 
-    assert found_person.team.name == "Team B"  # Should be Team B now
+    assert found_person.team.name == "Tigers"  # Should be Tigers now
 
 
-def test_save_deep__related_lazy_row_changed__updates(engine: Engine) -> None:
+def test_save__deep_related_lazy_row_changed__updates(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Person)
 
-    team = engine.save(Team(None, "Team A", 5))
+    team = engine.save(Team(None, "Lions", 5))
     person = engine.save(Person(None, "Alice", team))
 
     # Change the team name
     lazy_person = engine.find(Person, person.id, deep=False)  # Lazy loading
-    lazy_person = lazy_person._replace(team=lazy_person.team._replace(name="Team B"))
+    lazy_person = lazy_person._replace(team=lazy_person.team._replace(name="Tigers"))
     engine.save(lazy_person, deep=True)  # Deep save, should update Team
     found_person = engine.find(Person, person.id, deep=True)
 
-    assert found_person.team.name == "Team B"  # Should be Team B now
+    assert found_person.team.name == "Tigers"  # Should be Tigers now
 
 
-def test_save_deep__reused_unpersisted_model_multiple_saves__inserts_twice(engine: Engine) -> None:
+def test_save__deep_reused_unpersisted_model_multiple_saves__inserts_twice(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Person)
 
-    team = Team(None, "Team A", 5)
+    team = Team(None, "Lions", 5)
     alice = engine.save(Person(None, "Alice", team), deep=True)
     bob = engine.save(Person(None, "Bob", team), deep=True)
 
@@ -243,7 +243,7 @@ def test_save_deep__reused_unpersisted_model_multiple_saves__inserts_twice(engin
     assert alice.team.id != bob.team.id
 
 
-def test_save_deep__reused_unpersisted_model_single_saves__inserts_twice(engine: Engine) -> None:
+def test_save__deep_reused_unpersisted_model_single_saves__inserts_twice(engine: Engine) -> None:
     class PersonWithTwoTeams(NamedTuple):
         id: int | None
         name: str
@@ -253,7 +253,7 @@ def test_save_deep__reused_unpersisted_model_single_saves__inserts_twice(engine:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(PersonWithTwoTeams)
 
-    teamb = Team(None, "Team B", 5)
+    teamb = Team(None, "Lions", 5)
     person = engine.save(PersonWithTwoTeams(None, "Alice", teamb, teamb), deep=True)
 
     # this could be handled by a temporary identity map, but that
@@ -263,7 +263,7 @@ def test_save_deep__reused_unpersisted_model_single_saves__inserts_twice(engine:
     assert person.team_primary.id != person.team_secondary.id
 
 
-def test_save_deep__cannot_reliably_distinguish_between_identical_tuples(engine: Engine) -> None:
+def test_save__deep_cannot_reliably_distinguish_between_identical_tuples(engine: Engine) -> None:
     class PersonWithTwoTeams(NamedTuple):
         id: int | None
         name: str
@@ -273,8 +273,8 @@ def test_save_deep__cannot_reliably_distinguish_between_identical_tuples(engine:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(PersonWithTwoTeams)
 
-    teama = Team(None, "myteam", 5)
-    teamb = Team(None, "myteam", 5)
+    teama = Team(None, "Lions", 5)
+    teamb = Team(None, "Lions", 5)
     person = engine.save(PersonWithTwoTeams(None, "Alice", teama, teamb), deep=True)
 
     # this is a tricky/unstable case, because of the tuple cache
@@ -290,7 +290,7 @@ def test_save_deep__cannot_reliably_distinguish_between_identical_tuples(engine:
 
 def test_find__by_id(engine: Engine) -> None:
     engine.ensure_table_created(Team)
-    row = Team(None, "Alice", 30)
+    row = Team(None, "Lions", 30)
     row = engine.save(row)
 
     retrieved_row = engine.find(Team, row.id)
@@ -301,7 +301,7 @@ def test_find__by_id(engine: Engine) -> None:
 
 def test_find__benchmark(engine: Engine, benchmark: BenchmarkFixture) -> None:
     engine.ensure_table_created(Team)
-    engine.save(Team(None, "Alice", 30))
+    engine.save(Team(None, "Lions", 30))
 
     def find():
         engine.find(Team, 1)
@@ -325,23 +325,23 @@ def test_find_by__field(engine: Engine) -> None:
     # one field
     engine.ensure_table_created(Team)
 
-    engine.save(Team(None, "Alice", 30))
-    engine.save(Team(None, "Bob", 33))
+    engine.save(Team(None, "Lions", 30))
+    engine.save(Team(None, "Tigers", 33))
 
-    found = engine.find_by(Team, name="Alice")
+    found = engine.find_by(Team, name="Lions")
     assert isinstance(found, Team)
 
-    assert engine.find_by(Team, name="Alice") == Team(1, "Alice", 30)
-    assert engine.find_by(Team, size=30) == Team(1, "Alice", 30)
-    assert engine.find_by(Team, name="Bob") == Team(2, "Bob", 33)
-    assert engine.find_by(Team, size=33) == Team(2, "Bob", 33)
+    assert engine.find_by(Team, name="Lions") == Team(1, "Lions", 30)
+    assert engine.find_by(Team, size=30) == Team(1, "Lions", 30)
+    assert engine.find_by(Team, name="Tigers") == Team(2, "Tigers", 33)
+    assert engine.find_by(Team, size=33) == Team(2, "Tigers", 33)
 
 
 def test_find_by__field_no_match(engine: Engine) -> None:
     engine.ensure_table_created(Team)
 
-    engine.save(Team(None, "Alice", 30))
-    engine.save(Team(None, "Bob", 33))
+    engine.save(Team(None, "Lions", 30))
+    engine.save(Team(None, "Tigers", 33))
 
     with pytest.raises(MatchNotFoundError, match="Cannot SELECT, no row with name='Karl' in table `Team`"):
         assert engine.find_by(Team, name="Karl") is None
@@ -350,13 +350,13 @@ def test_find_by__field_no_match(engine: Engine) -> None:
 def test_find_by__fields(engine: Engine) -> None:
     # multiple fields
     engine.ensure_table_created(Team)
-    r1 = engine.save(Team(None, "Alice", 30))
-    r2 = engine.save(Team(None, "Bob", 33))
-    r3 = engine.save(Team(None, "Alice", 33))
+    r1 = engine.save(Team(None, "Lions", 30))
+    r2 = engine.save(Team(None, "Tigers", 33))
+    r3 = engine.save(Team(None, "Lions", 33))
 
-    assert engine.find_by(Team, name="Alice", size=30) == r1
-    assert engine.find_by(Team, name="Bob", size=33) == r2
-    assert engine.find_by(Team, name="Alice", size=33) == r3
+    assert engine.find_by(Team, name="Lions", size=30) == r1
+    assert engine.find_by(Team, name="Tigers", size=33) == r2
+    assert engine.find_by(Team, name="Lions", size=33) == r3
 
 
 def test_find_by__fields_with_no_kwargs(engine: Engine) -> None:
@@ -371,7 +371,7 @@ def test_find_by__fields_with_invalid_kwargs(engine: Engine) -> None:
 
 def test_delete__by_id(engine: Engine) -> None:
     engine.ensure_table_created(Team)
-    row = engine.save(Team(None, "Alice", 30))
+    row = engine.save(Team(None, "Lions", 30))
 
     cursor = engine.connection.cursor()
     cursor.execute("SELECT * FROM Team;")
@@ -388,7 +388,7 @@ def test_delete__by_id(engine: Engine) -> None:
 
 def test_delete__by_row(engine: Engine) -> None:
     engine.ensure_table_created(Team)
-    row = engine.save(Team(None, "Alice", 30))
+    row = engine.save(Team(None, "Lions", 30))
 
     cursor = engine.connection.cursor()
     cursor.execute("SELECT * FROM Team;")
