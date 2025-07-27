@@ -5,13 +5,12 @@ from typing import NamedTuple
 
 import pytest
 
-from micro_namedtuple_sqlite_persister.model import UnregisteredFieldTypeError
-
 from .adaptconvert import (
     adaptconvert_columntypes,
     register_adapt_convert,
 )
 from .engine import Engine
+from .model import UnregisteredFieldTypeError
 
 
 class TestInitAndResetFixures:

@@ -43,7 +43,7 @@ def test_registering_adapt_convert_pair(engine: Engine) -> None:
     columns = cursor.fetchall()
     assert len(columns) == len(ModelUnknownType._fields)
     assert columns[2][1] == "custom"  # Column Name
-    assert columns[2][2] == "micro_namedtuple_sqlite_persister.adaptconvert_test.test_registering_adapt_convert_pair.<locals>.NewType"  # Column Type
+    assert columns[2][2] == "tuplesaver.adaptconvert_test.test_registering_adapt_convert_pair.<locals>.NewType"  # Column Type
     assert columns[2][3] == 1  # Not Null
     assert columns[2][5] == 0  # Not Primary Key
 
@@ -107,19 +107,19 @@ def test_attempted_registration_of_already_registered_type() -> None:
 
     # verify the registration
     assert sqlite3.adapters[(NewType, sqlite3.PrepareProtocol)] is adapt_newtype
-    assert sqlite3.converters['MICRO_NAMEDTUPLE_SQLITE_PERSISTER.ADAPTCONVERT_TEST.TEST_ATTEMPTED_REGISTRATION_OF_ALREADY_REGISTERED_TYPE.<LOCALS>.NEWTYPE'] is convert_newtype
+    assert sqlite3.converters['TUPLESAVER.ADAPTCONVERT_TEST.TEST_ATTEMPTED_REGISTRATION_OF_ALREADY_REGISTERED_TYPE.<LOCALS>.NEWTYPE'] is convert_newtype
 
     with pytest.raises(AdaptConvertTypeAlreadyRegistered):
         register_adapt_convert(NewType, adapt_newtype, convert_newtype)
 
     # Ensure that the original registration was not lost or changed
     assert sqlite3.adapters[(NewType, sqlite3.PrepareProtocol)] is adapt_newtype
-    assert sqlite3.converters['MICRO_NAMEDTUPLE_SQLITE_PERSISTER.ADAPTCONVERT_TEST.TEST_ATTEMPTED_REGISTRATION_OF_ALREADY_REGISTERED_TYPE.<LOCALS>.NEWTYPE'] is convert_newtype
+    assert sqlite3.converters['TUPLESAVER.ADAPTCONVERT_TEST.TEST_ATTEMPTED_REGISTRATION_OF_ALREADY_REGISTERED_TYPE.<LOCALS>.NEWTYPE'] is convert_newtype
 
     register_adapt_convert(NewType, adapt_newtype2, convert_newtype2, overwrite=True)
     # verify that the registration was overwritten
     assert sqlite3.adapters[(NewType, sqlite3.PrepareProtocol)] is adapt_newtype2
-    assert sqlite3.converters['MICRO_NAMEDTUPLE_SQLITE_PERSISTER.ADAPTCONVERT_TEST.TEST_ATTEMPTED_REGISTRATION_OF_ALREADY_REGISTERED_TYPE.<LOCALS>.NEWTYPE'] is convert_newtype2
+    assert sqlite3.converters['TUPLESAVER.ADAPTCONVERT_TEST.TEST_ATTEMPTED_REGISTRATION_OF_ALREADY_REGISTERED_TYPE.<LOCALS>.NEWTYPE'] is convert_newtype2
 
 
 def test_adapter_converter_reset_only_affects_what_we_registered() -> None:

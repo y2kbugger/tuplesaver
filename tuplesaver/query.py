@@ -6,7 +6,7 @@ from functools import wraps
 from textwrap import dedent
 from typing import Any, Callable
 
-from micro_namedtuple_sqlite_persister.model import Row, get_meta
+from .model import Row, get_meta
 
 
 class QueryError(Exception):

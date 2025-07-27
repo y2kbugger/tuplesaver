@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "micro-namedtuple-sqlite-persister"
+name = "tuplesaver"
 version = "0.1.0"
 description = "A simple, opinionated, NamedTuple persister for SQLite."
 license = "GPL3"
@@ -45,7 +45,7 @@ addopts = [
     "--benchmark-disable",
     ]
 
-testpaths = ["micro_namedtuple_sqlite_persister"]
+testpaths = ["tuplesaver"]
 
 [tool.ruff]
 

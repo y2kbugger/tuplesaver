@@ -58,7 +58,7 @@ So our api which wraps the above would look like this:
         """Convert ISO 8601 date and time to datetime.datetime object."""
         return dt.datetime.fromisoformat(data.decode())
 
-    from micro_namedtuple_sqlite_persister import register_adapt_convert
+    from tuplesaver import register_adapt_convert
 
     register_adapt_convert(datetime.datetime, adapt_datetime_iso, convert_datetime_iso)
 
