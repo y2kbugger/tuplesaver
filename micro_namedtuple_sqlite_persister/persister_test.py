@@ -52,6 +52,163 @@ def test_engine_connection(engine: Engine) -> None:
     assert isinstance(engine.connection, Connection)
 
 
+def test_find__by_id(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    row = Team(None, "Lions", 30)
+    row = engine.save(row)
+
+    retrieved_row = engine.find(Team, row.id)
+
+    assert retrieved_row == row
+    assert type(retrieved_row) is Team
+
+
+def test_find__benchmark(engine: Engine, benchmark: BenchmarkFixture) -> None:
+    engine.ensure_table_created(Team)
+    engine.save(Team(None, "Lions", 30))
+
+    def find():
+        engine.find(Team, 1)
+
+    benchmark(find)
+
+
+def test_find__id_is_none(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    with pytest.raises(IdNoneError, match="Cannot SELECT, id=None"):
+        engine.find(Team, None)
+
+
+def test_find__id_no_match(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    with pytest.raises(MatchNotFoundError, match="Cannot SELECT, no row with id="):
+        engine.find(Team, 78787)
+
+
+def test_find__alt_model_removed_field(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.save(Team(None, "Lions", 30))
+
+    team = engine.find(Team_Alt, 1)
+
+    assert team == Team_Alt(1, "Lions")
+
+
+def test_find__alt_model_raw_fk(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(Person)
+    team = engine.save(Team(None, "Lions", 30))
+    engine.save(Person(None, "Alice", team))  # team_id is raw int FK, not a Team object
+
+    class Person_RawFK(NamedTuple):
+        id: int | None
+        name: str
+        team: int
+
+    person = engine.find(Person_RawFK, 1)
+    assert person == Person_RawFK(1, "Alice", 1)  # team_id is raw int FK, not a Team object
+
+
+def test_find__adhoc_model(engine: Engine) -> None:
+    with pytest.raises(LookupByAdHocModelImpossible, match="Cannot lookup via adhoc model: `AdHoc`"):
+        engine.find(AdHoc, 1)
+
+
+def test_find_by__field(engine: Engine) -> None:
+    # one field
+    engine.ensure_table_created(Team)
+
+    engine.save(Team(None, "Lions", 30))
+    engine.save(Team(None, "Tigers", 33))
+
+    found = engine.find_by(Team, name="Lions")
+    assert isinstance(found, Team)
+
+    assert engine.find_by(Team, name="Lions") == Team(1, "Lions", 30)
+    assert engine.find_by(Team, size=30) == Team(1, "Lions", 30)
+    assert engine.find_by(Team, name="Tigers") == Team(2, "Tigers", 33)
+    assert engine.find_by(Team, size=33) == Team(2, "Tigers", 33)
+
+
+def test_find_by__field_no_match(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+
+    engine.save(Team(None, "Lions", 30))
+    engine.save(Team(None, "Tigers", 33))
+
+    with pytest.raises(MatchNotFoundError, match="Cannot SELECT, no row with name='Karl' in table `Team`"):
+        assert engine.find_by(Team, name="Karl") is None
+
+
+def test_find_by__fields(engine: Engine) -> None:
+    # multiple fields
+    engine.ensure_table_created(Team)
+    r1 = engine.save(Team(None, "Lions", 30))
+    r2 = engine.save(Team(None, "Tigers", 33))
+    r3 = engine.save(Team(None, "Lions", 33))
+
+    assert engine.find_by(Team, name="Lions", size=30) == r1
+    assert engine.find_by(Team, name="Tigers", size=33) == r2
+    assert engine.find_by(Team, name="Lions", size=33) == r3
+
+
+def test_find_by__fields_with_no_kwargs(engine: Engine) -> None:
+    with pytest.raises(NoKwargFieldSpecifiedError, match="At least one field must be specified to find a row."):
+        engine.find_by(Team)
+
+
+def test_find_by__fields_with_invalid_kwargs(engine: Engine) -> None:
+    with pytest.raises(InvalidKwargFieldSpecifiedError):
+        engine.find_by(Team, doesnt_exist="test")
+
+
+def test_find_by__nontable_model(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.save(Team(None, "Lions", 30))
+
+    team = engine.find_by(Team_Alt, name="Lions")
+
+    assert team == Team_Alt(1, "Lions")
+
+
+def test_find_by__adhoc_model(engine: Engine) -> None:
+    with pytest.raises(LookupByAdHocModelImpossible, match="Cannot lookup via adhoc model: `AdHoc`"):
+        engine.find_by(AdHoc, total=7.7)
+
+
+def test_query__table_model__succeeds_with_returns_cursor_proxy(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.save(Team(None, "Lions", 30))
+
+    cur = engine.query(Team, "SELECT * FROM Team;")
+    assert cur.row_factory is not None
+
+    row = cur.fetchone()
+    assert isinstance(row, Team)
+    assert row == Team(1, "Lions", 30)
+
+
+def test_query__alt_model__succeeds_with_returns_cursor_proxy(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.save(Team(None, "Lions", 30))
+
+    cur = engine.query(Team_Alt, "SELECT id, name FROM Team;")
+    assert cur.row_factory is not None
+
+    row = cur.fetchone()
+    assert isinstance(row, Team_Alt)
+    assert row == Team_Alt(1, "Lions")
+
+
+def test_query__adhoc_model__succeeds_with_returns_cursor_proxy(engine: Engine) -> None:
+    cur = engine.query(AdHoc, "SELECT 7.7 as score;")
+    assert cur.row_factory is not None
+
+    row = cur.fetchone()
+    assert isinstance(row, AdHoc)
+    assert row == AdHoc(7.7)
+
+
 def test_save__on_success__inserts_record_to_db(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     row = engine.save(Team(None, "Lions", 30))
@@ -310,130 +467,6 @@ def test_save__adhoc_model__raises(engine: Engine) -> None:
         engine.save(team)
 
 
-def test_find__by_id(engine: Engine) -> None:
-    engine.ensure_table_created(Team)
-    row = Team(None, "Lions", 30)
-    row = engine.save(row)
-
-    retrieved_row = engine.find(Team, row.id)
-
-    assert retrieved_row == row
-    assert type(retrieved_row) is Team
-
-
-def test_find__benchmark(engine: Engine, benchmark: BenchmarkFixture) -> None:
-    engine.ensure_table_created(Team)
-    engine.save(Team(None, "Lions", 30))
-
-    def find():
-        engine.find(Team, 1)
-
-    benchmark(find)
-
-
-def test_find__id_is_none(engine: Engine) -> None:
-    engine.ensure_table_created(Team)
-    with pytest.raises(IdNoneError, match="Cannot SELECT, id=None"):
-        engine.find(Team, None)
-
-
-def test_find__id_no_match(engine: Engine) -> None:
-    engine.ensure_table_created(Team)
-    with pytest.raises(MatchNotFoundError, match="Cannot SELECT, no row with id="):
-        engine.find(Team, 78787)
-
-
-def test_find__alt_model_removed_field(engine: Engine) -> None:
-    engine.ensure_table_created(Team)
-    engine.save(Team(None, "Lions", 30))
-
-    team = engine.find(Team_Alt, 1)
-
-    assert team == Team_Alt(1, "Lions")
-
-
-def test_find__alt_model_raw_fk(engine: Engine) -> None:
-    engine.ensure_table_created(Team)
-    engine.ensure_table_created(Person)
-    team = engine.save(Team(None, "Lions", 30))
-    engine.save(Person(None, "Alice", team))  # team_id is raw int FK, not a Team object
-
-    class Person_RawFK(NamedTuple):
-        id: int | None
-        name: str
-        team: int
-
-    person = engine.find(Person_RawFK, 1)
-    assert person == Person_RawFK(1, "Alice", 1)  # team_id is raw int FK, not a Team object
-
-
-def test_find__adhoc_model(engine: Engine) -> None:
-    with pytest.raises(LookupByAdHocModelImpossible, match="Cannot lookup via adhoc model: `AdHoc`"):
-        engine.find(AdHoc, 1)
-
-
-def test_find_by__field(engine: Engine) -> None:
-    # one field
-    engine.ensure_table_created(Team)
-
-    engine.save(Team(None, "Lions", 30))
-    engine.save(Team(None, "Tigers", 33))
-
-    found = engine.find_by(Team, name="Lions")
-    assert isinstance(found, Team)
-
-    assert engine.find_by(Team, name="Lions") == Team(1, "Lions", 30)
-    assert engine.find_by(Team, size=30) == Team(1, "Lions", 30)
-    assert engine.find_by(Team, name="Tigers") == Team(2, "Tigers", 33)
-    assert engine.find_by(Team, size=33) == Team(2, "Tigers", 33)
-
-
-def test_find_by__field_no_match(engine: Engine) -> None:
-    engine.ensure_table_created(Team)
-
-    engine.save(Team(None, "Lions", 30))
-    engine.save(Team(None, "Tigers", 33))
-
-    with pytest.raises(MatchNotFoundError, match="Cannot SELECT, no row with name='Karl' in table `Team`"):
-        assert engine.find_by(Team, name="Karl") is None
-
-
-def test_find_by__fields(engine: Engine) -> None:
-    # multiple fields
-    engine.ensure_table_created(Team)
-    r1 = engine.save(Team(None, "Lions", 30))
-    r2 = engine.save(Team(None, "Tigers", 33))
-    r3 = engine.save(Team(None, "Lions", 33))
-
-    assert engine.find_by(Team, name="Lions", size=30) == r1
-    assert engine.find_by(Team, name="Tigers", size=33) == r2
-    assert engine.find_by(Team, name="Lions", size=33) == r3
-
-
-def test_find_by__fields_with_no_kwargs(engine: Engine) -> None:
-    with pytest.raises(NoKwargFieldSpecifiedError, match="At least one field must be specified to find a row."):
-        engine.find_by(Team)
-
-
-def test_find_by__fields_with_invalid_kwargs(engine: Engine) -> None:
-    with pytest.raises(InvalidKwargFieldSpecifiedError):
-        engine.find_by(Team, doesnt_exist="test")
-
-
-def test_find_by__nontable_model(engine: Engine) -> None:
-    engine.ensure_table_created(Team)
-    engine.save(Team(None, "Lions", 30))
-
-    team = engine.find_by(Team_Alt, name="Lions")
-
-    assert team == Team_Alt(1, "Lions")
-
-
-def test_find_by__adhoc_model(engine: Engine) -> None:
-    with pytest.raises(LookupByAdHocModelImpossible, match="Cannot lookup via adhoc model: `AdHoc`"):
-        engine.find_by(AdHoc, total=7.7)
-
-
 def test_delete__by_id(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     row = engine.save(Team(None, "Lions", 30))
@@ -490,39 +523,6 @@ def test_delete__adhoc_model(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     with pytest.raises(NonTableModelsImmutable, match="Cannot modify table via non-table model: `Team_Alt`"):
         engine.delete(Team_Alt, 1)
-
-
-def test_engine_query__table_model__succeeds_with_returns_cursor_proxy(engine: Engine) -> None:
-    engine.ensure_table_created(Team)
-    engine.save(Team(None, "Lions", 30))
-
-    cur = engine.query(Team, "SELECT * FROM Team;")
-    assert cur.row_factory is not None
-
-    row = cur.fetchone()
-    assert isinstance(row, Team)
-    assert row == Team(1, "Lions", 30)
-
-
-def test_engine_query__alt_model__succeeds_with_returns_cursor_proxy(engine: Engine) -> None:
-    engine.ensure_table_created(Team)
-    engine.save(Team(None, "Lions", 30))
-
-    cur = engine.query(Team_Alt, "SELECT id, name FROM Team;")
-    assert cur.row_factory is not None
-
-    row = cur.fetchone()
-    assert isinstance(row, Team_Alt)
-    assert row == Team_Alt(1, "Lions")
-
-
-def test_engine_query__adhoc_model__succeeds_with_returns_cursor_proxy(engine: Engine) -> None:
-    cur = engine.query(AdHoc, "SELECT 7.7 as score;")
-    assert cur.row_factory is not None
-
-    row = cur.fetchone()
-    assert isinstance(row, AdHoc)
-    assert row == AdHoc(7.7)
 
 
 ## integration testing for self-referenctial BOM scenarios

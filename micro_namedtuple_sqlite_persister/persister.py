@@ -97,6 +97,60 @@ class Engine:
                     # error is not about the table already existing
                     raise
 
+    ##### Reading
+    def find[R: Row](self, Model: type[R], row_id: int | None, *, deep: bool = False) -> R:
+        if row_id is None:
+            raise IdNoneError("Cannot SELECT, id=None")
+
+        meta = get_meta(Model)
+        if meta.table_name is None:
+            raise LookupByAdHocModelImpossible(meta.model_name)
+
+        sql = meta.select + "\nWHERE id = :id"  # type: ignore
+        row = self.query(Model, sql, {'id': row_id}, deep=deep).fetchone()
+
+        if row is None:
+            raise MatchNotFoundError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
+
+        return row
+
+    def find_by[R: Row](self, Model: type[R], *, deep: bool = False, **kwargs: Any) -> R:
+        """Find a row by its fields, e.g. `find_by(Model, name="Alice")`"""
+
+        if not kwargs:
+            raise NoKwargFieldSpecifiedError()
+
+        meta = get_meta(Model)
+        if meta.table_name is None:
+            raise LookupByAdHocModelImpossible(meta.model_name)
+
+        field_names = [f.name for f in meta.fields]
+        if not all(k in field_names for k in kwargs):
+            raise InvalidKwargFieldSpecifiedError(Model, kwargs)
+
+        # Build the WHERE clause
+        where_clause = " AND ".join(f"{k} = :{k}" for k in kwargs)
+        select = get_meta(Model).select
+        sql = dedent(f"""
+            {select}
+            WHERE {where_clause}
+            """).strip()
+
+        row = self.query(Model, sql, kwargs, deep=deep).fetchone()
+
+        if row is None:
+            kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
+            raise MatchNotFoundError(f"Cannot SELECT, no row with {kwargs_str} in table `{Model.__name__}`")
+
+        return row
+
+    def query[R: Row](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple(), *, deep: bool = False) -> TypedCursorProxy[R]:
+        cursor = self.connection.execute(sql, parameters)
+        if deep:
+            return TypedCursorProxy.proxy_cursor_deep(Model, cursor)
+        else:
+            return TypedCursorProxy.proxy_cursor_lazy(Model, cursor, self)
+
     #### Writing
     def save[R: Row](self, row: R, *, deep: bool = False) -> R:
         """insert or update records, based on the presence of an id"""
@@ -154,57 +208,3 @@ class Engine:
         cur = self.connection.execute(query, (row_id,))
         if cur.rowcount == 0:
             raise MatchNotFoundError(f"Cannot DELETE, no row with id={row_id} in table `{Model.__name__}`")
-
-    ##### Reading
-    def find[R: Row](self, Model: type[R], row_id: int | None, *, deep: bool = False) -> R:
-        if row_id is None:
-            raise IdNoneError("Cannot SELECT, id=None")
-
-        meta = get_meta(Model)
-        if meta.table_name is None:
-            raise LookupByAdHocModelImpossible(meta.model_name)
-
-        sql = meta.select + "\nWHERE id = :id"  # type: ignore
-        row = self.query(Model, sql, {'id': row_id}, deep=deep).fetchone()
-
-        if row is None:
-            raise MatchNotFoundError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
-
-        return row
-
-    def find_by[R: Row](self, Model: type[R], *, deep: bool = False, **kwargs: Any) -> R:
-        """Find a row by its fields, e.g. `find_by(Model, name="Alice")`"""
-
-        if not kwargs:
-            raise NoKwargFieldSpecifiedError()
-
-        meta = get_meta(Model)
-        if meta.table_name is None:
-            raise LookupByAdHocModelImpossible(meta.model_name)
-
-        field_names = [f.name for f in meta.fields]
-        if not all(k in field_names for k in kwargs):
-            raise InvalidKwargFieldSpecifiedError(Model, kwargs)
-
-        # Build the WHERE clause
-        where_clause = " AND ".join(f"{k} = :{k}" for k in kwargs)
-        select = get_meta(Model).select
-        sql = dedent(f"""
-            {select}
-            WHERE {where_clause}
-            """).strip()
-
-        row = self.query(Model, sql, kwargs, deep=deep).fetchone()
-
-        if row is None:
-            kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
-            raise MatchNotFoundError(f"Cannot SELECT, no row with {kwargs_str} in table `{Model.__name__}`")
-
-        return row
-
-    def query[R: Row](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple(), *, deep: bool = False) -> TypedCursorProxy[R]:
-        cursor = self.connection.execute(sql, parameters)
-        if deep:
-            return TypedCursorProxy.proxy_cursor_deep(Model, cursor)
-        else:
-            return TypedCursorProxy.proxy_cursor_lazy(Model, cursor, self)

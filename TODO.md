@@ -1,5 +1,4 @@
 # WIP
-- Order Persister same as Engine
 - Rename persister to engine
 - Move create and update ddl to model.py
 - Harmonize names of model types throughout the codebase
