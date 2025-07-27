@@ -1,15 +1,24 @@
 # WIP
+- Hmmmmm we need to consider actual differences between alt models and adhoc models
+  - alt models are backed by a view, but can have fields that are added, removed, or modified
+  - adhoc models are backed by any arbitrary query, don't have an id field, and can have any fields.
+- Test that adhoc models don't set a table_name
+  - maybe test/enforce that view models must have ACTUAL table model in meta first
 - Test querying nontable models
-  - save
-  - find
-  - find_by
-  - ensure_table_created
-  - delete
   - query
   - query with extra field
   - query with arbitrary fields (no table or table model at all)
   - test that mutation queries don't even get set for the view meta
   - could move some of the query view bom tests to more unit test style
+- Order Persister same as Engine
+- Rename persister to engine
+- Move create and update ddl to model.py
+- Harmonize names of model types throughout the codebase
+  - "table model" - Backed by a table in the database
+  - "alt model" - Backed by a view in the database, but could have fields that are added (eventually), removed, or modified. Still have an id field that mapps to the original table.
+  - "adhoc model" - Backed by any arbitrary query, doesnt have an id field, and can have any fields.
+  - "nontable model" - "alt model" or "adhoc model"
+
 
 # Bugs
 
@@ -39,7 +48,6 @@
 - use the assert_type from typing to check type hints
 
 # Next
-- Harmonize names "view model" and "row model" in codebase and docs as "nontable models"
 - More standard adaptconverters Enum, set, tuple, time, frozenset, Path, UUID, Decimal, bytes
   - tests?, examples?
 - Ensure that we use named placeholder when possible
@@ -51,6 +59,7 @@
 - I want to fall back to pickles for any type that is not configured, and just raise if pickle fails
   - tests?, examples?
 - maybe look at that decorator that tells typing checkers that a class is only for types for cursor proxy
+- make find use find_by under the hood
 
 # Later
 ## Consider moving all sql generation to sql.py (combo of query.py and insert/update/create stuff from engine and model)
@@ -263,6 +272,7 @@ Offer a context manager for transactions, cursors, and committing
   column (technically pick also allows multiple colums) don't see why not just use
   find/find_by then access the field
 - RoR annotate (and sql comments so that later we can use it during observabilites)
+- Can `Any` be allowed for table models also? Just let it follow standard python.sqlite dynamic type adapter, ( but it wouldn't know which converter to use???
 
 
 
