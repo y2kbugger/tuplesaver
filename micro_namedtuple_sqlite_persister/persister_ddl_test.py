@@ -5,7 +5,7 @@ from typing import Any, NamedTuple
 
 import pytest
 
-from .model import FieldZeroIdRequired, is_registered_row_model, is_registered_table_model
+from .model import FieldZeroIdRequired, InvalidTableName, is_registered_row_model, is_registered_table_model
 from .persister import Engine, TableSchemaMismatch
 
 
@@ -161,3 +161,12 @@ def test_ensure_table_created__is_successful__registers_table_model(engine: Engi
 
     assert is_registered_row_model(Model) is True
     assert is_registered_table_model(Model) is True
+
+
+def test_ensure_table_created__nontable_model_raises(engine: Engine) -> None:
+    class NonTable_Model(NamedTuple):
+        id: int | None
+        name: str
+
+    with pytest.raises(InvalidTableName):
+        engine.ensure_table_created(NonTable_Model)

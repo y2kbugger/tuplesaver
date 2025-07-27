@@ -1,15 +1,4 @@
 # WIP
-- Hmmmmm we need to consider actual differences between alt models and adhoc models
-  - alt models are backed by a view, but can have fields that are added, removed, or modified
-  - adhoc models are backed by any arbitrary query, don't have an id field, and can have any fields.
-- Test that adhoc models don't set a table_name
-  - maybe test/enforce that view models must have ACTUAL table model in meta first
-- Test querying nontable models
-  - query
-  - query with extra field
-  - query with arbitrary fields (no table or table model at all)
-  - test that mutation queries don't even get set for the view meta
-  - could move some of the query view bom tests to more unit test style
 - Order Persister same as Engine
 - Rename persister to engine
 - Move create and update ddl to model.py
@@ -46,6 +35,8 @@
 ## testingmeta
 - I want to instrument sqlite to log and profile queries.
 - use the assert_type from typing to check type hints
+- fix names / order of model_test.py, e.g. test_table_meta_... -> test_get_meta__....
+
 
 # Next
 - More standard adaptconverters Enum, set, tuple, time, frozenset, Path, UUID, Decimal, bytes
@@ -59,7 +50,7 @@
 - I want to fall back to pickles for any type that is not configured, and just raise if pickle fails
   - tests?, examples?
 - maybe look at that decorator that tells typing checkers that a class is only for types for cursor proxy
-- make find use find_by under the hood
+- benchmark find_by with and without kwargs based parameters seems like `?` might be like 5x faster than kw parameters
 
 # Later
 ## Consider moving all sql generation to sql.py (combo of query.py and insert/update/create stuff from engine and model)
@@ -253,7 +244,8 @@ Offer a context manager for transactions, cursors, and committing
 - Instead of using view models to reduce number of columns, just inject raising Lazy Stubs for deselected columns
   - Reduce boilerplate, adds magic
 - mutable id object as id which can mutate when saved.
-- find and find_by to utilize LIMIT 1 to return a single row
+- find and find_by to utilize LIMIT 1 to return a single row, test this is case
+  - but maybe its ugly and redundant on pk, maybe faster on find_by if many rows, but should be unique anyway
 - how to express more complex updates like this:
     `Book.where('title LIKE ?', '%Rails%').update_all(author: 'David')`
 - Consider dropping the injected Engine, and goto a fluent RoR AR style interface

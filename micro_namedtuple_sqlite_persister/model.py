@@ -52,6 +52,11 @@ class UnregisteredFieldTypeError(ModelDefinitionError):
         super().__init__(msg)
 
 
+class InvalidTableName(ModelDefinitionError):
+    def __init__(self, table_name: str) -> None:
+        super().__init__(f"Invalid table name: `{table_name}`. Table names must not contain underscores, these are reserved for non-table models.")
+
+
 def is_row_model(cls: object) -> bool:
     """Test at runtime whether an object is a Row, e.g. a NamedTuple model"""
     if not isinstance(cls, type):
@@ -84,10 +89,9 @@ def is_registered_fieldtype(cls: object) -> bool:
 class Meta(NamedTuple):
     Model: type[Row]
     model_name: str
-    table_name: str
+    table_name: str | None
     is_table: bool
-    select: str
-    select_by_id: str
+    select: str | None
     insert: str | None
     fields: tuple[MetaField, ...]
 
@@ -133,7 +137,6 @@ def get_table_meta(Model: type[Row]) -> Iterator[Meta]:
 
 
 def make_meta(Model: type[Row]) -> Meta:
-    table_name = Model.__name__.split('_')[0]
     annotations = _get_resolved_annotations(Model)
     fieldnames = Model._fields
     full_types = tuple(annotations.values())
@@ -153,8 +156,15 @@ def make_meta(Model: type[Row]) -> Meta:
         for fieldname, (nullable, FieldType) in zip(fieldnames, unwrapped_types)
     )
 
-    select = f"SELECT {', '.join(table_name + '.' + f for f in Model._fields)} FROM {table_name}"
-    select_by_id = select + "\nWHERE id = ?"
+    if fields[0].name != "id":
+        # adhoc model, no table
+        table_name = None
+        select = None
+    else:
+        table_name = Model.__name__.split('_')[0]
+        # table model or alternate model
+
+        select = f"SELECT {', '.join(table_name + '.' + f for f in Model._fields)} FROM {table_name}"
 
     meta = Meta(
         Model=Model,
@@ -162,7 +172,6 @@ def make_meta(Model: type[Row]) -> Meta:
         table_name=table_name,
         is_table=False,
         select=select,
-        select_by_id=select_by_id,
         insert=None,
         fields=fields,
     )
@@ -193,6 +202,8 @@ def make_table_meta(Model: type[Row]) -> Meta:
         )""").strip()
 
     ## Validate Table Meta
+    if "_" in meta.model_name:
+        raise InvalidTableName(meta.model_name)
 
     for field in meta.fields:
         if field.full_type is Any:  # Any is not a valid type tables fields

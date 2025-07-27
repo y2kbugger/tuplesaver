@@ -16,7 +16,9 @@ class QueryError(Exception):
 class SelectDual[R: Row](tuple[type[R], str]):
     def __new__(cls, Model: type[R]) -> SelectDual[R]:
         # Create a tuple (Model, meta.select)
-        return super().__new__(cls, (Model, get_meta(Model).select))
+        meta = get_meta(Model)
+        assert meta.select is not None, "Model must have a select statement defined."
+        return super().__new__(cls, (Model, meta.select))
 
     def __call__[**P](self, func: Callable[P, Any]) -> Callable[P, tuple[type[R], str, dict[str, Any]]]:
         q = render_query_def_func(self[0], func)
@@ -98,6 +100,7 @@ def render_query_def_func(Model: type[Row], func: Callable) -> str:
                         table_or_alias = jalias
                         finalmeta = meta
                     else:
+                        assert basemeta.table_name is not None, "Base model must have a table name defined."
                         table_or_alias = basemeta.table_name
                         finalmeta = basemeta
                     final_field = None
@@ -120,7 +123,9 @@ def render_query_def_func(Model: type[Row], func: Callable) -> str:
     if len(unused_parameters) > 0:
         raise QueryError(f"Unused parameter(s): {', '.join(unused_parameters)}")
 
-    select = get_meta(Model).select
+    meta = get_meta(Model)
+    assert meta.select is not None, "Model must have a select statement defined."
+    select = meta.select
     query_predicate = dedent("".join(query_parts)).strip()
     query_parts = [query_predicate]
 

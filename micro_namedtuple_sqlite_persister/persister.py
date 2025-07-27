@@ -33,6 +33,16 @@ class UnpersistedRelationshipError(Exception):
         super().__init__(self, f"Cannot save {model_name} with unpersisted {model_name}.{field_name} of row {row}")
 
 
+class NonTableModelsImmutable(Exception):
+    def __init__(self, model_name: str) -> None:
+        super().__init__(f"Cannot modify table via non-table model: `{model_name}`. Only table models can be modified.")
+
+
+class LookupByAdHocModelImpossible(Exception):
+    def __init__(self, model_name: str) -> None:
+        super().__init__(f"Cannot lookup via adhoc model: `{model_name}`. Only table or alt models can be used for lookups.")
+
+
 class NoKwargFieldSpecifiedError(ValueError):
     def __init__(self) -> None:
         super().__init__("At least one field must be specified to find a row.")
@@ -67,6 +77,7 @@ class Engine:
             try:
                 self.connection.execute(ddl)
             except sqlite3.OperationalError as e:
+                assert meta.table_name is not None, "Table name must be defined for the model to create it."
                 if f"table {meta.table_name} already exists" in str(e):
                     # Check existing table, it might be ok
                     def _normalize_whitespace(s: str) -> str:
@@ -89,6 +100,9 @@ class Engine:
     #### Writing
     def save[R: Row](self, row: R, *, deep: bool = False) -> R:
         """insert or update records, based on the presence of an id"""
+        if not is_registered_table_model(type(row)):
+            raise NonTableModelsImmutable(type(row).__name__)
+
         if deep:
             # If deep is True, we save all related rows recursively
             row = row._make(self.save(f, deep=deep) if is_registered_table_model(type(f)) else f for f in row)
@@ -128,6 +142,9 @@ class Engine:
         else:
             Model = Model_or_row
 
+        if not is_registered_table_model(Model):
+            raise NonTableModelsImmutable(Model.__name__)
+
         if row_id is None:
             raise IdNoneError("Cannot DELETE, id=None")
         query = dedent(f"""
@@ -143,19 +160,29 @@ class Engine:
         if row_id is None:
             raise IdNoneError("Cannot SELECT, id=None")
 
-        row = self.query(Model, get_meta(Model).select_by_id, (row_id,), deep=deep).fetchone()
+        meta = get_meta(Model)
+        if meta.table_name is None:
+            raise LookupByAdHocModelImpossible(meta.model_name)
+
+        sql = meta.select + "\nWHERE id = ?"  # type: ignore
+        row = self.query(Model, sql, (row_id,), deep=deep).fetchone()
 
         if row is None:
             raise MatchNotFoundError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
 
         return row
 
-    def find_by[R: Row](self, Model: type[R], *, deep: bool = False, **kwargs: Any) -> R | None:
+    def find_by[R: Row](self, Model: type[R], *, deep: bool = False, **kwargs: Any) -> R:
         """Find a row by its fields, e.g. `find_by(Model, name="Alice")`"""
+
         if not kwargs:
             raise NoKwargFieldSpecifiedError()
 
-        field_names = [f.name for f in get_meta(Model).fields]
+        meta = get_meta(Model)
+        if meta.table_name is None:
+            raise LookupByAdHocModelImpossible(meta.model_name)
+
+        field_names = [f.name for f in meta.fields]
         if not all(k in field_names for k in kwargs):
             raise InvalidKwargFieldSpecifiedError(Model, kwargs)
 
