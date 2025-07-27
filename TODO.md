@@ -50,7 +50,6 @@
 - I want to fall back to pickles for any type that is not configured, and just raise if pickle fails
   - tests?, examples?
 - maybe look at that decorator that tells typing checkers that a class is only for types for cursor proxy
-- benchmark find_by with and without kwargs based parameters seems like `?` might be like 5x faster than kw parameters
 
 # Later
 ## Consider moving all sql generation to sql.py (combo of query.py and insert/update/create stuff from engine and model)

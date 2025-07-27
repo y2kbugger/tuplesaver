@@ -164,8 +164,8 @@ class Engine:
         if meta.table_name is None:
             raise LookupByAdHocModelImpossible(meta.model_name)
 
-        sql = meta.select + "\nWHERE id = ?"  # type: ignore
-        row = self.query(Model, sql, (row_id,), deep=deep).fetchone()
+        sql = meta.select + "\nWHERE id = :id"  # type: ignore
+        row = self.query(Model, sql, {'id': row_id}, deep=deep).fetchone()
 
         if row is None:
             raise MatchNotFoundError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
