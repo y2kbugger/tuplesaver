@@ -1,5 +1,5 @@
 # WIP
-- Move create and update ddl to model.py
+- move all sql generation to sql.py (combo of query.py and insert/update/create stuff from engine and model)
 - Harmonize names of model types throughout the codebase
   - "table model" - Backed by a table in the database
   - "alt model" - Backed by a view in the database, but could have fields that are added (eventually), removed, or modified. Still have an id field that mapps to the original table.
@@ -8,10 +8,9 @@
 - Ensure that we use named placeholder when possible
   https://docs.python.org/3/library/sqlite3.html#sqlite3-placeholders
     cur.executemany("INSERT INTO lang VALUES(:name, :year)", data)
-- move all sql generation to sql.py (combo of query.py and insert/update/create stuff from engine and model)
-  - compress find_by into find
-  - see if we can switch to dict based queries, e.g. `engine.find(MyModel, {MyModel.name: "Bart"})`
-  - how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?
+- compress find_by into find
+- see if we can switch to dict based queries, e.g. `engine.find(MyModel, {MyModel.name: "Bart"})`
+- how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?
   - then we can use that exact where clause in select, update, and delete
     - attempt to overload these in a way feels natural, e.g. find returns one, select returns many, update and delete can work either by id or by where clause.
     - Also allow an fstring for the where clause, e.g. `engine.find(MyModel, f"{MyModel.name} = 'Bart'")`

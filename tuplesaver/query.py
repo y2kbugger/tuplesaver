@@ -146,3 +146,52 @@ def get_select_where_query(Model: type[Row], field_names: frozenset[str]) -> str
         WHERE {where_clause}
         """).strip()
     return query
+
+
+@lru_cache(maxsize=256)
+def generate_create_table_ddl(Model: type[Row]) -> str:
+    """Generate CREATE TABLE DDL statement for a table model."""
+    meta = get_meta(Model)
+    if meta.table_name is None:
+        raise ValueError(f"Cannot generate CREATE TABLE DDL for non-table model: {Model.__name__}")
+
+    ddl = dedent(f"""
+        CREATE TABLE {meta.table_name} (
+        {', '.join(f.sql_columndef for f in meta.fields)}
+        )""").strip()
+
+    return ddl
+
+
+@lru_cache(maxsize=256)
+def generate_update_sql(Model: type[Row]) -> str:
+    """Generate UPDATE SQL statement for a table model."""
+    meta = get_meta(Model)
+    if meta.table_name is None:
+        raise ValueError(f"Cannot generate UPDATE SQL for non-table model: {Model.__name__}")
+
+    # Get all field names for the SET clause
+    field_names = [f.name for f in meta.fields]
+
+    sql = dedent(f"""
+        UPDATE {Model.__name__}
+        SET {', '.join(f"{f} = ?" for f in field_names)}
+        WHERE id = ?
+        """).strip()
+
+    return sql
+
+
+@lru_cache(maxsize=256)
+def generate_delete_sql(Model: type[Row]) -> str:
+    """Generate DELETE SQL statement for a table model."""
+    meta = get_meta(Model)
+    if meta.table_name is None:
+        raise ValueError(f"Cannot generate DELETE SQL for non-table model: {Model.__name__}")
+
+    sql = dedent(f"""
+        DELETE FROM {Model.__name__}
+        WHERE id = ?
+        """).strip()
+
+    return sql

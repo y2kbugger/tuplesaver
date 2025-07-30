@@ -4,7 +4,6 @@ import logging
 import re
 import sqlite3
 from collections.abc import Sequence
-from textwrap import dedent
 from typing import Any, overload
 
 from .cursorproxy import TypedCursorProxy
@@ -17,7 +16,12 @@ from .model import (
     is_registered_table_model,
     is_row_model,
 )
-from .query import get_select_where_query
+from .query import (
+    generate_create_table_ddl,
+    generate_delete_sql,
+    generate_update_sql,
+    get_select_where_query,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,10 +74,7 @@ class Engine:
 
     def ensure_table_created(self, Model: type[Row]) -> None:
         with get_table_meta(Model) as meta:
-            ddl = dedent(f"""
-                CREATE TABLE {meta.table_name} (
-                {', '.join(f.sql_columndef for f in meta.fields)}
-                )""").strip()
+            ddl = generate_create_table_ddl(Model)
 
             try:
                 self.connection.execute(ddl)
@@ -158,11 +159,7 @@ class Engine:
             cur = self.connection.execute(insert, row)
             return row._replace(id=cur.lastrowid)
         else:
-            query = dedent(f"""
-                UPDATE {row.__class__.__name__}
-                SET {', '.join(f"{f} = ?" for f in row._fields)}
-                WHERE id = ?
-                """).strip()
+            query = generate_update_sql(type(row))
             cur = self.connection.execute(query, (*row, row[0]))
             if cur.rowcount == 0:
                 raise MatchNotFoundError(f"Cannot UPDATE, no row with id={row[0]} in table `{row.__class__.__name__}`")
@@ -188,10 +185,7 @@ class Engine:
 
         if row_id is None:
             raise IdNoneError("Cannot DELETE, id=None")
-        query = dedent(f"""
-            DELETE FROM {Model.__name__}
-            WHERE id = ?
-            """).strip()
+        query = generate_delete_sql(Model)
         cur = self.connection.execute(query, (row_id,))
         if cur.rowcount == 0:
             raise MatchNotFoundError(f"Cannot DELETE, no row with id={row_id} in table `{Model.__name__}`")
