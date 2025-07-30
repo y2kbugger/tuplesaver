@@ -5,17 +5,33 @@
   - "alt model" - Backed by a view in the database, but could have fields that are added (eventually), removed, or modified. Still have an id field that mapps to the original table.
   - "adhoc model" - Backed by any arbitrary query, doesnt have an id field, and can have any fields.
   - "nontable model" - "alt model" or "adhoc model"
+- Ensure that we use named placeholder when possible
+  https://docs.python.org/3/library/sqlite3.html#sqlite3-placeholders
+    cur.executemany("INSERT INTO lang VALUES(:name, :year)", data)
+- move all sql generation to sql.py (combo of query.py and insert/update/create stuff from engine and model)
+  - compress find_by into find
+  - see if we can switch to dict based queries, e.g. `engine.find(MyModel, {MyModel.name: "Bart"})`
+  - how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?
+  - then we can use that exact where clause in select, update, and delete
+    - attempt to overload these in a way feels natural, e.g. find returns one, select returns many, update and delete can work either by id or by where clause.
+    - Also allow an fstring for the where clause, e.g. `engine.find(MyModel, f"{MyModel.name} = 'Bart'")`
+    - maybe we can rely on our getattribute hack to make fstrings work without AST hacking.
+- Add foreign key constraints to the table creation
+  - through the metadata system?? appending to meta during ensure_table_created?
+  `foreign key (team_id) references Team(id)`
 
 
 # Bugs
 
 
 # Testing
+- ematest that everything works on when doing arbitrary view model queries that select FK in as model relationships
 - Could make a unit test for self join also
-- Test that non Fields greater than zero cannot be called id
 - test is_registered_fieldtype
   - unknown types, unregistered models, both Optional and non-Optional variants
-- Test types on select (both decorator and non)
+- find/find_by raise if more than one result matched
+- test reensureing model updates if and only if schema has been migrated correctly
+- Test that non Fields greater than zero cannot be called id
 - Test for cyclic data structures e.g. A -> B -> C -> A
 - Test the foreign key may only be a union with None i.e. Optional BUT NOT with int or something else
 - Investigate/ Test what Happens when specifying Model | int, should this raise??
@@ -26,42 +42,84 @@
   e.g. int instead of Node in a Person_IntFK model
 - Test you can have two field of same type,e.g. right_node, left_node
 - How to test that we don't trigger lazy queries ourselves?
-- Benchmark and test connection creation and closing
 - Validate in Meta creation that related models in fields of table models are actually table models and not view models
-- ematest that everything works on when doing arbitrary view model queries that select FK in as model relationships
 - Test duplicate joins in query.select deduplicates
+- Benchmark and test connection creation and closing
 ## testingmeta
 - I want to instrument sqlite to log and profile queries.
 - use the assert_type from typing to check type hints
+  - Test types on select (both decorator and non)
 - fix names / order of model_test.py, e.g. test_table_meta_... -> test_get_meta__....
 
 
 # Next
 - More standard adaptconverters Enum, set, tuple, time, frozenset, Path, UUID, Decimal, bytes
   - tests?, examples?
-- Ensure that we use named placeholder when possible
-  https://docs.python.org/3/library/sqlite3.html#sqlite3-placeholders
-    cur.executemany("INSERT INTO lang VALUES(:name, :year)", data)
-- Add foreign key constraints to the table creation
-  - through the metadata system?? appending to meta during ensure_table_created?
-  `foreign key (team_id) references Team(id)`
 - I want to fall back to pickles for any type that is not configured, and just raise if pickle fails
   - tests?, examples?
 - maybe look at that decorator that tells typing checkers that a class is only for types for cursor proxy
 
-# Later
-## Consider moving all sql generation to sql.py (combo of query.py and insert/update/create stuff from engine and model)
-## how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?
+## engine.update
+To only some fields, on a single existing row, pull id from row:
+```python
+engine.update(id, name="Apple")
+```
+```sql
+update MyModel set name = 'Apple' where id = 42;
+```
 
-## Explain Model
-I want to be able to explain model function. This would explain what the type annotation is., what the sqllite column type is, And why?. Like it would tell you that an INT is a built-in Python SQLite type., but a model is another model, And a list of a built-in type is stored as json., And then what it would attempt to pickle if there would be a pickle if it's unknown..
-This would help distinguish between a list of model and a list of something else. 
-This is cool cuz it blends casa no sql with SQL. We could probably even make a refactoring tool to switch between the two.
+## engine.upsert
+| Upsert          | `Model.upsert(attrs, unique_by)`  | Insert or update based on unique key |
 
+infered constraits from DB
+- https://sqlite.org/syntax/column-def.html
+- https://sqlite.org/syntax/column-constraint.html
+- We can just use migrations to add constraints and make db the source of truth.
+- We don't actually even need to read them in except to add validation on upserts (ie, only allow upserting on sets of unique columns)
+
+
+```sql
+create table XXX (
+    id integer primary key,
+    name text,
+    place text,
+    value int
+);
+-- the obligate unique constraint
+CREATE UNIQUE INDEX IF NOT EXISTS XXX_name_place ON XXX (name, place);
+
+-- make upsert on name,place combo
+insert into XXX (name, place, value) values ('a', 'b', 777)
+on conflict(name, place) do update set value = excluded.value;
+-- or even just allow it to happen on any conflict (just set all non-id fields)
+-- This gets a little tricky with existing data, but if we follow api of insert
+--   and up, this makes sense, all fields are persisted (in either case insert or
+--   update)
+insert into XXX (name, place, value) values ('a', 'b', 888)
+on conflict
+    do update
+        set name = excluded.name, place = excluded.place, value = excluded.value;
+```
+
+This is the user code
+```python
+class XXX(NamedTuple):
+    id: int | None
+    name: str
+    place: str
+    value: int
+
+    _meta = Meta(
+        unique_contraints=[('name','place')]
+    )
+
+engine.ensure_table_created(XXX)
+engine.upsert(XXX(name='a', place='b', value=777))
+engine.upsert(XXX(name='a', place='c', value=888))
+
+```
 
 ## Backpop
-Thinking to not do this, circular references might make it impossible anyway. just make it easy to fetch.
-It also side steps the issue of double querying to fill in the forward reference/caching and wiring up the FK to the backprops. it actually forces everying to be a circular reference which isn't possible.
 - Also considder one to one relationships that backpop to a single instance rather than a list
 - backpop
   ```python
@@ -145,59 +203,21 @@ It also side steps the issue of double querying to fill in the forward reference
       role: str
   ```
 
-## engine.update
-To only some fields, on a single existing row, pull id from row:
-```python
-engine.update(id, name="Apple")
-```
-```sql
-update MyModel set name = 'Apple' where id = 42;
-```
 
-## engine.upsert
-| Upsert          | `Model.upsert(attrs, unique_by)`  | Insert or update based on unique key |
-|                 | `Model.find_or_create_by(attr: val)` | Find or create new object  (simulated upsert)|
+# Later
 
-```sql
-create table XXX (
-    id integer primary key,
-    name text,
-    place text,
-    value int
-);
--- the obligate unique constraint
-CREATE UNIQUE INDEX IF NOT EXISTS XXX_name_place ON XXX (name, place);
+## Explain Model
+I want to be able to explain model function. This would explain what the type annotation is., what the sqllite column type is, And why?. Like it would tell you that an INT is a built-in Python SQLite type., but a model is another model, And a list of a built-in type is stored as json., And then what it would attempt to pickle if there would be a pickle if it's unknown..
+This would help distinguish between a list of model and a list of something else. 
+This is cool cuz it blends casa no sql with SQL. We could probably even make a refactoring tool to switch between the two.
+- Also want to explain querys from engine
+  - This could also be an off ramp from engine.select to a more generic query builder, e.g. `engine.query(Model, sql, params)`
 
--- make upsert on name,place combo
-insert into XXX (name, place, value) values ('a', 'b', 777)
-on conflict(name, place) do update set value = excluded.value;
--- or even just allow it to happen on any conflict (just set all non-id fields)
--- This gets a little tricky with existing data, but if we follow api of insert
---   and up, this makes sense, all fields are persisted (in either case insert or
---   update)
-insert into XXX (name, place, value) values ('a', 'b', 888)
-on conflict
-    do update
-        set name = excluded.name, place = excluded.place, value = excluded.value;
-```
 
-This is the user code
-```python
-class XXX(NamedTuple):
-    id: int | None
-    name: str
-    place: str
-    value: int
 
-    _meta = Meta(
-        unique_contraints=[('name','place')]
-    )
-
-engine.ensure_table_created(XXX)
-engine.upsert(XXX(name='a', place='b', value=777))
-engine.upsert(XXX(name='a', place='c', value=888))
-```
-
+## Foreign Key enforcement
+Off by default, but can be enabled with
+- `PRAGMA foreign_keys = true;`
 
 ## DDL 2.0, e.g. future of `engine.ensure_table_created`
   - maybe leave mutation/creation up to migrations. Then either
@@ -238,17 +258,13 @@ Offer a context manager for transactions, cursors, and committing
 
 
 # One Day Maybe
-- Instead of using view models to reduce number of columns, just inject raising Lazy Stubs for deselected columns
-  - Reduce boilerplate, adds magic
-- mutable id object as id which can mutate when saved.
-- find and find_by to utilize LIMIT 1 to return a single row, test this is case
-  - but maybe its ugly and redundant on pk, maybe faster on find_by if many rows, but should be unique anyway
+- Allow implicitly created NamedTuple models to be returned from queries
+  - e.g. constructed based on query builder, etc.  could be usedful for adhoc queries to reduce boilerplate
+  - do implicit instead of this older idea: "Instead of using view models to reduce number of columns, just inject raising Lazy Stubs for deselected columns"
 - how to express more complex updates like this:
     `Book.where('title LIKE ?', '%Rails%').update_all(author: 'David')`
-- Consider dropping the injected Engine, and goto a fluent RoR AR style interface
-  - e.g. `row.save()` ipo `engine.save(row)`
-- Non recursive engine.save(root, deep=True), eliminate stackoverflow for deep recursive models e.g. depth=2000 BOM
 - Auto detect or provide a way to santize/escape LIKE params. e.g.  of % or _
+- leverage tstring in python 3.14 to avoid AST hacking
 - Allow query builder to allow partial paths in f-strings
   - e.g. `f"{RelatedModel.field}"` ipo full path of `f"{Model.related_model.field}"` in queries
   - then we can let sqlite fail if abigous? (does it fail or just guess?
@@ -261,55 +277,13 @@ Offer a context manager for transactions, cursors, and committing
   column (technically pick also allows multiple colums) don't see why not just use
   find/find_by then access the field
 - RoR annotate (and sql comments so that later we can use it during observabilites)
-- Can `Any` be allowed for table models also? Just let it follow standard python.sqlite dynamic type adapter, ( but it wouldn't know which converter to use???
+- Non recursive engine.save(root, deep=True), eliminate stackoverflow for deep recursive models e.g. depth=2000 BOM
+- mutable id object as id which can mutate when saved.
+- Consider dropping the injected Engine, and goto a fluent RoR AR style interface
+  - e.g. `row.save()` ipo `engine.save(row)`
 
 
 
-## column constraints infered from DB
-https://sqlite.org/syntax/column-def.html
-https://sqlite.org/syntax/column-constraint.html
-We can just use migrations to add constraints and make db the source of truth.
-We don't actually even need to read them in except to add validation on upserts (ie, only allow upserting on sets of unique columns)
-
-## Fully qualified field names that are rename symbol safe in queries kwargs
-- engine.find_by() to use dict with Model.field as keys (allow refactoring/avoid stringly typed columns)
-  - engine.find_by(MyModel, {MyModel.name: "Bart"})
-i.e.
-
-    mylist  = e.find_by(List, List.name == list_name)
-
-ipo
-
-    mylist  = e.find_by(List, name = list_name)
-
-
-
-## View Model Reuse/Composition
-This would be like relations in RoR AR
-I believe a View Model can reference another one.
-This seems in theory possible, but might have impossible edge cases
-```python
-class Character_WithPowerColumn(NamedTuple):
-    id: int
-    name: str
-    power: Annotated[str, f"{Character.stats} -> '$.power'"]
-
-class Character_TotalPower(NamedTuple):
-    id: int
-    name: str
-    total_power: Annotated[str, f"sum{Character_WithPowerColumn.power}"]
-
-  @select(Character_TotalPower)
-  def total_power():
-      f"GROUP BY {Character.name}"
-
-engine.query(*Character_TotalPower.total_power)
-```
-```sql
-SELECT id, name, sum(stats -> '$.power') as total_power
-FROM Character
-GROUP BY name
-```
 
 ## GROUP BY / Aggregation
 Aggregations queries are more tightly coupled to the View Model because the model must define the aggregations, but the query defines the grouping. Therefore you might want to define the query f-string in the model def. But this is
@@ -349,6 +323,7 @@ SELECT name, sum(score) as total_score
 FROM Person
 WHERE name = 'Apple'
 ```
+
 ## Multi Table View Model SELECT
 This wouldn' be worth it, except we are already introducing this syntax for  aggregations
 - make sure to test for column name collsions
@@ -425,6 +400,7 @@ also allows a default scope
   default_scope { where(out_of_print: false) }
 
 
+
 ## Performance
 - https://kerkour.com/sqlite-for-servers
   - `PRAGMA synchronous = NORMAL;`
@@ -445,11 +421,33 @@ def insert_all[R: Row](self, Model: type[R], rows: Iterable[R]) -> None:
         self.connection.executemany(insert, rows)
 ```
 
+## View Model Reuse/Composition
+This would be like relations in RoR AR
+I believe a View Model can reference another one.
+This seems in theory possible, but might have impossible edge cases
+```python
+class Character_WithPowerColumn(NamedTuple):
+    id: int
+    name: str
+    power: Annotated[str, f"{Character.stats} -> '$.power'"]
 
+class Character_TotalPower(NamedTuple):
+    id: int
+    name: str
+    total_power: Annotated[str, f"sum{Character_WithPowerColumn.power}"]
 
-## Foreign Key enforcement
-Off by default, but can be enabled with
-- `PRAGMA foreign_keys = true;`
+  @select(Character_TotalPower)
+  def total_power():
+      f"GROUP BY {Character.name}"
+
+engine.query(*Character_TotalPower.total_power)
+```
+```sql
+SELECT id, name, sum(stats -> '$.power') as total_power
+FROM Character
+GROUP BY name
+```
+
 
 
 
@@ -460,6 +458,8 @@ Off by default, but can be enabled with
   - a pretty thin wrapper over native functionality
 
 # Never, Will not Implement
+- `Any` for table models
+  - it would automatically use the dynamic type adapter, but it would not know which converter to use to get it back to the original type
 - A TypedId as primary key of base models, see `typedid` tag for exploratory implementation
   - Reason for investigating
     - Reference a row by a single value, rather than Model+id
