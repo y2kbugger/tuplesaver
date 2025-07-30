@@ -19,8 +19,9 @@ from .model import (
 from .query import (
     generate_create_table_ddl,
     generate_delete_sql,
+    generate_insert_sql,
+    generate_select_by_field_sql,
     generate_update_sql,
-    get_select_where_query,
 )
 
 logger = logging.getLogger(__name__)
@@ -122,7 +123,7 @@ class Engine:
             raise InvalidKwargFieldSpecifiedError(Model, kwargs)
 
         # Use cached query generation
-        sql = get_select_where_query(Model, frozenset(kwargs.keys()))
+        sql = generate_select_by_field_sql(Model, frozenset(kwargs.keys()))
 
         row = self.query(Model, sql, kwargs, deep=deep).fetchone()
 
@@ -154,13 +155,12 @@ class Engine:
                 raise UnpersistedRelationshipError(type(row).__name__, "related row", row)
 
         if row[0] is None:
-            insert = get_meta(type(row)).insert
-            assert insert is not None, "Insert statement should be defined for the model."
+            insert = generate_insert_sql(type(row))
             cur = self.connection.execute(insert, row)
             return row._replace(id=cur.lastrowid)
         else:
-            query = generate_update_sql(type(row))
-            cur = self.connection.execute(query, (*row, row[0]))
+            update = generate_update_sql(type(row))
+            cur = self.connection.execute(update, (*row, row[0]))
             if cur.rowcount == 0:
                 raise MatchNotFoundError(f"Cannot UPDATE, no row with id={row[0]} in table `{row.__class__.__name__}`")
             return row

@@ -133,8 +133,6 @@ def test_get_meta__valid_table_model_but_is_not_yet_registered() -> None:
         model_name="ModelA",
         table_name="ModelA",
         is_table=False,
-        select="SELECT ModelA.id, ModelA.name FROM ModelA",
-        insert=None,
         fields=(
             MetaField(name="id", type=int, full_type=int | None, nullable=True, is_fk=False, is_pk=True, sql_typename="INTEGER", sql_columndef="id [INTEGER] PRIMARY KEY NOT NULL"),
             MetaField(name="name", type=str, full_type=str, nullable=False, is_fk=False, is_pk=False, sql_typename="TEXT", sql_columndef="name [TEXT] NOT NULL"),
@@ -155,8 +153,6 @@ def test_get_meta__table_meta_registered() -> None:
         model_name="ModelA",
         table_name="ModelA",
         is_table=True,
-        select="SELECT ModelA.id, ModelA.name FROM ModelA",
-        insert="INSERT INTO ModelA (\n    id, name\n) VALUES (\n    ?, ?\n)",
         fields=(
             MetaField(name="id", type=int, full_type=int | None, nullable=True, is_fk=False, is_pk=True, sql_typename="INTEGER", sql_columndef="id [INTEGER] PRIMARY KEY NOT NULL"),
             MetaField(name="name", type=str, full_type=str, nullable=False, is_fk=False, is_pk=False, sql_typename="TEXT", sql_columndef="name [TEXT] NOT NULL"),
@@ -182,8 +178,6 @@ def test_get_alternateview_meta() -> None:
         model_name="ModelA_NameOnly",
         table_name="ModelA",
         is_table=False,
-        select="SELECT ModelA.id, ModelA.name FROM ModelA",
-        insert=None,
         fields=(
             MetaField(name="id", type=int, full_type=int | None, nullable=True, is_fk=False, is_pk=True, sql_typename="INTEGER", sql_columndef="id [INTEGER] PRIMARY KEY NOT NULL"),
             MetaField(name="name", type=str, full_type=str, nullable=False, is_fk=False, is_pk=False, sql_typename="TEXT", sql_columndef="name [TEXT] NOT NULL"),
@@ -200,8 +194,6 @@ def test_get_adhoc_meta() -> None:
         model_name="AdHocModel",
         table_name=None,
         is_table=False,
-        select=None,
-        insert=None,
         fields=(MetaField(name="score", type=float, full_type=float, nullable=False, is_fk=False, is_pk=False, sql_typename="REAL", sql_columndef="score [REAL] NOT NULL"),),
     )
 

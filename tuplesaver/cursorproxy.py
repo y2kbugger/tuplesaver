@@ -31,11 +31,11 @@ def _make_model_deep[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sq
             elif is_registered_table_model(FieldType):
                 # Sub-model fetch
                 InnerModel = FieldType
-                inner_meta = get_meta(InnerModel)
-                assert inner_meta.select is not None, "Inner model must have a select statement defined."
-                select_by_id = inner_meta.select + "\nWHERE id = ?"
+                from .query import generate_select_by_field_sql
 
-                inner_values = list(c.execute(select_by_id, (field_value,)).fetchone())
+                select_by_id = generate_select_by_field_sql(InnerModel, frozenset({"id"}))
+
+                inner_values = list(c.execute(select_by_id, {'id': field_value}).fetchone())
 
                 # Defer remainder of current model
                 stack.append((Model, values, idx + 1, parent_values, parent_idx))

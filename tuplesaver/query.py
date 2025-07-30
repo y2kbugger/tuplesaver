@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 import inspect
-from functools import lru_cache, wraps
+from functools import cache, lru_cache, wraps
 from textwrap import dedent
 from typing import Any, Callable
 
@@ -15,10 +15,10 @@ class QueryError(Exception):
 
 class SelectDual[R: Row](tuple[type[R], str]):
     def __new__(cls, Model: type[R]) -> SelectDual[R]:
-        # Create a tuple (Model, meta.select)
-        meta = get_meta(Model)
-        assert meta.select is not None, "Model must have a select statement defined."
-        return super().__new__(cls, (Model, meta.select))
+        # Create a tuple (Model, select_sql)
+        select_sql = generate_select_sql(Model)
+        assert select_sql is not None, "Model must have a select statement defined."
+        return super().__new__(cls, (Model, select_sql))
 
     def __call__[**P](self, func: Callable[P, Any]) -> Callable[P, tuple[type[R], str, dict[str, Any]]]:
         q = render_query_def_func(self[0], func)
@@ -123,9 +123,9 @@ def render_query_def_func(Model: type[Row], func: Callable) -> str:
     if len(unused_parameters) > 0:
         raise QueryError(f"Unused parameter(s): {', '.join(unused_parameters)}")
 
-    meta = get_meta(Model)
-    assert meta.select is not None, "Model must have a select statement defined."
-    select = meta.select
+    select = generate_select_sql(Model)
+    assert select is not None, "Model must have a select statement defined."
+
     query_predicate = dedent("".join(query_parts)).strip()
     query_parts = [query_predicate]
 
@@ -136,25 +136,11 @@ def render_query_def_func(Model: type[Row], func: Callable) -> str:
     return "".join(query_parts)
 
 
-@lru_cache(maxsize=256)
-def get_select_where_query(Model: type[Row], field_names: frozenset[str]) -> str:
-    """Get a cached SELECT query with WHERE clause for the given field names."""
-    meta = get_meta(Model)
-    where_clause = " AND ".join(f"{field} = :{field}" for field in sorted(field_names))
-    query = dedent(f"""
-        {meta.select}
-        WHERE {where_clause}
-        """).strip()
-    return query
-
-
-@lru_cache(maxsize=256)
+@cache
 def generate_create_table_ddl(Model: type[Row]) -> str:
     """Generate CREATE TABLE DDL statement for a table model."""
     meta = get_meta(Model)
-    if meta.table_name is None:
-        raise ValueError(f"Cannot generate CREATE TABLE DDL for non-table model: {Model.__name__}")
-
+    assert meta.table_name is not None, "Table name must be defined for the model to create it."
     ddl = dedent(f"""
         CREATE TABLE {meta.table_name} (
         {', '.join(f.sql_columndef for f in meta.fields)}
@@ -163,35 +149,51 @@ def generate_create_table_ddl(Model: type[Row]) -> str:
     return ddl
 
 
+@cache
+def generate_select_sql(Model: type[Row]) -> str | None:
+    meta = get_meta(Model)
+    assert meta.table_name is not None, "Table name must be defined for the model"
+    return f"SELECT {', '.join(meta.table_name + '.' + f for f in Model._fields)} FROM {meta.table_name}"
+
+
 @lru_cache(maxsize=256)
+def generate_select_by_field_sql(Model: type[Row], field_names: frozenset[str]) -> str:
+    select = generate_select_sql(Model)
+    where_clause = " AND ".join(f"{field} = :{field}" for field in sorted(field_names))
+    return dedent(f"""
+        {select}
+        WHERE {where_clause}
+        """).strip()
+
+
+@cache
+def generate_insert_sql(Model: type[Row]) -> str:
+    meta = get_meta(Model)
+    assert meta.table_name is not None, "Table name must be defined for the model to modify it."
+    return dedent(f"""
+        INSERT INTO {meta.table_name} (
+            {', '.join(f.name for f in meta.fields)}
+        ) VALUES (
+            {', '.join("?" for _ in meta.fields)}
+        )""").strip()
+
+
+@cache
 def generate_update_sql(Model: type[Row]) -> str:
-    """Generate UPDATE SQL statement for a table model."""
     meta = get_meta(Model)
-    if meta.table_name is None:
-        raise ValueError(f"Cannot generate UPDATE SQL for non-table model: {Model.__name__}")
-
-    # Get all field names for the SET clause
-    field_names = [f.name for f in meta.fields]
-
-    sql = dedent(f"""
-        UPDATE {Model.__name__}
-        SET {', '.join(f"{f} = ?" for f in field_names)}
+    assert meta.table_name is not None, "Table name must be defined for the model to modify it."
+    return dedent(f"""
+        UPDATE {meta.table_name}
+        SET {', '.join(f"{f.name} = ?" for f in meta.fields)}
         WHERE id = ?
         """).strip()
 
-    return sql
 
-
-@lru_cache(maxsize=256)
+@cache
 def generate_delete_sql(Model: type[Row]) -> str:
-    """Generate DELETE SQL statement for a table model."""
     meta = get_meta(Model)
-    if meta.table_name is None:
-        raise ValueError(f"Cannot generate DELETE SQL for non-table model: {Model.__name__}")
-
-    sql = dedent(f"""
-        DELETE FROM {Model.__name__}
+    assert meta.table_name is not None, "Table name must be defined for the model to modify it."
+    return dedent(f"""
+        DELETE FROM {meta.table_name}
         WHERE id = ?
         """).strip()
-
-    return sql

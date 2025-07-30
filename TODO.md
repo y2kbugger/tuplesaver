@@ -1,5 +1,4 @@
 # WIP
-- move all sql generation to sql.py (combo of query.py and insert/update/create stuff from engine and model)
 - Harmonize names of model types throughout the codebase
   - "table model" - Backed by a table in the database
   - "alt model" - Backed by a view in the database, but could have fields that are added (eventually), removed, or modified. Still have an id field that mapps to the original table.

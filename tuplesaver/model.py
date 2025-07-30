@@ -6,7 +6,6 @@ import sqlite3
 import types
 from collections.abc import Iterator
 from contextlib import contextmanager
-from textwrap import dedent
 from typing import Any, NamedTuple, Union, get_args, get_origin, get_type_hints
 
 from .adaptconvert import adaptconvert_columntypes
@@ -91,8 +90,6 @@ class Meta(NamedTuple):
     model_name: str
     table_name: str | None
     is_table: bool
-    select: str | None
-    insert: str | None
     fields: tuple[MetaField, ...]
 
 
@@ -159,20 +156,15 @@ def make_meta(Model: type[Row]) -> Meta:
     if fields[0].name != "id":
         # adhoc model, no table
         table_name = None
-        select = None
     else:
         table_name = Model.__name__.split('_')[0]
         # table model or alternate model
-
-        select = f"SELECT {', '.join(table_name + '.' + f for f in Model._fields)} FROM {table_name}"
 
     meta = Meta(
         Model=Model,
         model_name=Model.__name__,
         table_name=table_name,
         is_table=False,
-        select=select,
-        insert=None,
         fields=fields,
     )
 
@@ -194,13 +186,6 @@ def make_meta(Model: type[Row]) -> Meta:
 def make_table_meta(Model: type[Row]) -> Meta:
     meta = make_meta(Model)
 
-    insert = dedent(f"""
-        INSERT INTO {meta.table_name} (
-            {', '.join(f.name for f in meta.fields)}
-        ) VALUES (
-            {', '.join("?" for _ in meta.fields)}
-        )""").strip()
-
     ## Validate Table Meta
     if "_" in meta.model_name:
         raise InvalidTableName(meta.model_name)
@@ -216,7 +201,6 @@ def make_table_meta(Model: type[Row]) -> Meta:
 
     meta = meta._replace(
         is_table=True,
-        insert=insert,
     )
 
     # monkey-patch Model so any Lazy field is transparently unwrapped
