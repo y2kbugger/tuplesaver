@@ -17,6 +17,7 @@ from .model import (
     is_registered_table_model,
     is_row_model,
 )
+from .query import get_select_where_query
 
 logger = logging.getLogger(__name__)
 
@@ -99,20 +100,11 @@ class Engine:
 
     ##### Reading
     def find[R: Row](self, Model: type[R], row_id: int | None, *, deep: bool = False) -> R:
+        """Find a row by its id. This is a special case of find_by."""
         if row_id is None:
             raise IdNoneError("Cannot SELECT, id=None")
 
-        meta = get_meta(Model)
-        if meta.table_name is None:
-            raise LookupByAdHocModelImpossible(meta.model_name)
-
-        sql = meta.select + "\nWHERE id = :id"  # type: ignore
-        row = self.query(Model, sql, {'id': row_id}, deep=deep).fetchone()
-
-        if row is None:
-            raise MatchNotFoundError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
-
-        return row
+        return self.find_by(Model, deep=deep, id=row_id)
 
     def find_by[R: Row](self, Model: type[R], *, deep: bool = False, **kwargs: Any) -> R:
         """Find a row by its fields, e.g. `find_by(Model, name="Alice")`"""
@@ -128,13 +120,8 @@ class Engine:
         if not all(k in field_names for k in kwargs):
             raise InvalidKwargFieldSpecifiedError(Model, kwargs)
 
-        # Build the WHERE clause
-        where_clause = " AND ".join(f"{k} = :{k}" for k in kwargs)
-        select = get_meta(Model).select
-        sql = dedent(f"""
-            {select}
-            WHERE {where_clause}
-            """).strip()
+        # Use cached query generation
+        sql = get_select_where_query(Model, frozenset(kwargs.keys()))
 
         row = self.query(Model, sql, kwargs, deep=deep).fetchone()
 

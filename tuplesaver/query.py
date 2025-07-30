@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 import inspect
-from functools import wraps
+from functools import lru_cache, wraps
 from textwrap import dedent
 from typing import Any, Callable
 
@@ -134,3 +134,15 @@ def render_query_def_func(Model: type[Row], func: Callable) -> str:
         query_parts.insert(0, "\n".join(join_clauses) + "\n")
     query_parts.insert(0, select + "\n")
     return "".join(query_parts)
+
+
+@lru_cache(maxsize=256)
+def get_select_where_query(Model: type[Row], field_names: frozenset[str]) -> str:
+    """Get a cached SELECT query with WHERE clause for the given field names."""
+    meta = get_meta(Model)
+    where_clause = " AND ".join(f"{field} = :{field}" for field in sorted(field_names))
+    query = dedent(f"""
+        {meta.select}
+        WHERE {where_clause}
+        """).strip()
+    return query
