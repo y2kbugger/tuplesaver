@@ -4,7 +4,7 @@ from typing import NamedTuple
 import pytest
 
 from .model import get_meta
-from .query import QueryError, select
+from .sql import QueryError, select
 
 
 class League(NamedTuple):

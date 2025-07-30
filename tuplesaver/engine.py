@@ -16,7 +16,7 @@ from .model import (
     is_registered_table_model,
     is_row_model,
 )
-from .query import (
+from .sql import (
     generate_create_table_ddl,
     generate_delete_sql,
     generate_insert_sql,

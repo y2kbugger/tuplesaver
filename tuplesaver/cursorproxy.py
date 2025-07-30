@@ -31,7 +31,7 @@ def _make_model_deep[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sq
             elif is_registered_table_model(FieldType):
                 # Sub-model fetch
                 InnerModel = FieldType
-                from .query import generate_select_by_field_sql
+                from .sql import generate_select_by_field_sql
 
                 select_by_id = generate_select_by_field_sql(InnerModel, frozenset({"id"}))
 
