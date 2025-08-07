@@ -106,7 +106,7 @@ https://peps.python.org/pep-0649/
 |   | Raw SQL                                | `engine.query(Model, sql)`                                             | `Model.find_by_sql(sql)`                                         |
 |   | Query builder                          | `@select(Model)` decorator                                             | `Model.where(...).order(...)`                                    |
 |   | joins                                  | implicit for predicates, nothing explict yet                           | `joins(:team => :league)`                                        |
-| * | Aggregations                           | View models with annotations                                           | `Model.group(...).sum(...)`                                      |
+| * | Aggregations                           | Adhoc models with annotations                                          | `Model.group(...).sum(...)`                                      |
 |   |                                        |                                                                        |                                                                  |
 |   | **Basic CRUD Write**                   |                                                                        |                                                                  |
 |   | Save (Insert or Update)                | `engine.save(post)`                                                    | `post.save`                                                      |

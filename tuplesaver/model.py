@@ -53,7 +53,7 @@ class UnregisteredFieldTypeError(ModelDefinitionError):
 
 class InvalidTableName(ModelDefinitionError):
     def __init__(self, table_name: str) -> None:
-        super().__init__(f"Invalid table name: `{table_name}`. Table names must not contain underscores, these are reserved for non-table models.")
+        super().__init__(f"Invalid table name: `{table_name}`. Table names must not contain underscores, these are reserved for alternate models.")
 
 
 def is_row_model(cls: object) -> bool:

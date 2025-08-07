@@ -1,9 +1,4 @@
 # WIP
-- Harmonize names of model types throughout the codebase
-  - "table model" - Backed by a table in the database
-  - "alt model" - Backed by a view in the database, but could have fields that are added (eventually), removed, or modified. Still have an id field that mapps to the original table.
-  - "adhoc model" - Backed by any arbitrary query, doesnt have an id field, and can have any fields.
-  - "nontable model" - "alt model" or "adhoc model"
 - Ensure that we use named placeholder when possible
   https://docs.python.org/3/library/sqlite3.html#sqlite3-placeholders
     cur.executemany("INSERT INTO lang VALUES(:name, :year)", data)
@@ -23,8 +18,9 @@
 
 
 # Testing
-- ematest that everything works on when doing arbitrary view model queries that select FK in as model relationships
-- Could make a unit test for self join also
+- test that adapt convert can't be added after Models start being registered.
+- test that everything works on when doing arbitrary adhoc model queries that select FK in as model relationships
+- unit test for self join also
 - test is_registered_fieldtype
   - unknown types, unregistered models, both Optional and non-Optional variants
 - find/find_by raise if more than one result matched
@@ -40,7 +36,7 @@
   e.g. int instead of Node in a Person_IntFK model
 - Test you can have two field of same type,e.g. right_node, left_node
 - How to test that we don't trigger lazy queries ourselves?
-- Validate in Meta creation that related models in fields of table models are actually table models and not view models
+- Validate in Meta creation that related models in fields of table models are actually table models and not alt/adhoc models
 - Test duplicate joins in query.select deduplicates
 - Benchmark and test connection creation and closing
 ## testingmeta
@@ -204,6 +200,12 @@ engine.upsert(XXX(name='a', place='c', value=888))
 
 # Later
 
+## Remove Alt/View models
+- Alt/View Models are not worth cognative overhead
+  - Ive already removed them from example.ipynb
+  - Basically it just a strongly type pluck, and way to get fk id without loading the relation.
+  - we could put in a _id as a hack to get the id of the relation and do away with the alt models completely they are just a cognative complexity
+
 ## Explain Model
 I want to be able to explain model function. This would explain what the type annotation is., what the sqllite column type is, And why?. Like it would tell you that an INT is a built-in Python SQLite type., but a model is another model, And a list of a built-in type is stored as json., And then what it would attempt to pickle if there would be a pickle if it's unknown..
 This would help distinguish between a list of model and a list of something else. 
@@ -218,9 +220,12 @@ Off by default, but can be enabled with
 - `PRAGMA foreign_keys = true;`
 
 ## DDL 2.0, e.g. future of `engine.ensure_table_created`
-  - maybe leave mutation/creation up to migrations. Then either
-    - leave "ensure table created" to register Model
-    - or register Model lazily upon first use. **favorite**
+- maybe leave mutation/creation up to migrations. Then either
+  - leave "ensure table created" to register Model
+  - or register Model lazily upon first use. **favorite**
+- However it works, i would really like to be able to have models scoped to a
+single module, without any import dances one way or another.eg. importing
+blueprints/app objects, or importing models just to register them.
 
 ## Migrations
 - consider https://martinfowler.com/articles/evodb.html
@@ -256,9 +261,11 @@ Offer a context manager for transactions, cursors, and committing
 
 
 # One Day Maybe
-- Allow implicitly created NamedTuple models to be returned from queries
+- Runtime checking of model fields, e.g. if a field is not in the table, raise an error
+  - This could be useful for making models from adhoc queries. e.g. have it actually tell you what the model should look like.
+- Allow implicitly created NamedTuple models to be returned from queries, e.g pluck
   - e.g. constructed based on query builder, etc.  could be usedful for adhoc queries to reduce boilerplate
-  - do implicit instead of this older idea: "Instead of using view models to reduce number of columns, just inject raising Lazy Stubs for deselected columns"
+  - do implicit instead of this older idea: "Instead of using non-table models to reduce number of columns, just inject raising Lazy Stubs for deselected columns"
 - how to express more complex updates like this:
     `Book.where('title LIKE ?', '%Rails%').update_all(author: 'David')`
 - Auto detect or provide a way to santize/escape LIKE params. e.g.  of % or _
@@ -284,7 +291,7 @@ Offer a context manager for transactions, cursors, and committing
 
 
 ## GROUP BY / Aggregation
-Aggregations queries are more tightly coupled to the View Model because the model must define the aggregations, but the query defines the grouping. Therefore you might want to define the query f-string in the model def. But this is
+Aggregations queries are more tightly coupled to the adhoc model because the model must define the aggregations, but the query defines the grouping. Therefore you might want to define the query f-string in the model def. But this is
 just a stylistic choice
 
 To make annotations work, we force usage of `from __future__ import annotations`
@@ -322,18 +329,7 @@ FROM Person
 WHERE name = 'Apple'
 ```
 
-## Multi Table View Model SELECT
-This wouldn' be worth it, except we are already introducing this syntax for  aggregations
-- make sure to test for column name collsions
-- could we store map from _tuplegetter -> MetaField in Meta and get_meta_by_tuplegetter(tg) -> Meta, this would allow writing multi table quyeries using Model.name, Model2.value etc
-
-Maybe wrap it like this?
-
-    team_name: Annotated[str, Col(f"{Athlete.team.name}")]
-
-but that might also allow us to drop the f-string completely like this?:
-
-      team_name: Annotated[str, Col(Athlete.team.name)]
+## Multi Table Alt Model SELECT, e.g. ror's pluck
 
 ```python
 class Athlete_WithTeamName(NamedTuple):
@@ -419,9 +415,9 @@ def insert_all[R: Row](self, Model: type[R], rows: Iterable[R]) -> None:
         self.connection.executemany(insert, rows)
 ```
 
-## View Model Reuse/Composition
+## Nontable Model Reuse/Composition
 This would be like relations in RoR AR
-I believe a View Model can reference another one.
+I believe a nontable model can reference another one.
 This seems in theory possible, but might have impossible edge cases
 ```python
 class Character_WithPowerColumn(NamedTuple):

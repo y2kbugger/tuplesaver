@@ -160,7 +160,7 @@ def test_get_meta__table_meta_registered() -> None:
     )
 
 
-def test_get_alternateview_meta() -> None:
+def test_get_altmodel_meta() -> None:
     class ModelA(NamedTuple):
         id: int | None
         name: str
@@ -252,7 +252,7 @@ def test_meta__model_missing_id() -> None:
     class TBadID(NamedTuple):
         name: str
 
-    get_meta(TBadID)  # this is ok, view models don't need an id
+    get_meta(TBadID)  # this is ok, ad-hoc models don't need an id
 
 
 def test_meta__model_malformed_id_raises() -> None:
@@ -261,7 +261,7 @@ def test_meta__model_malformed_id_raises() -> None:
         name: str
 
     with pytest.raises(FieldZeroIdMalformed):
-        get_meta(TBadID)  # even though this is a view model, if it has an id, it must be int | None
+        get_meta(TBadID)  # even though this may be a non-table model, if it has an id, it must be int | None
 
 
 def test_table_meta__model_missing_id() -> None:
