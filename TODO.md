@@ -1,7 +1,4 @@
 # WIP
-- Ensure that we use named placeholder when possible
-  https://docs.python.org/3/library/sqlite3.html#sqlite3-placeholders
-    cur.executemany("INSERT INTO lang VALUES(:name, :year)", data)
 - compress find_by into find
 - see if we can switch to dict based queries, e.g. `engine.find(MyModel, {MyModel.name: "Bart"})`
 - how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?

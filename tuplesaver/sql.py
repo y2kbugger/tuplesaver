@@ -174,7 +174,7 @@ def generate_insert_sql(Model: type[Row]) -> str:
         INSERT INTO {meta.table_name} (
             {', '.join(f.name for f in meta.fields)}
         ) VALUES (
-            {', '.join("?" for _ in meta.fields)}
+            {', '.join(f":{f.name}" for f in meta.fields)}
         )""").strip()
 
 
@@ -184,8 +184,8 @@ def generate_update_sql(Model: type[Row]) -> str:
     assert meta.table_name is not None, "Table name must be defined for the model to modify it."
     return dedent(f"""
         UPDATE {meta.table_name}
-        SET {', '.join(f"{f.name} = ?" for f in meta.fields)}
-        WHERE id = ?
+        SET {', '.join(f"{f.name} = :{f.name}" for f in meta.fields)}
+        WHERE id = :id
         """).strip()
 
 
@@ -195,5 +195,5 @@ def generate_delete_sql(Model: type[Row]) -> str:
     assert meta.table_name is not None, "Table name must be defined for the model to modify it."
     return dedent(f"""
         DELETE FROM {meta.table_name}
-        WHERE id = ?
+        WHERE id = :id
         """).strip()

@@ -156,11 +156,11 @@ class Engine:
 
         if row[0] is None:
             insert = generate_insert_sql(type(row))
-            cur = self.connection.execute(insert, row)
+            cur = self.connection.execute(insert, row._asdict())
             return row._replace(id=cur.lastrowid)
         else:
             update = generate_update_sql(type(row))
-            cur = self.connection.execute(update, (*row, row[0]))
+            cur = self.connection.execute(update, row._asdict())
             if cur.rowcount == 0:
                 raise MatchNotFoundError(f"Cannot UPDATE, no row with id={row[0]} in table `{row.__class__.__name__}`")
             return row
@@ -186,6 +186,6 @@ class Engine:
         if row_id is None:
             raise IdNoneError("Cannot DELETE, id=None")
         query = generate_delete_sql(Model)
-        cur = self.connection.execute(query, (row_id,))
+        cur = self.connection.execute(query, {'id': row_id})
         if cur.rowcount == 0:
             raise MatchNotFoundError(f"Cannot DELETE, no row with id={row_id} in table `{Model.__name__}`")
