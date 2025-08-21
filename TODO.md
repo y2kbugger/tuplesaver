@@ -1,6 +1,5 @@
 # WIP
-- compress find_by into find
-- see if we can switch to dict based queries, e.g. `engine.find(MyModel, {MyModel.name: "Bart"})`
+- don't overload delete, just access id.
 - how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?
   - then we can use that exact where clause in select, update, and delete
     - attempt to overload these in a way feels natural, e.g. find returns one, select returns many, update and delete can work either by id or by where clause.
@@ -451,6 +450,11 @@ GROUP BY name
   - a pretty thin wrapper over native functionality
 
 # Never, Will not Implement
+- combining find with find_by
+  - better not to overload too much
+- switch to dict based queries, e.g. `engine.find(MyModel, {MyModel.name: "Bart"})`
+  - Too much magic and increases boilerplate
+  - CON to skipping: lose perfect "refactorability"
 - `Any` for table models
   - it would automatically use the dynamic type adapter, but it would not know which converter to use to get it back to the original type
 - A TypedId as primary key of base models, see `typedid` tag for exploratory implementation
