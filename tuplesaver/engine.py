@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 class TableSchemaMismatch(Exception):
     def __init__(self, table_name: str, existing_table_schema: str, new_table_schema: str) -> None:
         super().__init__(
-            f"Table `{table_name}` already exists but the schema does not match the expected schema.\njExisting schema:\n\t{existing_table_schema}.\nExpected schema:\n\t{new_table_schema}"
+            f"Table `{table_name}` already exists but the schema does not match the expected schema.\nExisting schema:\n\t{existing_table_schema}.\nExpected schema:\n\t{new_table_schema}"
         )
 
 
