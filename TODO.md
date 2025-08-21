@@ -255,6 +255,8 @@ blueprints/app objects, or importing models just to register them.
 ## transaction management
 Offer a context manager for transactions, cursors, and committing
 
+## Read about rich hickeys datomic
+https://docs.datomic.com/datomic-overview.html
 
 
 # One Day Maybe
