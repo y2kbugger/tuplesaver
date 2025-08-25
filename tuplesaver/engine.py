@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import sqlite3
 from collections.abc import Sequence
@@ -68,7 +69,7 @@ class MatchNotFoundError(ValueError):
 
 
 class Engine:
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: str | os.PathLike[str]) -> None:
         self.db_path = db_path
         self.connection = sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES)
         self.connection.execute("PRAGMA journal_mode=WAL")
