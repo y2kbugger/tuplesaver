@@ -28,48 +28,48 @@ def test_unwrap_optional_type() -> None:
     assert _unwrap_optional_type(int) == (False, int)
 
     # Show that any pair optional syntaxs are == equivalent
-    assert Union[int, None] == Optional[int]
-    assert Union[int, None] == int | None
-    assert Optional[int] == int | None
-    assert Optional[int] == Union[int, None]
-    assert int | None == Union[int, None]
-    assert int | None == Optional[int]
+    assert Union[int, None] == Optional[int]  # noqa: UP007, UP045
+    assert Union[int, None] == int | None  # noqa: UP007
+    assert Optional[int] == int | None  # noqa: UP045
+    assert Optional[int] == Union[int, None]  # noqa: UP007, UP045
+    assert int | None == Union[int, None]  # noqa: UP007
+    assert int | None == Optional[int]  # noqa: UP045
 
     # Simple standard optional hints
-    assert _unwrap_optional_type(Union[int, None]) == (True, int)
-    assert _unwrap_optional_type(Optional[int]) == (True, int)
+    assert _unwrap_optional_type(Union[int, None]) == (True, int)  # noqa: UP007
+    assert _unwrap_optional_type(Optional[int]) == (True, int)  # noqa: UP045
     assert _unwrap_optional_type(int | None) == (True, int)
 
     # Unions including more than one type in addition to None
-    assert _unwrap_optional_type(Union[int, str, None]) == (True, int | str)
+    assert _unwrap_optional_type(Union[int, str, None]) == (True, int | str)  # noqa: UP007
     assert _unwrap_optional_type(int | str | None) == (True, int | str)
 
     # Unions not including None
-    U = Union[int, str]
+    U = Union[int, str]  # noqa: UP007
     UT = int | str
     assert U == UT
     assert _unwrap_optional_type(U) == (False, int | str)
     assert _unwrap_optional_type(UT) == (False, int | str)
 
     # Types nested within optional
-    assert _unwrap_optional_type(Union[U, None]) == (True, int | str)
-    assert _unwrap_optional_type(Optional[U]) == (True, int | str)
+    assert _unwrap_optional_type(Union[U, None]) == (True, int | str)  # noqa: UP007
+    assert _unwrap_optional_type(Optional[U]) == (True, int | str)  # noqa: UP045
     assert _unwrap_optional_type((U) | None) == (True, int | str)
 
-    assert _unwrap_optional_type(Union[UT, None]) == (True, int | str)
-    assert _unwrap_optional_type(Optional[UT]) == (True, int | str)
+    assert _unwrap_optional_type(Union[UT, None]) == (True, int | str)  # noqa: UP007
+    assert _unwrap_optional_type(Optional[UT]) == (True, int | str)  # noqa: UP045
     assert _unwrap_optional_type((UT) | None) == (True, int | str)
 
     # Nest unions are flattened and deduped and thus nested optionals are not preserved
-    OU = Optional[Union[int, None]]
-    OUT = Optional[int | None]
+    OU = Optional[int | None]  # noqa: UP045
+    OUT = Optional[int | None]  # noqa: UP045
     assert OU == OUT
-    assert _unwrap_optional_type(Union[OU, None]) == (True, (int))
-    assert _unwrap_optional_type(Optional[OU]) == (True, (int))
+    assert _unwrap_optional_type(Union[OU, None]) == (True, (int))  # noqa: UP007
+    assert _unwrap_optional_type(Optional[OU]) == (True, (int))  # noqa: UP045
     assert _unwrap_optional_type((OU) | None) == (True, (int))
 
-    assert _unwrap_optional_type(Union[OUT, None]) == (True, (int))
-    assert _unwrap_optional_type(Optional[OUT]) == (True, (int))
+    assert _unwrap_optional_type(Union[OUT, None]) == (True, (int))  # noqa: UP007
+    assert _unwrap_optional_type(Optional[OUT]) == (True, (int))  # noqa: UP045
 
 
 def test_is_row_model() -> None:
@@ -79,7 +79,7 @@ def test_is_row_model() -> None:
     assert is_row_model(bytes) is False
     assert is_row_model(None) is False
     assert is_row_model(tuple) is False
-    assert is_row_model(Union[int, str]) is False
+    assert is_row_model(int | str) is False
     assert is_row_model(int | None) is False
 
     class Model(NamedTuple):
