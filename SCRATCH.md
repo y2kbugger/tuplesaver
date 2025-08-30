@@ -174,3 +174,49 @@ Migrations are done in a DSL with an external
 
 ### ruby autocompletions for fields are not native and come in via rbi files (like pyi files)
 ### relationships defined with `has_many`, `belongs_to`, `has_one`, `has_and_belongs_to_many`,
+
+
+# One day do a Cython implementation for faster field descriptor access
+# field_descriptor.pyx
+# Cython implementation of FieldDescriptor for better performance
+
+``` python
+from typing import NamedTuple
+
+cdef class Column:
+    """Fast Column class using Cython"""
+    cdef public str name
+    cdef public object coltype
+
+    def __init__(self, str name, object coltype):
+        self.name = name
+        self.coltype = coltype
+
+    def __repr__(self):
+        return f"Column(name={self.name!r}, coltype={self.coltype!r})"
+
+    def __eq__(self, other):
+        if not isinstance(other, Column):
+            return False
+        return self.name == other.name and self.coltype == other.coltype
+
+
+cdef class CythonFieldDescriptor:
+    """High-performance field descriptor using Cython"""
+    cdef public Column column
+    cdef public int index
+
+    def __init__(self, Column column, int index):
+        self.column = column
+        self.index = index
+
+    def __get__(self, object instance, object owner):
+        # Fast path: if instance is None, return Column
+        if instance is None:
+            return self.column
+        # Fast path: direct tuple indexing for instances
+        return instance[self.index]
+
+    def __repr__(self):
+        return f"CythonFieldDescriptor(column={self.column}, index={self.index})"
+```
