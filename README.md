@@ -105,22 +105,10 @@ and for formatting:
     ruff format
 
 ## Updating
-### System Poetry itself
 
-    poetry self update
+Run the following to update the lock file, and .venv
 
-### Poetry deps
-Ensure you have poetry-plugin-up installed
-
-    poetry self add poetry-plugin-up
-
-Then run the following to update all dependencies in the pyproject.toml file
-
-    poetry up --latest --preserve-wildcard
-
-Then run the following to update the lock file
-
-    poetry update
+    uv sync --upgrade
 
 ### Precommit
 If you need to update the precommit hooks, run the following:
