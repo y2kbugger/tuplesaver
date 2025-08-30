@@ -1,33 +1,46 @@
-[tool.poetry]
+[project]
 name = "tuplesaver"
 version = "0.1.0"
 description = "A simple, opinionated, NamedTuple persister for SQLite."
-license = "GPL3"
-authors = ["y2k <git@y2kbugger.com>"]
+authors = [{ name = "y2k", email = "git@y2kbugger.com" }]
+requires-python = ">=3.13"
 readme = "README.md"
+dependencies = []
+
+[project.scripts]
+tuplesaver = "tuplesaver:main"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+    "pre-commit",
+    "pytest-benchmark>=5.1.0,<6",
+]
+examplenotebook = [
+    "ipykernel",
+    "pandas",
+    "matplotlib>=3.10.3,<4",
+    "networkx~=3.5",
+]
+profiling = [
+    "snakeviz>=2.2.2,<3",
+    "scalene>=1.5.51,<2",
+]
+
+[tool.uv]
+default-groups = [
+    "dev",
+    "examplenotebook",
+    "profiling",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.8.13,<0.9.0"]
+build-backend = "uv_build"
 
-[tool.poetry.dependencies]
-python = "^3.13"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "*"
-ruff = "*"
-pre-commit = "*"
-pytest-benchmark = "^5.1.0"
-
-[tool.poetry.group.examplenotebook.dependencies]
-ipykernel = "*"
-pandas = "*"
-matplotlib = "^3.10.3"
-networkx = "^3.5"
-
-[tool.poetry.group.profiling.dependencies]
-snakeviz = "^2.2.2"
-scalene = "^1.5.51"
+[tool.uv.build-backend]
+module-root = "."
 
 [tool.pytest.ini_options]
 minversion = "8.0"
