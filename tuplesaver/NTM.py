@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 from typing import (
+    TYPE_CHECKING,
     NamedTuple,
-    NamedTupleMeta,  # type: ignore this is not in typeshed
     assert_type,
     get_type_hints,
 )
+
+if TYPE_CHECKING:
+    NamedTupleMeta = type(tuple)
+else:
+    from typing import NamedTupleMeta
+
+print(NamedTupleMeta, type(NamedTupleMeta))
+print(NamedTupleMeta.__mro__)
+
+print(NamedTuple, type(NamedTuple))
 
 
 class Column(NamedTuple):
@@ -26,14 +36,16 @@ class FieldDescriptor:
 
 
 class RowMeta(NamedTupleMeta):
+    __columns__: dict[str, Column]
+
     def __new__(cls, name: str, bases: tuple, namespace: dict):
         ncls = super().__new__(cls, name, bases, namespace)
 
         type_hints = get_type_hints(ncls)
-        ncls.__columnss__ = {}
+        ncls.__columns__ = {}
         for i, (field_name, field_type) in enumerate(type_hints.items()):
             column = Column(name=field_name, coltype=field_type)
-            ncls.__columnss__[field_name] = column
+            ncls.__columns__[field_name] = column
             setattr(ncls, field_name, FieldDescriptor(column, i))
 
         return ncls
@@ -110,13 +122,15 @@ rr = MyRelatedRow1(1, a=aa, b=bb)
 
 
 assert_type(rr, MyRelatedRow1)
-assert_type(rr.a, MyRowA)  # type: ignore
+assert_type(rr.a, MyRowA)
 assert_type(rr.b, MyRowB)
 
-assert_type(MyRelatedRow1.a, MyRowA)  # type: ignore
+# These are actually controversial, really those are not the types of .a and .b
+# actually .a and .b are descriptors that return those types when in an instance
+assert_type(MyRelatedRow1.a, MyRowA)
 assert_type(MyRelatedRow1.b, MyRowB)
 
-assert_type(MyRelatedRow2.a, MyRowA)  # type: ignore
+assert_type(MyRelatedRow2.a, MyRowA)
 assert_type(MyRelatedRow2.b, MyRowB)
 
 print("All tests passed! 🎉")
