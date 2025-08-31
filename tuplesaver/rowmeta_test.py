@@ -1,3 +1,5 @@
+from typing import assert_type
+
 import pytest
 
 from tuplesaver.rowmeta import Column, Roww
@@ -23,9 +25,25 @@ def test_class_level_column_access() -> None:
 def test_instance_level_field_access() -> None:
     mr = MyRow(id=1, name="Toyota", active=True)
 
+    assert isinstance(mr, MyRow)
+    assert isinstance(mr, tuple)
+
     assert mr.id == 1
     assert mr.name == "Toyota"
     assert mr.active is True
+
+
+def test_instance_level_field_types() -> None:
+    mr = MyRow(id=1, name="Toyota", active=True)
+
+    assert_type(mr, MyRow)
+    assert_type(mr.id, int)
+    assert_type(mr.name, str)
+    assert_type(mr.active, bool)
+
+
+def test_model_type_can_be_used_as_typehint() -> None:
+    def func(r: Roww) -> int: ...
 
 
 def test_related_row_access() -> None:
