@@ -1,4 +1,10 @@
 # WIP
+- Remove non-schema models and tests
+- Remove deep save options and tests
+  - Leave deep loading, one day handle cycles with selective field loading.
+- Remove all model registration stuff
+- confusion between ensure created and check created and "auto create"......
+- Add __all__to all modules
 - how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?
   - then we can use that exact where clause in select, update, and delete
     - attempt to overload these in a way feels natural, e.g. find returns one, select returns many, update and delete can work either by id or by where clause.
@@ -7,7 +13,6 @@
 - Add foreign key constraints to the table creation
   - through the metadata system?? appending to meta during ensure_table_created?
   `foreign key (team_id) references Team(id)`
-- confusion between ensure created and check created and "auto create"......
 
 
 # Bugs
