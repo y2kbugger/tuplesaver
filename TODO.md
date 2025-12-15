@@ -1,7 +1,17 @@
 # WIP
-- Remove non-schema models and tests
+## Remove Alt/View models
+- Alt/View Models are not worth cognative overhead
+  - Ive already removed them from example.ipynb
+  - Basically it just a strongly type pluck, and way to get fk id without loading the relation.
+  - we could put in a _id as a hack to get the id of the relation and do away with the alt models completely they are just a cognative complexity
+  - it also reminds you which fields are available in pluck.
+  - Remove non-schema models and tests
+    - Heres a reason to do it: this would leave in autocompletion for "skipped" fields so that you know which field you could add to pluck or whatever.
 - Remove deep save options and tests
+  - I think i said this because it can be amibiguous what to save and when.
   - Leave deep loading, one day handle cycles with selective field loading.
+    - hmmm, it is cool for when it is cool
+    - but pragmatically, just round trip it instead.
 - Remove all model registration stuff
 - confusion between ensure created and check created and "auto create"......
 - Add __all__to all modules
@@ -208,12 +218,6 @@ engine.upsert(XXX(name='a', place='c', value=888))
 
 # Later
 
-## Remove Alt/View models
-- Alt/View Models are not worth cognative overhead
-  - Ive already removed them from example.ipynb
-  - Basically it just a strongly type pluck, and way to get fk id without loading the relation.
-  - we could put in a _id as a hack to get the id of the relation and do away with the alt models completely they are just a cognative complexity
-
 ## Explain Model
 I want to be able to explain model function. This would explain what the type annotation is., what the sqllite column type is, And why?. Like it would tell you that an INT is a built-in Python SQLite type., but a model is another model, And a list of a built-in type is stored as json., And then what it would attempt to pickle if there would be a pickle if it's unknown..
 This would help distinguish between a list of model and a list of something else. 
@@ -269,6 +273,9 @@ Offer a context manager for transactions, cursors, and committing
 ## Read about rich hickeys datomic
 https://docs.datomic.com/datomic-overview.html
 
+## Frozen Model
+- e.g. disable lazy loading of fields, etc
+  - to guarantee immutability after load, before passing to template etc.
 
 # One Day Maybe
 - Runtime checking of model fields, e.g. if a field is not in the table, raise an error

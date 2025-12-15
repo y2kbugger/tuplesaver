@@ -79,6 +79,7 @@ or
 
 ## sqlite3
 https://docs.python.org/3/library/sqlite3.html
+https://sqlite.org/np1queryprob.html
 
 
 Really need to read and understand this new annotation sematics coming in 3.14, as well as difference between inspect.get_nnotations and typing.get_type_hints
