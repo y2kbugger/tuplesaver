@@ -4,7 +4,7 @@ import sqlite3
 from typing import TYPE_CHECKING, Any, cast
 
 # NOTE: cursorproxy.py should only know about .model
-from .model import Row, get_meta, is_registered_table_model
+from .model import Row, get_meta, is_row_model
 
 if TYPE_CHECKING:
     from .engine import Engine
@@ -28,7 +28,7 @@ def _make_model_deep[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sq
                 # external edits to the database could cause mismatches types in any field, this isn't a special case, but we do need
                 # to avoid trying to fetch a model with a id=None.
                 pass
-            elif is_registered_table_model(FieldType):
+            elif is_row_model(FieldType):
                 # Sub-model fetch
                 InnerModel = FieldType
                 from .sql import generate_select_by_field_sql
@@ -93,8 +93,11 @@ def _make_model_lazy[R: Row](RootModel: type[R], c: sqlite3.Cursor, root_row: sq
     row = RootModel._make(root_row)
 
     # Now iterate over the fields and replace any foreign keys with Lazy proxies
+    if not is_row_model(RootModel):
+        return row  # return early if not a model
+
     for idx, field in enumerate(get_meta(RootModel).fields):
-        if field.type is not None and is_registered_table_model(field.type):
+        if field.type is not None and is_row_model(field.type):
             # Replace with Lazy proxy
             fk_value = root_row[idx]
             if fk_value is not None:

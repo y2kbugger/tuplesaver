@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import sqlite3
-from typing import NamedTuple, Optional
+from typing import Optional
 
 import pytest
 
@@ -15,6 +15,7 @@ from .adaptconvert import (
 )
 from .engine import Engine
 from .model import UnregisteredFieldTypeError
+from .RM import Roww
 
 
 def test_registering_adapt_convert_pair(engine: Engine) -> None:
@@ -22,7 +23,7 @@ def test_registering_adapt_convert_pair(engine: Engine) -> None:
         def __init__(self, values: list[str]) -> None:
             self.values = values
 
-    class ModelUnknownType(NamedTuple):
+    class ModelUnknownType(Roww):
         id: int | None
         name: str
         custom: NewType
@@ -141,7 +142,7 @@ def test_adapter_converter_reset_only_affects_what_we_registered() -> None:
 
 
 def test_can_store_and_retrieve_datetime_as_iso(engine: Engine) -> None:
-    class T(NamedTuple):
+    class T(Roww):
         id: int | None
         date: dt.datetime
 
@@ -155,7 +156,7 @@ def test_can_store_and_retrieve_datetime_as_iso(engine: Engine) -> None:
 
 
 def test_can_store_and_retrieve_date_as_iso(engine: Engine) -> None:
-    class T(NamedTuple):
+    class T(Roww):
         id: int | None
         date: dt.date
 
@@ -169,7 +170,7 @@ def test_can_store_and_retrieve_date_as_iso(engine: Engine) -> None:
 
 
 def test_can_store_and_retrieve_bool_as_int(engine: Engine) -> None:
-    class T(NamedTuple):
+    class T(Roww):
         id: int | None
         flag: bool
 
@@ -188,7 +189,7 @@ def test_can_store_and_retrieve_bool_as_int(engine: Engine) -> None:
 
 
 def test_can_store_and_retrieve_list_as_json(engine: Engine) -> None:
-    class T(NamedTuple):
+    class T(Roww):
         id: int | None
         names: list
 
@@ -202,7 +203,7 @@ def test_can_store_and_retrieve_list_as_json(engine: Engine) -> None:
 
 
 def test_can_store_and_retrieve_dict_as_json(engine: Engine) -> None:
-    class T(NamedTuple):
+    class T(Roww):
         id: int | None
         names: dict
 
@@ -216,7 +217,7 @@ def test_can_store_and_retrieve_dict_as_json(engine: Engine) -> None:
 
 
 def test_raises_on_json_when_nonserializeable(engine: Engine) -> None:
-    class T(NamedTuple):
+    class T(Roww):
         id: int | None
         dates: list
 
@@ -229,7 +230,7 @@ def test_raises_on_json_when_nonserializeable(engine: Engine) -> None:
 def test_that_unregistered_fieldtype_raises(engine: Engine) -> None:
     from array import array
 
-    class T(NamedTuple):
+    class T(Roww):
         id: int | None
         data: array
 
@@ -240,7 +241,7 @@ def test_that_unregistered_fieldtype_raises(engine: Engine) -> None:
 def test_can_store_and_retrieve_pickleable_type(engine: Engine) -> None:
     from array import array
 
-    class T(NamedTuple):
+    class T(Roww):
         id: int | None
         data: array
 

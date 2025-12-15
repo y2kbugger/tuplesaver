@@ -14,29 +14,24 @@ from .engine import (
     LookupByAdHocModelImpossible,
     MatchNotFoundError,
     NoKwargFieldSpecifiedError,
-    NonTableModelsImmutable,
     UnpersistedRelationshipError,
 )
+from .RM import Roww
 
 
-class Team(NamedTuple):
+class Team(Roww):
     id: int | None
     name: str
     size: int
 
 
-class Team_Alt(NamedTuple):
-    id: int | None
-    name: str
-
-
-class Person(NamedTuple):
+class Person(Roww):
     id: int | None
     name: str
     team: Team
 
 
-class Arm(NamedTuple):
+class Arm(Roww):
     id: int | None
     length: float
     person: Person
@@ -83,30 +78,6 @@ def test_find__id_no_match(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     with pytest.raises(MatchNotFoundError, match="Cannot SELECT, no row with id="):
         engine.find(Team, 78787)
-
-
-def test_find__alt_model_removed_field(engine: Engine) -> None:
-    engine.ensure_table_created(Team)
-    engine.save(Team(None, "Lions", 30))
-
-    team = engine.find(Team_Alt, 1)
-
-    assert team == Team_Alt(1, "Lions")
-
-
-def test_find__alt_model_raw_fk(engine: Engine) -> None:
-    engine.ensure_table_created(Team)
-    engine.ensure_table_created(Person)
-    team = engine.save(Team(None, "Lions", 30))
-    engine.save(Person(None, "Alice", team))  # team_id is raw int FK, not a Team object
-
-    class Person_RawFK(NamedTuple):
-        id: int | None
-        name: str
-        team: int
-
-    person = engine.find(Person_RawFK, 1)
-    assert person == Person_RawFK(1, "Alice", 1)  # team_id is raw int FK, not a Team object
 
 
 def test_find__adhoc_model(engine: Engine) -> None:
@@ -162,15 +133,6 @@ def test_find_by__fields_with_invalid_kwargs(engine: Engine) -> None:
         engine.find_by(Team, doesnt_exist="test")
 
 
-def test_find_by__nontable_model(engine: Engine) -> None:
-    engine.ensure_table_created(Team)
-    engine.save(Team(None, "Lions", 30))
-
-    team = engine.find_by(Team_Alt, name="Lions")
-
-    assert team == Team_Alt(1, "Lions")
-
-
 def test_find_by__adhoc_model(engine: Engine) -> None:
     with pytest.raises(LookupByAdHocModelImpossible, match="Cannot lookup via adhoc model: `AdHoc`"):
         engine.find_by(AdHoc, total=7.7)
@@ -186,18 +148,6 @@ def test_query__table_model__succeeds_with_returns_cursor_proxy(engine: Engine) 
     row = cur.fetchone()
     assert isinstance(row, Team)
     assert row == Team(1, "Lions", 30)
-
-
-def test_query__alt_model__succeeds_with_returns_cursor_proxy(engine: Engine) -> None:
-    engine.ensure_table_created(Team)
-    engine.save(Team(None, "Lions", 30))
-
-    cur = engine.query(Team_Alt, "SELECT id, name FROM Team;")
-    assert cur.row_factory is not None
-
-    row = cur.fetchone()
-    assert isinstance(row, Team_Alt)
-    assert row == Team_Alt(1, "Lions")
 
 
 def test_query__adhoc_model__succeeds_with_returns_cursor_proxy(engine: Engine) -> None:
@@ -311,10 +261,10 @@ def test_save__three_model_relation_chain_deep(engine: Engine) -> None:
 
 
 def test_save__null_relation(engine: Engine) -> None:
-    class A(NamedTuple):
+    class A(Roww):
         id: int | None
 
-    class B(NamedTuple):
+    class B(Roww):
         id: int | None
         team: A | None  # Optional relationship
 
@@ -411,7 +361,7 @@ def test_save__deep_reused_unpersisted_model_multiple_saves__inserts_twice(engin
 
 
 def test_save__deep_reused_unpersisted_model_single_saves__inserts_twice(engine: Engine) -> None:
-    class PersonWithTwoTeams(NamedTuple):
+    class PersonWithTwoTeams(Roww):
         id: int | None
         name: str
         team_primary: Team
@@ -431,7 +381,7 @@ def test_save__deep_reused_unpersisted_model_single_saves__inserts_twice(engine:
 
 
 def test_save__deep_cannot_reliably_distinguish_between_identical_tuples(engine: Engine) -> None:
-    class PersonWithTwoTeams(NamedTuple):
+    class PersonWithTwoTeams(Roww):
         id: int | None
         name: str
         team_primary: Team
@@ -453,18 +403,6 @@ def test_save__deep_cannot_reliably_distinguish_between_identical_tuples(engine:
         # this is the case where we have two different objects
         # and we should not assume they are the same
         assert person.team_primary.id != person.team_secondary.id
-
-
-def test_save__alt_model__raises(engine: Engine) -> None:
-    team = Team_Alt(None, "Lions")
-    with pytest.raises(NonTableModelsImmutable, match="Cannot modify table via non-table model: `Team_Alt`"):
-        engine.save(team)
-
-
-def test_save__adhoc_model__raises(engine: Engine) -> None:
-    team = AdHoc(7.7)
-    with pytest.raises(NonTableModelsImmutable, match="Cannot modify table via non-table model: `AdHoc`"):
-        engine.save(team)
 
 
 def test_delete__by_id(engine: Engine) -> None:
@@ -513,21 +451,9 @@ def test_delete__id_none(engine: Engine) -> None:
         engine.delete(Team, None)
 
 
-def test_delete__alt_model(engine: Engine) -> None:
-    engine.ensure_table_created(Team)
-    with pytest.raises(NonTableModelsImmutable, match="Cannot modify table via non-table model: `Team_Alt`"):
-        engine.delete(Team_Alt, 1)
-
-
-def test_delete__adhoc_model(engine: Engine) -> None:
-    engine.ensure_table_created(Team)
-    with pytest.raises(NonTableModelsImmutable, match="Cannot modify table via non-table model: `Team_Alt`"):
-        engine.delete(Team_Alt, 1)
-
-
 ## integration testing for self-referenctial BOM scenarios
 class TestBomSelfJoin:
-    class BOM(NamedTuple):
+    class BOM(Roww):
         id: int | None
         name: str
         value: float

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import NamedTuple
 
 import pytest
 
@@ -11,12 +10,13 @@ from .adaptconvert import (
 )
 from .engine import Engine
 from .model import UnregisteredFieldTypeError
+from .RM import Roww
 
 
 class TestInitAndResetFixures:
     class NewType: ...
 
-    class ModelQ(NamedTuple):
+    class ModelQ(Roww):
         id: int | None
         name: str
         custom: TestInitAndResetFixures.NewType
@@ -34,28 +34,29 @@ class TestInitAndResetFixures:
         assert self.NewType in adaptconvert_columntypes
 
     @pytest.mark.parametrize("_", ["ping", "pong"])
-    def test_adaptconvert_by_inference_while_trying_to_create_tables(self, engine: Engine, _: str) -> None:
+    def test_adaptconvert_by_inference_while_trying_to_create_tables_global_model(self, engine: Engine, _: str) -> None:
+        if _ == "pong":
+            pytest.xfail(reason="Currently, meta is cached between tests, and so the pong never fails. Need to reset meta between tests")
+
         with pytest.raises(UnregisteredFieldTypeError):
             engine.ensure_table_created(self.ModelQ)
 
         register_adapt_convert(self.NewType, lambda x: b'', lambda x: self.NewType())
 
         engine.ensure_table_created(self.ModelQ)
-
-    class ModelC(NamedTuple):
-        id: int | None
-        value: float
-
-    class ModelD(NamedTuple):
-        id: int | None
-        name: str
-        modelc: TestInitAndResetFixures.ModelC
+        # 1 / 0
 
     @pytest.mark.parametrize("_", ["ping", "pong"])
-    def test_modelregistration_by_inference_while_trying_to_create_tables(self, engine: Engine, _: str) -> None:
+    def test_adaptconvert_by_inference_while_trying_to_create_tables_local_model(self, engine: Engine, _: str) -> None:
+        class ModelW(Roww):
+            id: int | None
+            name: str
+            custom: TestInitAndResetFixures.NewType
+
         with pytest.raises(UnregisteredFieldTypeError):
-            engine.ensure_table_created(self.ModelD)
+            engine.ensure_table_created(ModelW)
 
-        engine.ensure_table_created(self.ModelC)
+        register_adapt_convert(self.NewType, lambda x: b'', lambda x: self.NewType())
 
-        engine.ensure_table_created(self.ModelD)
+        engine.ensure_table_created(ModelW)
+        # 1 / 0

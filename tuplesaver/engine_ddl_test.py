@@ -6,7 +6,8 @@ from typing import Any, NamedTuple
 import pytest
 
 from .engine import Engine, TableSchemaMismatch
-from .model import FieldZeroIdRequired, InvalidTableName, is_registered_row_model, is_registered_table_model
+from .model import InvalidTableName
+from .RM import Roww
 
 
 class TableInfo(NamedTuple):
@@ -19,7 +20,7 @@ class TableInfo(NamedTuple):
 
 
 def test_ensure_table_created(engine: Engine) -> None:
-    class TblDates(NamedTuple):
+    class TblDates(Roww):
         id: int | None
         name: str
         score: float
@@ -60,10 +61,10 @@ def test_ensure_table_created(engine: Engine) -> None:
 
 
 def test_ensure_table_created_with_related_table(engine: Engine) -> None:
-    class A(NamedTuple):
+    class A(Roww):
         id: int | None
 
-    class B(NamedTuple):
+    class B(Roww):
         id: int | None
         team: A
 
@@ -79,10 +80,10 @@ def test_ensure_table_created_with_related_table(engine: Engine) -> None:
 
 
 def test_ensure_table_created_with_optional_related_table(engine: Engine) -> None:
-    class A(NamedTuple):
+    class A(Roww):
         id: int | None
 
-    class B(NamedTuple):
+    class B(Roww):
         id: int | None
         team: A | None  # Optional relationship
 
@@ -98,7 +99,7 @@ def test_ensure_table_created_with_optional_related_table(engine: Engine) -> Non
 
 
 def test_ensure_table_created_with_table_already_created_correct_is_silent(engine: Engine) -> None:
-    class TblAlreadyCreated(NamedTuple):
+    class TblAlreadyCreated(Roww):
         id: int | None
         name: str
         age: int
@@ -108,14 +109,14 @@ def test_ensure_table_created_with_table_already_created_correct_is_silent(engin
 
 
 def test_ensure_table_created_with_table_already_created_incorrect_raises(engine: Engine) -> None:
-    class TblAlreadyCreated(NamedTuple):  # type: ignore shadowing is part of the test
+    class TblAlreadyCreated(Roww):  # type: ignore shadowing is part of the test
         id: int | None
         name: str
         age: int
 
     engine.ensure_table_created(TblAlreadyCreated)
 
-    class TblAlreadyCreated(NamedTuple):
+    class TblAlreadyCreated(Roww):
         id: int | None
         name: str
         age: int
@@ -126,7 +127,7 @@ def test_ensure_table_created_with_table_already_created_incorrect_raises(engine
 
 
 def test_ensure_table_created_catches_mismatched_from_out_of_band_alters(engine: Engine) -> None:
-    class TblAlreadyCreated(NamedTuple):
+    class TblAlreadyCreated(Roww):
         id: int | None
         name: str
         age: int
@@ -139,32 +140,8 @@ def test_ensure_table_created_catches_mismatched_from_out_of_band_alters(engine:
         engine.ensure_table_created(TblAlreadyCreated)
 
 
-def test_ensure_table_created__fails__doesnt_register_table_model(engine: Engine) -> None:
-    class TNoId(NamedTuple):
-        name: str
-
-    with pytest.raises(FieldZeroIdRequired):
-        engine.ensure_table_created(TNoId)
-
-    assert not is_registered_table_model(TNoId)
-
-
-def test_ensure_table_created__is_successful__registers_table_model(engine: Engine) -> None:
-    class Model(NamedTuple):
-        id: int | None
-        name: str
-
-    assert is_registered_row_model(Model) is False
-    assert is_registered_table_model(Model) is False
-
-    engine.ensure_table_created(Model)
-
-    assert is_registered_row_model(Model) is True
-    assert is_registered_table_model(Model) is True
-
-
 def test_ensure_table_created__nontable_model_raises(engine: Engine) -> None:
-    class NonTable_Model(NamedTuple):
+    class NonTable_Model(Roww):
         id: int | None
         name: str
 

@@ -2,10 +2,7 @@ from __future__ import annotations
 
 import inspect
 import logging
-import sqlite3
 import types
-from collections.abc import Iterator
-from contextlib import contextmanager
 from typing import Any, NamedTuple, Union, get_args, get_origin, get_type_hints
 
 from .adaptconvert import adaptconvert_columntypes
@@ -58,38 +55,21 @@ class InvalidTableName(ModelDefinitionError):
 
 def is_row_model(cls: object) -> bool:
     """Test at runtime whether an object is a Row, e.g. a NamedTuple model"""
-    if not isinstance(cls, type):
-        return False
-
-    if not issubclass(cls, tuple):
-        return False
-
-    try:
-        if object.__getattribute__(cls, '_fields')[0] == 'id':
-            return True
-        else:
-            return False
-    except Exception:
+    if hasattr(cls, "__dict__"):
+        return "_meta" in cls.__dict__
+    else:
         return False
 
 
-def is_registered_row_model(cls: object) -> bool:
-    return cls in _meta
-
-
-def is_registered_table_model(cls: object) -> bool:
-    return cls in _meta and _meta[cls].is_table
-
-
-def is_registered_fieldtype(cls: object) -> bool:
-    return cls in _meta or cls in adaptconvert_columntypes or cls in _native_columntypes
+def is_valid_fieldtype(cls: object) -> bool:
+    print(f"is_valid_fieldtype: {cls}")
+    return cls in _native_columntypes or cls in adaptconvert_columntypes or is_row_model(cls)
 
 
 class Meta(NamedTuple):
     Model: type[Row]
     model_name: str
-    table_name: str | None
-    is_table: bool
+    table_name: str
     fields: tuple[MetaField, ...]
 
 
@@ -104,36 +84,11 @@ class MetaField(NamedTuple):
     sql_columndef: str
 
 
-_meta: dict[type[Row], Meta] = {}
-
-
-def clear_modelmeta_registrations() -> None:
-    _meta.clear()
-
-
 def get_meta(Model: type[Row]) -> Meta:
-    """Simple cached getter for Meta"""
-    try:
-        return _meta[Model]
-    except KeyError:
-        _meta[Model] = make_meta(Model)
-        return _meta[Model]
+    return Model._meta  # type: ignore[attr-defined]  # noqa: SLF001
 
 
-@contextmanager
-def get_table_meta(Model: type[Row]) -> Iterator[Meta]:
-    """Context manager for cache table meta if and only if the manager exits without exception, ie the table is created successfully."""
-    meta = make_table_meta(Model)
-    try:
-        yield meta
-    except Exception:
-        raise  # propagate
-    else:
-        _meta[Model] = meta
-        sqlite3.register_adapter(Model, lambda row: row[0])  # insert Model as its id when used as FK related field in other tables
-
-
-def make_meta(Model: type[Row]) -> Meta:
+def make_model_meta(Model: type[Row]) -> Meta:
     annotations = _get_resolved_annotations(Model)
     fieldnames = Model._fields
     full_types = tuple(annotations.values())
@@ -153,18 +108,10 @@ def make_meta(Model: type[Row]) -> Meta:
         for fieldname, (nullable, FieldType) in zip(fieldnames, unwrapped_types, strict=False)
     )
 
-    if fields[0].name != "id":
-        # adhoc model, no table
-        table_name = None
-    else:
-        table_name = Model.__name__.split('_')[0]
-        # table model or alternate model
-
     meta = Meta(
         Model=Model,
         model_name=Model.__name__,
-        table_name=table_name,
-        is_table=False,
+        table_name=Model.__name__,  # for now, table name is same as model name
         fields=fields,
     )
 
@@ -175,33 +122,16 @@ def make_meta(Model: type[Row]) -> Meta:
         # skipp self-reference, it will be registered once/if it is in _meta
         if field.type is Model:
             continue
-        if field.full_type is Any:
-            continue  # Any is not a valid type for persisting, but can be used for reading
-        if not is_registered_fieldtype(field.type):
+        if not is_valid_fieldtype(field.type):
             raise UnregisteredFieldTypeError(field.type)
 
-    return meta
-
-
-def make_table_meta(Model: type[Row]) -> Meta:
-    meta = make_meta(Model)
-
-    ## Validate Table Meta
     if "_" in meta.model_name:
         raise InvalidTableName(meta.model_name)
-
-    for field in meta.fields:
-        if field.full_type is Any:  # Any is not a valid type tables fields
-            raise UnregisteredFieldTypeError(field.type)
 
     # Check that the first field is `id: int | None`
     field_zero = meta.fields[0]
     if field_zero.name != "id" or field_zero.full_type != (int | None):
         raise FieldZeroIdRequired(meta.model_name, field_zero.name, field_zero.full_type)
-
-    meta = meta._replace(
-        is_table=True,
-    )
 
     # monkey-patch Model so any Lazy field is transparently unwrapped
     from .cursorproxy import Lazy

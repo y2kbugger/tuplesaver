@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import ast
 import inspect
+from collections.abc import Callable
 from functools import cache, lru_cache, wraps
 from textwrap import dedent
-from typing import Any, Callable
+from typing import Any
 
 from .model import Row, get_meta
 
@@ -26,7 +27,7 @@ class SelectDual[R: Row](tuple[type[R], str]):
 
         @wraps(func)
         def wrapper(*args, **kwargs) -> tuple[type[R], str, dict[str, Any]]:
-            combined_kwargs = {**dict(zip(argnames, args)), **kwargs}
+            combined_kwargs = {**dict(zip(argnames, args, strict=False)), **kwargs}
             return (self[0], q, combined_kwargs)
 
         return wrapper
@@ -51,7 +52,7 @@ def render_query_def_func(Model: type[Row], func: Callable) -> str:
     parameter_names = set(inspect.signature(func).parameters.keys())
     unused_parameters = parameter_names.copy()
 
-    basemeta = get_meta(Model)
+    basemeta = Model._meta
     for v in js.values:
         match v:
             case ast.Constant():

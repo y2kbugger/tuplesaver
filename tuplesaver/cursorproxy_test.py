@@ -8,9 +8,10 @@ import pytest
 from .cursorproxy import Lazy, TypedCursorProxy
 from .engine import Engine
 from .engine_test import Person, Team
+from .RM import Roww
 
 
-class M(NamedTuple):
+class M(Roww):
     id: int | None
     name: str
     age: int
@@ -204,18 +205,14 @@ def test_proxy__when_querying_view_model__does_not_register_as_table_model(engin
     class ModelA(NamedTuple):
         name: str
 
-    from .model import is_registered_row_model, is_registered_table_model
+    from .model import is_row_model
 
-    assert is_registered_row_model(ModelA) is False
-    assert is_registered_table_model(ModelA) is False
+    assert is_row_model(ModelA) is False
 
     cur = engine.query(ModelA, "SELECT 'Alice' as name;")
 
-    # I don't care either way, just documenring current behavior
-    assert is_registered_row_model(ModelA) is False
-    assert is_registered_table_model(ModelA) is False
+    assert is_row_model(ModelA) is False
 
     cur.fetchone()
 
-    assert is_registered_row_model(ModelA) is True
-    assert is_registered_table_model(ModelA) is False
+    assert is_row_model(ModelA) is False

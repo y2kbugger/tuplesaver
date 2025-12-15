@@ -1,20 +1,41 @@
 # WIP
-## Remove Alt/View models
-- Alt/View Models are not worth cognative overhead
-  - Ive already removed them from example.ipynb
-  - Basically it just a strongly type pluck, and way to get fk id without loading the relation.
-  - we could put in a _id as a hack to get the id of the relation and do away with the alt models completely they are just a cognative complexity
-  - it also reminds you which fields are available in pluck.
-  - Remove non-schema models and tests
-    - Heres a reason to do it: this would leave in autocompletion for "skipped" fields so that you know which field you could add to pluck or whatever.
+## Roww Model
+- [x] Remove non-schema models and tests
+- [x] Switch to `Roww` ipo NameTuple as base model
+- [x] Remove is_registered_table_model and is_registered_row_model
+- [x] Move existing meta to class attribute
+- [x] Work through model_test.py
+- [x] Work through engine_test.py
+- [x] Work through conftest_test.py
+- [x] Work through adaptconvert_test.py
+- [x] Work through engine_ddl_test.py
+- [x] Work through cursorproxy_test.py
+- [x] Work through sql_test.py
+- [x] Work through example.ipynb
+- [x] Put back column adapters for tables
+  - Why did we previously insist that the table had to be created registering sqlite column adapter?
+    - maybe it was something to do with interactive ipython usage?
+    - What if I remove the check for Forgeign keys being already created?, they would just come down as ints right?
+      - This would simplify logic around ensure_table_created
+  - Test case for this if they are now gone
+  - Test case for interactive usage if deemed applicable
+- Move lazy proxy descriptors to metaclass RM.py
+- Try and rework def Roww to just be a class??
+- Move model metaclass to model.py after cleanup
+- Find a remove unused exceptions
+- [x] Test case for self referential models Column Types and Names. e.g. class Node(Roww): id: int | None, parent: Node | None
+- Deal with conftest_test pingpong where meta isn't being reset between tests
+  - one answer could be: if you really need resetting in test, make the model local to the test function
+- Resolve ergonomics of using a NamedTuple based Adhoc model when running e.query
+- Worry about types last
+
+## Other
+- confusion between ensure created and check created and "auto create"......
 - Remove deep save options and tests
   - I think i said this because it can be amibiguous what to save and when.
   - Leave deep loading, one day handle cycles with selective field loading.
     - hmmm, it is cool for when it is cool
     - but pragmatically, just round trip it instead.
-- Remove all model registration stuff
-- confusion between ensure created and check created and "auto create"......
-- Add __all__to all modules
 - how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?
   - then we can use that exact where clause in select, update, and delete
     - attempt to overload these in a way feels natural, e.g. find returns one, select returns many, update and delete can work either by id or by where clause.
@@ -28,6 +49,7 @@
 - I'm also thinking perfect typing through querying is less important that minimizing the amount of concepts and magic.
   - rich hickey said typo errors are the easiest to fix and to not worry about them.
 - Explore DCT file and think about id as a default field, (or is that just more magic?)
+- NewType instead of type aliasing for Row?
 
 
 # Bugs

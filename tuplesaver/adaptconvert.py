@@ -33,6 +33,9 @@ def clear_adapt_convert_registrations() -> None:
         AdaptConvertType, field_type_name = adaptconvert_columntypes.popitem()
         sqlite3.adapters.pop((AdaptConvertType, sqlite3.PrepareProtocol), None)
         sqlite3.converters.pop(field_type_name, None)
+        print(f"Cleared adapt/convert for {AdaptConvertType} ({field_type_name})")
+    print("Remaining adapters:", sqlite3.adapters)
+    print("Remaining converters:", sqlite3.converters)
 
 
 def register_adapt_convert[D](AdaptConvertType: type[D], adapt: Callable[[D], bytes | str], convert: Callable[[bytes], D], *, overwrite: bool = False) -> None:

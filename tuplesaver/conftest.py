@@ -10,7 +10,6 @@ from pytest_benchmark.plugin import BenchmarkFixture
 
 from .adaptconvert import clear_adapt_convert_registrations, register_standard_adaptconverters
 from .engine import Engine
-from .model import clear_modelmeta_registrations
 
 
 @pytest.fixture
@@ -56,8 +55,6 @@ def init_and_cleanup_registrations() -> Iterable[None]:
     # clean up sqlite itself harder just in case we make a mistake
     sqlite3.adapters.clear()
     sqlite3.converters.clear()
-    # clean up our model registrations
-    clear_modelmeta_registrations()
 
 
 @pytest.fixture

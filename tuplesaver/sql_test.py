@@ -1,34 +1,26 @@
 from textwrap import dedent
-from typing import NamedTuple
 
 import pytest
 
-from .model import get_meta
+from .RM import Roww
 from .sql import QueryError, select
 
 
-class League(NamedTuple):
+class League(Roww):
     id: int | None
     leaguename: str
 
 
-class Team(NamedTuple):
+class Team(Roww):
     id: int | None
     teamname: str
     league: League
 
 
-class Athlete(NamedTuple):
+class Athlete(Roww):
     id: int | None
     name: str
     team: Team
-
-
-@pytest.fixture(autouse=True)  # autouse for this test module
-def ensure_meta_is_registered_in_the_correct_order() -> None:
-    get_meta(League)
-    get_meta(Team)
-    get_meta(Athlete)
 
 
 def dd(sql: str) -> str:

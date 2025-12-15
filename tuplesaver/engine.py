@@ -13,8 +13,6 @@ from .cursorproxy import TypedCursorProxy
 from .model import (
     Row,
     get_meta,
-    get_table_meta,
-    is_registered_table_model,
     is_row_model,
 )
 from .sql import (
@@ -38,11 +36,6 @@ class TableSchemaMismatch(Exception):
 class UnpersistedRelationshipError(Exception):
     def __init__(self, model_name: str, field_name: str, row: Row) -> None:
         super().__init__(self, f"Cannot save {model_name} with unpersisted {model_name}.{field_name} of row {row}")
-
-
-class NonTableModelsImmutable(Exception):
-    def __init__(self, model_name: str) -> None:
-        super().__init__(f"Cannot modify table via non-table model: `{model_name}`. Only table models can be modified.")
 
 
 class LookupByAdHocModelImpossible(Exception):
@@ -75,31 +68,35 @@ class Engine:
         self.connection.execute("PRAGMA journal_mode=WAL")
 
     def ensure_table_created(self, Model: type[Row]) -> None:
-        with get_table_meta(Model) as meta:
-            ddl = generate_create_table_ddl(Model)
+        meta = get_meta(Model)
+        ddl = generate_create_table_ddl(Model)
 
-            try:
-                self.connection.execute(ddl)
-            except sqlite3.OperationalError as e:
-                assert meta.table_name is not None, "Table name must be defined for the model to create it."
-                if f"table {meta.table_name} already exists" in str(e):
-                    # Check existing table, it might be ok
-                    def _normalize_whitespace(s: str) -> str:
-                        return re.sub(r'\s+', ' ', s).strip()
+        try:
+            self.connection.execute(ddl)
+        except sqlite3.OperationalError as e:
+            assert meta.table_name is not None, "Table name must be defined for the model to create it."
+            if f"table {meta.table_name} already exists" in str(e):
+                # Check existing table, it might be ok
+                def _normalize_whitespace(s: str) -> str:
+                    return re.sub(r'\s+', ' ', s).strip()
 
-                    def _get_sql_for_existing_table(table_name: str) -> str:
-                        query = f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table_name}'"
-                        cursor = self.connection.execute(query)
-                        return cursor.fetchone()[0]
+                def _get_sql_for_existing_table(table_name: str) -> str:
+                    query = f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table_name}'"
+                    cursor = self.connection.execute(query)
+                    return cursor.fetchone()[0]
 
-                    existing_table_schema = _normalize_whitespace(_get_sql_for_existing_table(meta.table_name))
-                    new_table_schema = _normalize_whitespace(ddl)
+                existing_table_schema = _normalize_whitespace(_get_sql_for_existing_table(meta.table_name))
+                new_table_schema = _normalize_whitespace(ddl)
 
-                    if existing_table_schema != new_table_schema:
-                        raise TableSchemaMismatch(meta.table_name, existing_table_schema, new_table_schema) from e
-                else:
-                    # error is not about the table already existing
-                    raise
+                if existing_table_schema != new_table_schema:
+                    raise TableSchemaMismatch(meta.table_name, existing_table_schema, new_table_schema) from e
+            else:
+                # error is not about the table already existing
+                raise
+        except Exception as e:
+            raise e
+
+        sqlite3.register_adapter(Model, lambda row: row[0])  # insert Model as its id when used as FK related field in other tables
 
     ##### Reading
     def find[R: Row](self, Model: type[R], row_id: int | None, *, deep: bool = False) -> R:
@@ -115,9 +112,10 @@ class Engine:
         if not kwargs:
             raise NoKwargFieldSpecifiedError()
 
+        if not is_row_model(Model):
+            raise LookupByAdHocModelImpossible(Model.__name__)
+
         meta = get_meta(Model)
-        if meta.table_name is None:
-            raise LookupByAdHocModelImpossible(meta.model_name)
 
         field_names = [f.name for f in meta.fields]
         if not all(k in field_names for k in kwargs):
@@ -144,12 +142,10 @@ class Engine:
     #### Writing
     def save[R: Row](self, row: R, *, deep: bool = False) -> R:
         """insert or update records, based on the presence of an id"""
-        if not is_registered_table_model(type(row)):
-            raise NonTableModelsImmutable(type(row).__name__)
 
         if deep:
             # If deep is True, we save all related rows recursively
-            row = row._make(self.save(f, deep=deep) if is_registered_table_model(type(f)) else f for f in row)
+            row = row._make(self.save(f, deep=deep) if is_row_model(type(f)) else f for f in row)
         else:
             # Don't allow saving if a related row is not persisted
             if any(related_row.id is None for related_row in row[1:] if is_row_model(related_row.__class__)):
@@ -180,9 +176,6 @@ class Engine:
             row_id = row[0]
         else:
             Model = Model_or_row
-
-        if not is_registered_table_model(Model):
-            raise NonTableModelsImmutable(Model.__name__)
 
         if row_id is None:
             raise IdNoneError("Cannot DELETE, id=None")
