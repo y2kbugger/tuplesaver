@@ -19,6 +19,14 @@
       - This would simplify logic around ensure_table_created
   - Test case for this if they are now gone
   - Test case for interactive usage if deemed applicable
+- Test case that you cannot subclass a model, e.g.
+  ```python
+  class BaseModel(Roww):
+      id: int | None
+
+  class SubModel(BaseModel):  # should raise
+      name: str
+  ```
 - Move lazy proxy descriptors to metaclass RM.py
 - Try and rework def Roww to just be a class??
 - Move model metaclass to model.py after cleanup
@@ -28,6 +36,8 @@
   - one answer could be: if you really need resetting in test, make the model local to the test function
 - Resolve ergonomics of using a NamedTuple based Adhoc model when running e.query
 - Worry about types last
+- fix all ty and ruff errors in all files
+- Document RM deeply compared to typing.NamedTuple
 
 ## Other
 - confusion between ensure created and check created and "auto create"......
