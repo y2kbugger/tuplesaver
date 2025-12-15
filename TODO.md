@@ -13,6 +13,11 @@
 - Add foreign key constraints to the table creation
   - through the metadata system?? appending to meta during ensure_table_created?
   `foreign key (team_id) references Team(id)`
+- Think about asymmetry between getting a cursor proxy from query vs getting collection from foreign key relationships
+  - how often do we need to control fetchall vs fetchmany.
+- I'm also thinking perfect typing through querying is less important that minimizing the amount of concepts and magic.
+  - rich hickey said typo errors are the easiest to fix and to not worry about them.
+- Explore DCT file and think about id as a default field, (or is that just more magic?)
 
 
 # Bugs
@@ -40,6 +45,7 @@
 - Validate in Meta creation that related models in fields of table models are actually table models and not alt/adhoc models
 - Test duplicate joins in query.select deduplicates
 - Benchmark and test connection creation and closing
+- benchmark model creation, field access, hashing, and memory footprint vs plain unpatched NamedTuple, and dataclass,
 ## testingmeta
 - I want to instrument sqlite to log and profile queries.
 - use the assert_type from typing to check type hints
@@ -116,6 +122,7 @@ engine.upsert(XXX(name='a', place='c', value=888))
 
 ## Backpop
 - Also considder one to one relationships that backpop to a single instance rather than a list
+- set vs list as typehint?
 - backpop
   ```python
   class Team(NamedTuple):

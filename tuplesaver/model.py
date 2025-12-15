@@ -150,7 +150,7 @@ def make_meta(Model: type[Row]) -> Meta:
             sql_typename=_sql_typename(FieldType),
             sql_columndef=_sql_columndef(fieldname, nullable, FieldType),
         )
-        for fieldname, (nullable, FieldType) in zip(fieldnames, unwrapped_types)
+        for fieldname, (nullable, FieldType) in zip(fieldnames, unwrapped_types, strict=False)
     )
 
     if fields[0].name != "id":

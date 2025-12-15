@@ -1,17 +1,33 @@
-from typing import assert_type
+"""This test suite is used to test and compare the behavior of two approaches to
+defining a custom metaclass for our model type. If we don't want to require the user
+to use the metaclass keyword, then we need to provide our own base class that uses
+a custom metaclass. This is what RM.py does with Roww. but since it is also trying to
+be a NamedTuple, it has to reimplement a lot of the logic of NamedTupleMeta.
+
+That method is cool tho, because we can also add other customizations in the same way.
+The downside is that the code is complex.
+"""
+
+from typing import NamedTuple, assert_type
 
 import pytest
+from NTM import Column, RowMeta
 
-from tuplesaver.rowmeta import Column, Roww
+from tuplesaver.model import Row as MyRowwwT
+
+# ruff: noqa: ERA001
+# from tuplesaver.RM import Column, Roww as MyRowwwT
 
 
-class MyRow(Roww):
+# class MyRow(Roww):
+class MyRow(NamedTuple, metaclass=RowMeta):
     id: int
     name: str
     active: bool
 
 
-class MyRelatedRow(Roww):
+# class MyRelatedRow(Roww):
+class MyRelatedRow(NamedTuple, metaclass=RowMeta):
     id: int
     mr: MyRow
 
@@ -43,7 +59,7 @@ def test_instance_level_field_types() -> None:
 
 
 def test_model_type_can_be_used_as_typehint() -> None:
-    def func(r: Roww) -> int: ...
+    def func(r: MyRowwwT) -> int: ...
 
 
 def test_related_row_access() -> None:
@@ -79,7 +95,8 @@ def test_column_metadata_is_correctly_set() -> None:
 
 
 def test_default_field_values_work() -> None:
-    class RowWithDefaults(Roww):
+    # class RowWithDefaults(Roww):
+    class RowWithDefaults(NamedTuple, metaclass=RowMeta):
         id: int
         name: str
         active: bool = True
@@ -93,8 +110,8 @@ def test_default_field_values_work() -> None:
 
 def test_non_default_fields_cannot_follow_default_fields() -> None:
     with pytest.raises(TypeError, match="Non-default namedtuple field"):
-
-        class BadRow(Roww):
+        # class BadRow(Roww):
+        class BadRow(NamedTuple, metaclass=RowMeta):
             id: int
             active: bool = True
             name: str  # type: ignore

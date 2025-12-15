@@ -49,9 +49,12 @@ class RowLike(Protocol):
 
 
 class RowMeta(type):
-    """Like NamedTupleMeta but for Row
+    """Like NamedTupleMeta but for our Row
 
-    Drop support for generics, and maybe some other edges
+    We basically reimplement the logic of NamedTupleMeta here to create our own
+    metaclass that creates NamedTuple subclasses with our desired behavior. e.g.  Drop support for generics, and maybe some other edges
+
+    The whole point is to allow us to do the same thing as in NTM.py, except for the user, they just subclass Roww instead of NamedTuple with a special metaclass.
     """
 
     def __new__(cls, typename: str, bases: tuple[type], ns: dict[str, Any]) -> type:
@@ -102,6 +105,9 @@ class RowMeta(type):
             setattr(nm_tpl, field_name, FieldDescriptor(column, i))
 
         return nm_tpl
+
+
+# we call it Roww to avoid clashing with the Row in model.py at least for now.
 
 
 ### the old body of this was for deprecated "function based passing"
