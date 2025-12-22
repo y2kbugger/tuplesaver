@@ -5,8 +5,6 @@ import logging
 import types
 from typing import Any, NamedTuple, Union, get_args, get_origin, get_type_hints
 
-from .adaptconvert import adaptconvert_columntypes
-
 logger = logging.getLogger(__name__)
 
 
@@ -33,24 +31,22 @@ class FieldZeroIdMalformed(ModelDefinitionError):
         )
 
 
-class UnregisteredFieldTypeError(ModelDefinitionError):
-    def __init__(self, field_type: type | Any) -> None:
-        if is_row_model(field_type):
-            msg = (
-                f"Field Type `{field_type}` is a NamedTuple Row Model, but it has not been registered with the Persister Engine.\n"
-                "Use `engine.ensure_table_created({field_type.__name__})` to register it"
-            )
-        elif field_type is Any:
-            msg = "Field Type `Any` is not a valid type for persisting, it can only be used for reading"
-        else:
-            msg = f"Field Type `{field_type}` has not been registered with an adapter and converter.\n `register_adapt_convert` to register it"
-
-        super().__init__(msg)
-
-
 class InvalidTableName(ModelDefinitionError):
     def __init__(self, table_name: str) -> None:
         super().__init__(f"Invalid table name: `{table_name}`. Table names must not contain underscores, these are reserved for alternate models.")
+
+
+class NotATableModel(ModelDefinitionError):
+    def __init__(self, model_name: str) -> None:
+        super().__init__(f"Model `{model_name}` is not a valid table model.")
+
+
+native_columntypes: dict[type, str] = {
+    str: "TEXT",
+    float: "REAL",
+    int: "INTEGER",
+    bytes: "BLOB",
+}
 
 
 def is_row_model(cls: object) -> bool:
@@ -59,11 +55,6 @@ def is_row_model(cls: object) -> bool:
         return "_meta" in cls.__dict__
     else:
         return False
-
-
-def is_valid_fieldtype(cls: object) -> bool:
-    print(f"is_valid_fieldtype: {cls}")
-    return cls in _native_columntypes or cls in adaptconvert_columntypes or is_row_model(cls)
 
 
 class Meta(NamedTuple):
@@ -85,6 +76,8 @@ class MetaField(NamedTuple):
 
 
 def get_meta(Model: type[Row]) -> Meta:
+    if not is_row_model(Model):
+        raise NotATableModel(Model.__name__)
     return Model._meta  # type: ignore[attr-defined]  # noqa: SLF001
 
 
@@ -102,7 +95,7 @@ def make_model_meta(Model: type[Row]) -> Meta:
             nullable=nullable,
             is_fk=is_row_model(FieldType),
             is_pk=fieldname == "id",
-            sql_typename=_sql_typename(FieldType),
+            sql_typename=schematype(FieldType),
             sql_columndef=_sql_columndef(fieldname, nullable, FieldType),
         )
         for fieldname, (nullable, FieldType) in zip(fieldnames, unwrapped_types, strict=False)
@@ -116,14 +109,6 @@ def make_model_meta(Model: type[Row]) -> Meta:
     )
 
     ## Validate Meta
-
-    # Check that all fields are registered
-    for field in meta.fields:
-        # skipp self-reference, it will be registered once/if it is in _meta
-        if field.type is Model:
-            continue
-        if not is_valid_fieldtype(field.type):
-            raise UnregisteredFieldTypeError(field.type)
 
     if "_" in meta.model_name:
         raise InvalidTableName(meta.model_name)
@@ -147,25 +132,14 @@ def make_model_meta(Model: type[Row]) -> Meta:
     return meta
 
 
-_native_columntypes: dict[type, str] = {
-    str: "TEXT",
-    float: "REAL",
-    int: "INTEGER",
-    bytes: "BLOB",
-}
-
-
-def _sql_typename(FieldType: type) -> str:
-    if FieldType in _native_columntypes:
-        return _native_columntypes[FieldType]
-    elif FieldType in adaptconvert_columntypes:
-        # TODO: can we use registered_only here, and centralize naming
-        return adaptconvert_columntypes[FieldType]
+def schematype(FieldType: type) -> str:
+    if FieldType in native_columntypes:
+        return native_columntypes[FieldType]
     elif is_row_model(FieldType):
         # a yet unregistered foreign key
         return f"{FieldType.__name__}_ID"
     else:
-        return 'UNKNOWN'  # TODO: will be unreachable, when we use it as the source of truth for adaptconvert typenames
+        return f"{FieldType.__module__}.{FieldType.__qualname__}"
 
 
 def _sql_columndef(field_name: str, nullable: bool, FieldType: type) -> str:
@@ -179,7 +153,7 @@ def _sql_columndef(field_name: str, nullable: bool, FieldType: type) -> str:
     else:
         nullable_sql = "NOT NULL"
 
-    columntype = _sql_typename(FieldType)
+    columntype = schematype(FieldType)
 
     return f"{field_name} [{columntype}] {nullable_sql}"
 

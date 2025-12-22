@@ -1,8 +1,11 @@
 {
   "recommendations": [
     "charliermarsh.ruff",
-    "ms-python.vscode-pylance",
     "ms-python.python",
-    "ms-toolsai.jupyter"
+    "ms-toolsai.jupyter",
+    "astral-sh.ty",
+  ],
+  "unwantedRecommendations": [
+    "ms-python.vscode-pylance",
   ]
 }

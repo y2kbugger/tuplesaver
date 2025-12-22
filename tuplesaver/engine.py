@@ -3,10 +3,12 @@ from __future__ import annotations
 import logging
 import os
 import re
-import sqlite3
 from collections.abc import Sequence
 from typing import Any, overload
 
+import apsw.bestpractice
+
+from .adaptconvert import AdaptConvertRegistry
 from .cursorproxy import TypedCursorProxy
 
 # NOTE: engine.py should only know about .model, but not .query
@@ -24,6 +26,7 @@ from .sql import (
 )
 
 logger = logging.getLogger(__name__)
+apsw.bestpractice.apply(apsw.bestpractice.recommended)
 
 
 class TableSchemaMismatch(Exception):
@@ -53,6 +56,21 @@ class InvalidKwargFieldSpecifiedError(ValueError):
         super().__init__(f"Invalid fields for {Model.__name__}: {', '.join(kwargs.keys())}. Valid fields are: {', '.join(f.name for f in get_meta(Model).fields)}")
 
 
+class UnregisteredFieldTypeError(ValueError):
+    def __init__(self, field_type: type | Any) -> None:
+        if is_row_model(field_type):
+            msg = (
+                f"Field Type `{field_type}` is a NamedTuple Row Model, but it has not been registered with the Persister Engine.\n"
+                "Use `engine.ensure_table_created({field_type.__name__})` to register it"
+            )
+        elif field_type is Any:
+            msg = "Field Type `Any` is not a valid type for persisting, it can only be used for reading"
+        else:
+            msg = f"Field Type `{field_type}` has not been registered with an adapter and converter.\n `register_adapt_convert` to register it"
+
+        super().__init__(msg)
+
+
 class IdNoneError(ValueError):
     pass
 
@@ -64,16 +82,25 @@ class MatchNotFoundError(ValueError):
 class Engine:
     def __init__(self, db_path: str | os.PathLike[str]) -> None:
         self.db_path = db_path
-        self.connection = sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES)
+        self.connection: apsw.Connection = apsw.Connection(str(db_path))
+
         self.connection.execute("PRAGMA journal_mode=WAL")
+        self.adapt_convert_registry = AdaptConvertRegistry()
+        self.connection.cursor_factory = self.adapt_convert_registry
 
     def ensure_table_created(self, Model: type[Row]) -> None:
         meta = get_meta(Model)
         ddl = generate_create_table_ddl(Model)
 
+        for field in meta.fields:
+            if field.type == Model:
+                continue  # recursive
+            if not self.adapt_convert_registry.is_valid_adapttype(field.type):
+                raise UnregisteredFieldTypeError(field.type)
+
         try:
             self.connection.execute(ddl)
-        except sqlite3.OperationalError as e:
+        except apsw.SQLError as e:
             assert meta.table_name is not None, "Table name must be defined for the model to create it."
             if f"table {meta.table_name} already exists" in str(e):
                 # Check existing table, it might be ok
@@ -81,9 +108,12 @@ class Engine:
                     return re.sub(r'\s+', ' ', s).strip()
 
                 def _get_sql_for_existing_table(table_name: str) -> str:
+                    # TODO: is there a apsw method for this?
                     query = f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table_name}'"
                     cursor = self.connection.execute(query)
-                    return cursor.fetchone()[0]
+                    result = cursor.fetchone()
+                    assert result is not None, f"Table {table_name} not found in sqlite_master"
+                    return result[0]
 
                 existing_table_schema = _normalize_whitespace(_get_sql_for_existing_table(meta.table_name))
                 new_table_schema = _normalize_whitespace(ddl)
@@ -96,7 +126,7 @@ class Engine:
         except Exception as e:
             raise e
 
-        sqlite3.register_adapter(Model, lambda row: row[0])  # insert Model as its id when used as FK related field in other tables
+        self.adapt_convert_registry.register_adapt_convert(Model, adapt=lambda row: row[0], convert=lambda _id: _id)
 
     ##### Reading
     def find[R: Row](self, Model: type[R], row_id: int | None, *, deep: bool = False) -> R:
@@ -153,12 +183,12 @@ class Engine:
 
         if row[0] is None:
             insert = generate_insert_sql(type(row))
-            cur = self.connection.execute(insert, row._asdict())
-            return row._replace(id=cur.lastrowid)
+            self.connection.execute(insert, row._asdict())
+            return row._replace(id=self.connection.last_insert_rowid())
         else:
             update = generate_update_sql(type(row))
-            cur = self.connection.execute(update, row._asdict())
-            if cur.rowcount == 0:
+            self.connection.execute(update, row._asdict())
+            if self.connection.changes() == 0:
                 raise MatchNotFoundError(f"Cannot UPDATE, no row with id={row[0]} in table `{row.__class__.__name__}`")
             return row
 
@@ -180,6 +210,6 @@ class Engine:
         if row_id is None:
             raise IdNoneError("Cannot DELETE, id=None")
         query = generate_delete_sql(Model)
-        cur = self.connection.execute(query, {'id': row_id})
-        if cur.rowcount == 0:
+        self.connection.execute(query, {'id': row_id})
+        if self.connection.changes() == 0:
             raise MatchNotFoundError(f"Cannot DELETE, no row with id={row_id} in table `{Model.__name__}`")

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any, NamedTuple, Optional, Union
+from typing import NamedTuple, Optional, Union
 
 import pytest
 
@@ -10,12 +10,11 @@ from .model import (
     FieldZeroIdRequired,
     Meta,
     MetaField,
-    UnregisteredFieldTypeError,
     _sql_columndef,
-    _sql_typename,
     _unwrap_optional_type,
     get_meta,
     is_row_model,
+    schematype,
 )
 from .RM import Roww
 
@@ -105,23 +104,23 @@ def test_is_row_model() -> None:
 
 
 def test_get_sqltypename() -> None:
-    assert _sql_typename(int) == "INTEGER"
-    assert _sql_typename(str) == "TEXT"
-    assert _sql_typename(float) == "REAL"
-    assert _sql_typename(bytes) == "BLOB"
-    assert _sql_typename(bool) == "builtins.bool"
-    assert _sql_typename(list) == "builtins.list"
-    assert _sql_typename(dict) == "builtins.dict"
+    assert schematype(int) == "INTEGER"
+    assert schematype(str) == "TEXT"
+    assert schematype(float) == "REAL"
+    assert schematype(bytes) == "BLOB"
+    assert schematype(bool) == "builtins.bool"
+    assert schematype(list) == "builtins.list"
+    assert schematype(dict) == "builtins.dict"
     # this also tests that inheritance hierarchy doesn't disrupt column type resolution
-    assert _sql_typename(dt.date) == "datetime.date"
-    assert _sql_typename(dt.datetime) == "datetime.datetime"
+    assert schematype(dt.date) == "datetime.date"
+    assert schematype(dt.datetime) == "datetime.datetime"
 
     # Test related models as fields
     class ModelA(Roww):
         id: int | None
         name: str
 
-    assert _sql_typename(ModelA) == "ModelA_ID"
+    assert schematype(ModelA) == "ModelA_ID"
 
 
 def test_get_meta__valid_table_model() -> None:
@@ -219,7 +218,7 @@ def test_table_meta__related_model_recursive() -> None:
     get_meta(A)
 
 
-def test_table_meta__unregistered_field_type() -> None:
+def test_table_meta__unregistered_field_type__doesnt_raise() -> None:
     class NewType: ...
 
     class ModelUnknownType(Roww):
@@ -227,20 +226,4 @@ def test_table_meta__unregistered_field_type() -> None:
         name: str
         unknown: NewType
 
-    with pytest.raises(UnregisteredFieldTypeError, match="has not been registered with an adapter and converter"):
-        get_meta(ModelUnknownType)
-
-
-def test_get_meta__any_type__is_permitted() -> None:
-    class T(NamedTuple):
-        id: int | None
-        data: Any
-
-
-def test_get_meta__optional_any_type__is_prohibited() -> None:
-    class T(Roww):
-        id: int | None
-        data: Any | None
-
-    with pytest.raises(UnregisteredFieldTypeError, match="is not a valid type for persisting"):
-        get_meta(T)
+    get_meta(ModelUnknownType)

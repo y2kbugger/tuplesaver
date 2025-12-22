@@ -1,20 +1,21 @@
 from __future__ import annotations
 
 import os
-import sqlite3
 import sys
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 
+import apsw
 import pytest
 from pytest_benchmark.plugin import BenchmarkFixture
 
-from .adaptconvert import clear_adapt_convert_registrations, register_standard_adaptconverters
+from .adaptconvert import included_adapt_convert_types
 from .engine import Engine
 
 
 @pytest.fixture
 def engine() -> Iterable[Engine]:
     engine = Engine(":memory:")
+    engine.adapt_convert_registry.register_included_adaptconverters(included_adapt_convert_types)
     yield engine
     engine.connection.close()
 
@@ -23,6 +24,10 @@ class SqlLog:
     def __init__(self):
         self.entrys = []
         self.block = ""
+
+    def exec_trace(self, cursor: apsw.Cursor, sql: str, values: Sequence | Mapping | None, /) -> bool:
+        self.log(cursor.expanded_sql)
+        return True  # continue normal execution
 
     def log(self, entry: str) -> None:
         print(entry)  # Echo to stdout, shown on test failure
@@ -33,28 +38,15 @@ class SqlLog:
         self.entrys.clear()
         self.block = ""
 
-    def __contains__(self, entry: str):
+    def __contains__(self, entry: str) -> bool:
         return entry in self.block
 
 
 @pytest.fixture
 def sql_log(engine: Engine) -> Iterable[SqlLog]:
     sql_log = SqlLog()
-    engine.connection.set_trace_callback(sql_log.log)
+    engine.connection.exec_trace = sql_log.exec_trace
     yield sql_log
-
-
-@pytest.fixture(autouse=True)
-def init_and_cleanup_registrations() -> Iterable[None]:
-    register_standard_adaptconverters()
-
-    yield
-
-    # clean up our adaptconvert registrations and well as just our registrations to sqlite3 itself
-    clear_adapt_convert_registrations()
-    # clean up sqlite itself harder just in case we make a mistake
-    sqlite3.adapters.clear()
-    sqlite3.converters.clear()
 
 
 @pytest.fixture

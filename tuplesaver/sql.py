@@ -118,8 +118,7 @@ def render_query_def_func(Model: type[Row], func: Callable) -> str:
                 else:
                     raise QueryError(f"Specify all columns as field paths from {Model.__name__}, e.g. {Model.__name__}.foo.bar.name")
             case _:
-                print("Unknown type", type(v), v)
-                raise QueryError("Unknown type in query f-string")
+                raise QueryError(f"Unknown type {type(v)}, of {v} in query f-string")
 
     if len(unused_parameters) > 0:
         raise QueryError(f"Unused parameter(s): {', '.join(unused_parameters)}")

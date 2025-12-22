@@ -5,8 +5,8 @@ from typing import Any, NamedTuple
 
 import pytest
 
-from .engine import Engine, TableSchemaMismatch
-from .model import InvalidTableName
+from .engine import Engine, TableSchemaMismatch, UnregisteredFieldTypeError
+from .model import InvalidTableName, NotATableModel
 from .RM import Roww
 
 
@@ -17,6 +17,34 @@ class TableInfo(NamedTuple):
     notnull: int
     dflt_value: Any
     pk: int
+
+
+def test_ensure_table_created__any_type__raises(engine: Engine) -> None:
+    class T(NamedTuple):
+        data: Any
+
+    with pytest.raises(NotATableModel):
+        engine.ensure_table_created(T)
+
+
+def test_ensure_table_created__optional_any_type__raises(engine: Engine) -> None:
+    class T(Roww):
+        id: int | None
+        data: Any | None
+
+    with pytest.raises(UnregisteredFieldTypeError):
+        engine.ensure_table_created(T)
+
+
+def test_ensure_table_created__unregistered_columntype__raises(engine: Engine) -> None:
+    from array import array
+
+    class T(Roww):
+        id: int | None
+        data: array
+
+    with pytest.raises(UnregisteredFieldTypeError):
+        engine.ensure_table_created(T)
 
 
 def test_ensure_table_created(engine: Engine) -> None:

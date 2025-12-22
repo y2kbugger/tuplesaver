@@ -1,20 +1,14 @@
 from __future__ import annotations
 
 import datetime as dt
-import sqlite3
 from typing import Optional
 
 import pytest
 
 from .adaptconvert import (
-    AdaptConvertTypeAlreadyRegistered,
     InvalidAdaptConvertType,
-    clear_adapt_convert_registrations,
-    register_adapt_convert,
-    register_pickleable_adapt_convert,
 )
 from .engine import Engine
-from .model import UnregisteredFieldTypeError
 from .RM import Roww
 
 
@@ -34,7 +28,7 @@ def test_registering_adapt_convert_pair(engine: Engine) -> None:
     def convert_newtype(value: bytes) -> NewType:
         return NewType(value.decode().split(","))
 
-    register_adapt_convert(NewType, adapt_newtype, convert_newtype)
+    engine.adapt_convert_registry.register_adapt_convert(NewType, adapt_newtype, convert_newtype)
 
     ### Table Creation
     engine.ensure_table_created(ModelUnknownType)
@@ -63,7 +57,7 @@ def test_registering_adapt_convert_pair(engine: Engine) -> None:
     assert retrieved_row.custom.values == ["a", "b", "c"]
 
 
-def test_attempted_registration_of_concrete_obj_raises() -> None:
+def test_attempted_registration_of_concrete_obj_raises(engine: Engine) -> None:
     class NewType: ...
 
     def adapt_newtype(value: NewType) -> bytes:
@@ -73,10 +67,10 @@ def test_attempted_registration_of_concrete_obj_raises() -> None:
         return NewType()
 
     with pytest.raises(InvalidAdaptConvertType):
-        register_adapt_convert("Blah", adapt_newtype, convert_newtype)  # type: ignore
+        engine.adapt_convert_registry.register_adapt_convert("Blah", adapt_newtype, convert_newtype)  # type: ignore
 
 
-def test_attempted_registration_of_an_union_raises() -> None:
+def test_attempted_registration_of_an_union_raises(engine: Engine) -> None:
     class NewType: ...
 
     def adapt_newtype(value: NewType) -> bytes:
@@ -86,10 +80,10 @@ def test_attempted_registration_of_an_union_raises() -> None:
         return NewType()
 
     with pytest.raises(InvalidAdaptConvertType):
-        register_adapt_convert(Optional[NewType], adapt_newtype, convert_newtype)  # type: ignore
+        engine.adapt_convert_registry.register_adapt_convert(Optional[NewType], adapt_newtype, convert_newtype)  # type: ignore
 
 
-def test_attempted_registration_of_already_registered_type() -> None:
+def test_attempted_registration_of_already_registered_type(engine: Engine) -> None:
     class NewType: ...
 
     def adapt_newtype(value: NewType) -> bytes:
@@ -104,41 +98,16 @@ def test_attempted_registration_of_already_registered_type() -> None:
     def convert_newtype2(value: bytes) -> NewType:
         return NewType()
 
-    register_adapt_convert(NewType, adapt_newtype, convert_newtype)
+    engine.adapt_convert_registry.register_adapt_convert(NewType, adapt_newtype, convert_newtype)
 
     # verify the registration
-    assert sqlite3.adapters[(NewType, sqlite3.PrepareProtocol)] is adapt_newtype
-    assert sqlite3.converters['TUPLESAVER.ADAPTCONVERT_TEST.TEST_ATTEMPTED_REGISTRATION_OF_ALREADY_REGISTERED_TYPE.<LOCALS>.NEWTYPE'] is convert_newtype
+    assert engine.adapt_convert_registry._adapters[NewType] is adapt_newtype
+    assert engine.adapt_convert_registry._converters['tuplesaver.adaptconvert_test.test_attempted_registration_of_already_registered_type.<locals>.NewType'] is convert_newtype
 
-    with pytest.raises(AdaptConvertTypeAlreadyRegistered):
-        register_adapt_convert(NewType, adapt_newtype, convert_newtype)
-
-    # Ensure that the original registration was not lost or changed
-    assert sqlite3.adapters[(NewType, sqlite3.PrepareProtocol)] is adapt_newtype
-    assert sqlite3.converters['TUPLESAVER.ADAPTCONVERT_TEST.TEST_ATTEMPTED_REGISTRATION_OF_ALREADY_REGISTERED_TYPE.<LOCALS>.NEWTYPE'] is convert_newtype
-
-    register_adapt_convert(NewType, adapt_newtype2, convert_newtype2, overwrite=True)
+    engine.adapt_convert_registry.register_adapt_convert(NewType, adapt_newtype2, convert_newtype2)
     # verify that the registration was overwritten
-    assert sqlite3.adapters[(NewType, sqlite3.PrepareProtocol)] is adapt_newtype2
-    assert sqlite3.converters['TUPLESAVER.ADAPTCONVERT_TEST.TEST_ATTEMPTED_REGISTRATION_OF_ALREADY_REGISTERED_TYPE.<LOCALS>.NEWTYPE'] is convert_newtype2
-
-
-def test_adapter_converter_reset_only_affects_what_we_registered() -> None:
-    class NewType: ...
-
-    assert (NewType, sqlite3.PrepareProtocol) not in sqlite3.adapters
-    assert 'NEWTYPE' not in sqlite3.converters
-
-    sqlite3.register_adapter(NewType, lambda x: 'x')
-    sqlite3.register_converter("NewType", lambda x: 'x')
-
-    assert (NewType, sqlite3.PrepareProtocol) in sqlite3.adapters
-    assert 'NEWTYPE' in sqlite3.converters
-
-    clear_adapt_convert_registrations()
-
-    assert (NewType, sqlite3.PrepareProtocol) in sqlite3.adapters
-    assert 'NEWTYPE' in sqlite3.converters
+    assert engine.adapt_convert_registry._adapters[NewType] is adapt_newtype2
+    assert engine.adapt_convert_registry._converters['tuplesaver.adaptconvert_test.test_attempted_registration_of_already_registered_type.<locals>.NewType'] is convert_newtype2
 
 
 def test_can_store_and_retrieve_datetime_as_iso(engine: Engine) -> None:
@@ -227,30 +196,23 @@ def test_raises_on_json_when_nonserializeable(engine: Engine) -> None:
         engine.save(T(None, [dt.datetime.now()]))
 
 
-def test_that_unregistered_fieldtype_raises(engine: Engine) -> None:
-    from array import array
+class PickleableTestType:
+    __slots__ = ("value",)
 
-    class T(Roww):
-        id: int | None
-        data: array
-
-    with pytest.raises(UnregisteredFieldTypeError):
-        engine.ensure_table_created(T)
+    def __init__(self, value: int):
+        self.value = value
 
 
 def test_can_store_and_retrieve_pickleable_type(engine: Engine) -> None:
-    from array import array
-
     class T(Roww):
         id: int | None
-        data: array
+        data: PickleableTestType
 
-    register_pickleable_adapt_convert(array)
+    engine.adapt_convert_registry.register_pickleable_adapt_convert(PickleableTestType)
     engine.ensure_table_created(T)
 
-    data = array('i', [1, 2, 3])
-    row = engine.save(T(None, data))
-
+    sentinel_instance = PickleableTestType(42)
+    row = engine.save(T(None, sentinel_instance))
     returned_row = engine.find(T, row.id)
 
-    assert returned_row.data.tolist() == data.tolist()
+    assert returned_row.data.value == sentinel_instance.value

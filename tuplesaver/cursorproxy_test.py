@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import sqlite3
 from typing import NamedTuple, assert_type
 
+import apsw
 import pytest
 
 from .cursorproxy import Lazy, TypedCursorProxy
@@ -21,8 +21,8 @@ sql = "SELECT 1 as id, 'Alice' as name, 30 as age UNION SELECT 2, 'Bob', 40;"
 
 
 @pytest.fixture
-def proxy() -> TypedCursorProxy[M]:
-    connection = sqlite3.connect(":memory:")
+def proxy(engine: Engine) -> TypedCursorProxy[M]:
+    connection = engine.connection
     cursor = connection.execute(sql)
     proxy = TypedCursorProxy.proxy_cursor_deep(M, cursor)
     assert_type(proxy, TypedCursorProxy[M])  # type: ignore slight bug in pyright, masked by both fixure here and engine.query in engine.py
@@ -31,11 +31,15 @@ def proxy() -> TypedCursorProxy[M]:
 
 def test_proxy_typehints(proxy: TypedCursorProxy[M]) -> None:
     assert_type(proxy, TypedCursorProxy[M])
+    assert_type(proxy.connection, apsw.Connection)
+
     assert_type(proxy.fetchone(), M | None)
     assert_type(proxy.fetchall(), list[M])
-    assert_type(proxy.fetchmany(1), list[M])
-    assert_type(proxy.rowcount, int)
-    assert_type(proxy.connection, sqlite3.Connection)
+    assert_type(proxy.connection.changes(), int)
+    assert_type(proxy.sql, str)
+    assert_type(proxy.is_explain, int)
+    assert_type(proxy.has_vdbe, bool)
+    assert_type(proxy.expanded_sql, str)
 
 
 def test_proxy_fetchone(proxy: TypedCursorProxy[M]) -> None:
@@ -49,17 +53,12 @@ def test_proxy_fetchall(proxy: TypedCursorProxy[M]) -> None:
     assert rows == [M(1, "Alice", 30), M(2, "Bob", 40)]
 
 
-def test_proxy_fetchmany(proxy: TypedCursorProxy[M]) -> None:
-    rows = proxy.fetchmany(1)
-    assert rows == [M(1, "Alice", 30)]
-
-
 def test_proxy__after_usage__rowfactory_persists(proxy: TypedCursorProxy[M]) -> None:
     row = proxy.fetchone()
     assert row == M(1, "Alice", 30)
 
     row = proxy.fetchone()
-    assert proxy.row_factory is not None
+    assert proxy.row_trace is not None
     assert row == M(2, "Bob", 40)
 
 
@@ -70,17 +69,16 @@ def test_proxy__fetchone_returns_none(proxy: TypedCursorProxy[M]) -> None:
     assert row is None
 
 
-def test_proxy__after_usage__rowfactory_doesnt_leak_to_new_cursors() -> None:
-    connection = sqlite3.connect(":memory:")
-
+def test_proxy__after_usage__rowfactory_doesnt_leak_to_new_cursors(engine: Engine) -> None:
     # Proxy a cursor with custom row_factory
-    cursor = connection.cursor()
+    cursor = engine.connection.cursor()
     proxy = TypedCursorProxy.proxy_cursor_deep(M, cursor)
-    assert proxy.row_factory is not None
+    assert cursor.row_trace is proxy.row_trace
 
     # new cursors must come back completely standard
-    new_cursor = connection.cursor()
-    assert new_cursor.row_factory is None
+    new_cursor = engine.connection.cursor()
+    assert new_cursor.row_trace is not proxy.row_trace
+    assert new_cursor.row_trace is not cursor.row_trace
 
 
 def test_lazy__same_model_and_id__are_equal() -> None:

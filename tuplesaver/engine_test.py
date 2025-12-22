@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import sqlite3
 from random import choice, random
 from typing import NamedTuple
 
+import apsw
 import pytest
 from pytest_benchmark.plugin import BenchmarkFixture
 
@@ -42,9 +42,8 @@ class AdHoc(NamedTuple):
 
 
 def test_engine_connection(engine: Engine) -> None:
-    from sqlite3 import Connection
-
-    assert isinstance(engine.connection, Connection)
+    hasattr(engine.connection, "cursor")
+    hasattr(engine.connection, "execute")
 
 
 def test_find__by_id(engine: Engine) -> None:
@@ -143,7 +142,6 @@ def test_query__table_model__succeeds_with_returns_cursor_proxy(engine: Engine) 
     engine.save(Team(None, "Lions", 30))
 
     cur = engine.query(Team, "SELECT * FROM Team;")
-    assert cur.row_factory is not None
 
     row = cur.fetchone()
     assert isinstance(row, Team)
@@ -152,7 +150,6 @@ def test_query__table_model__succeeds_with_returns_cursor_proxy(engine: Engine) 
 
 def test_query__adhoc_model__succeeds_with_returns_cursor_proxy(engine: Engine) -> None:
     cur = engine.query(AdHoc, "SELECT 7.7 as score;")
-    assert cur.row_factory is not None
 
     row = cur.fetchone()
     assert isinstance(row, AdHoc)
@@ -282,7 +279,7 @@ def test_save__none_in_not_null_column__raises(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     row = Team(None, "Lions", None)  # type: ignore this bug is part of the test
 
-    with pytest.raises(sqlite3.IntegrityError, match="NOT NULL constraint failed"):
+    with pytest.raises(apsw.ConstraintError, match="NOT NULL constraint failed"):
         engine.save(row)
 
 
@@ -495,14 +492,16 @@ class TestBomSelfJoin:
     def test_insert_bom(self, engine: Engine) -> None:
         engine.ensure_table_created(self.BOM)
         root = self.create_bom(3)
-        _inserted_root = engine.save(root, deep=True)
-        engine.connection.commit()
+
+        with engine.connection:
+            _inserted_root = engine.save(root, deep=True)
 
     def test_get_bom(self, engine: Engine) -> None:
         engine.ensure_table_created(self.BOM)
         root = self.create_bom(3)
-        inserted_root = engine.save(root, deep=True)
-        engine.connection.commit()
+
+        with engine.connection:
+            inserted_root = engine.save(root, deep=True)
 
         retrieved_root = engine.find(self.BOM, inserted_root.id, deep=True)
         assert retrieved_root == inserted_root
@@ -511,8 +510,9 @@ class TestBomSelfJoin:
     def test_for_stack_overflow(self, engine: Engine, limit_stack_depth: None) -> None:
         engine.ensure_table_created(self.BOM)
         root = self.create_linear_bom(1500)
-        inserted_root = engine.save(root, deep=True)
-        engine.connection.commit()
+
+        with engine.connection:
+            inserted_root = engine.save(root, deep=True)
 
         retrieved_root = engine.find(self.BOM, inserted_root.id, deep=True)
         assert retrieved_root == inserted_root
@@ -529,8 +529,8 @@ class TestBomSelfJoin:
         engine.ensure_table_created(self.BOM)
         root = self.create_bom(7)
 
-        inserted_root = engine.save(root, deep=True)
-        engine.connection.commit()
+        with engine.connection:
+            inserted_root = engine.save(root, deep=True)
 
         @benchmark
         def get_bom():

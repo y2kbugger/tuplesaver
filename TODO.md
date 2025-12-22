@@ -13,6 +13,7 @@
 - [x] Work through sql_test.py
 - [x] Work through example.ipynb
 - [x] Put back column adapters for tables
+- [x] switch backend to apsw
   - Why did we previously insist that the table had to be created registering sqlite column adapter?
     - maybe it was something to do with interactive ipython usage?
     - What if I remove the check for Forgeign keys being already created?, they would just come down as ints right?
@@ -38,6 +39,7 @@
 - Worry about types last
 - fix all ty and ruff errors in all files
 - Document RM deeply compared to typing.NamedTuple
+- Document how any type that implements buffer is auto adapted and you only need to add converter for it (might me annonying if trying to just pickle a numpy array)
 
 ## Other
 - confusion between ensure created and check created and "auto create"......
@@ -249,6 +251,7 @@ engine.upsert(XXX(name='a', place='c', value=888))
 
 
 # Later
+## JSONB format
 
 ## Explain Model
 I want to be able to explain model function. This would explain what the type annotation is., what the sqllite column type is, And why?. Like it would tell you that an INT is a built-in Python SQLite type., but a model is another model, And a list of a built-in type is stored as json., And then what it would attempt to pickle if there would be a pickle if it's unknown..

@@ -4,9 +4,12 @@ import datetime as dt
 import json
 import logging
 import pickle
-import sqlite3
 from collections.abc import Callable, Iterable
 from typing import Any
+
+import apsw
+
+from .model import native_columntypes, schematype
 
 logger = logging.getLogger(__name__)
 
@@ -23,77 +26,92 @@ class AdaptConvertTypeAlreadyRegistered(Exception):
         super().__init__(f"Persistance format for {AdaptConvertType} already exists. It is a native type (int, float, str, bytes) or already has an Adapt Convert registered")
 
 
-adaptconvert_columntypes = {}
-adapters = {}
-converters = {}
+class AdaptConvertRegistry:
+    """Provides cursors that can convert objects into one of the types supported by SQLite, or back from SQLite"""
+
+    def __init__(self):
+        self._adapters: dict[type, Callable] = {}
+        self._converters: dict[str, Callable] = {}
+
+    def __call__(self, connection: apsw.Connection) -> AdaptConvertCursor:
+        "Returns a new convertor :class:`cursor <apsw.Cursor>` for the `connection`"
+        return AdaptConvertRegistry.AdaptConvertCursor(connection, self)
+
+    def is_valid_adapttype(self, AdaptType: type) -> bool:
+        return AdaptType in native_columntypes or AdaptType in self._adapters
+
+    def adapt_value(self, value: Any) -> apsw.SQLiteValue:
+        "Returns SQLite representation of `value`"
+        adapter = self._adapters.get(type(value))
+        if not adapter:
+            raise TypeError(f"No adapter registered for type {type(value)}")
+        return adapter(value)
+
+    def convert_value(self, schematype: str, value: apsw.SQLiteValue) -> Any:
+        "Returns Python object from schema type and SQLite value"
+        converter = self._converters.get(schematype)
+        if not converter:
+            return value
+        return converter(value)
+
+    def _convert_binding(self, _: apsw.Cursor, __: int, value: Any) -> apsw.SQLiteValue:
+        # TODO: I think we could make this smarter by storing the adapters for a specific Model as a tuple and indexing into it, instead of calling adapt_value each time
+        # TODO: also could we put this as a def on the cursor class itself?
+        return self.adapt_value(value)
+
+    class AdaptConvertCursor(apsw.Cursor):
+        def __init__(self, connection: apsw.Connection, ac_registry: AdaptConvertRegistry):
+            super().__init__(connection)
+            self.factory = ac_registry
+            self.convert_binding = ac_registry._convert_binding  # adapt callback
+            self.row_trace = self._row_converter  # convert callback
+
+        def _row_converter(self, cursor: apsw.Cursor, values: apsw.SQLiteValues) -> tuple[Any, ...]:
+            return tuple(self.factory.convert_value(d[1], v) for d, v in zip(cursor.get_description(), values, strict=True))
+
+    def register_adapt_convert[D, V: apsw.SQLiteValue | bytes](self, AdaptConvertType: type[D], adapt: Callable[[D], V], convert: Callable[[V], D]) -> None:
+        if type(AdaptConvertType) is not type:
+            raise InvalidAdaptConvertType(AdaptConvertType)
+
+        self._adapters[AdaptConvertType] = adapt
+        self._converters[schematype(AdaptConvertType)] = convert
+
+    def register_pickleable_adapt_convert(self, AdaptConvertType: type, *, overwrite: bool = True) -> None:
+        self.register_adapt_convert(
+            AdaptConvertType,
+            adapt=lambda obj: pickle.dumps(obj),
+            convert=lambda data: pickle.loads(data),
+        )
+
+    def register_included_adaptconverters(self, Types: Iterable[type]) -> None:
+        """Register multiple standard adapt/convert pairs at once"""
+        for Type in Types:
+            match included_adapt_convert_types.get(Type):
+                case None:
+                    raise InvalidAdaptConvertType(Type)
+                case adapt, convert:
+                    self.register_adapt_convert(Type, adapt, convert)
 
 
-def clear_adapt_convert_registrations() -> None:
-    while adaptconvert_columntypes:
-        AdaptConvertType, field_type_name = adaptconvert_columntypes.popitem()
-        sqlite3.adapters.pop((AdaptConvertType, sqlite3.PrepareProtocol), None)
-        sqlite3.converters.pop(field_type_name, None)
-        print(f"Cleared adapt/convert for {AdaptConvertType} ({field_type_name})")
-    print("Remaining adapters:", sqlite3.adapters)
-    print("Remaining converters:", sqlite3.converters)
-
-
-def register_adapt_convert[D](AdaptConvertType: type[D], adapt: Callable[[D], bytes | str], convert: Callable[[bytes], D], *, overwrite: bool = False) -> None:
-    if type(AdaptConvertType) is not type:
-        raise InvalidAdaptConvertType(AdaptConvertType)
-
-    if AdaptConvertType in adaptconvert_columntypes and not overwrite:
-        raise AdaptConvertTypeAlreadyRegistered(AdaptConvertType)
-    field_type_name = f"{AdaptConvertType.__module__}.{AdaptConvertType.__qualname__}"
-    sqlite3.register_adapter(AdaptConvertType, adapt)
-    sqlite3.register_converter(field_type_name, convert)
-    adaptconvert_columntypes[AdaptConvertType] = field_type_name
-    adapters[AdaptConvertType] = adapt
-    converters[field_type_name] = convert
-
-
-def register_pickleable_adapt_convert(AdaptConvertType: type, *, overwrite: bool = True) -> None:
-    register_adapt_convert(
-        AdaptConvertType,
-        adapt=lambda obj: pickle.dumps(obj),
-        convert=lambda data: pickle.loads(data),
-        overwrite=overwrite,
-    )
-
-
-included_adapt_converters: dict[type, tuple[Callable[[Any], bytes | str], Callable[[bytes], Any]]] = {
+included_adapt_convert_types: dict[type, tuple[Callable, Callable]] = {
     bool: (
-        lambda boolean: int(boolean).to_bytes(1),
-        lambda data: bool(int.from_bytes(data)),
+        lambda boolean: boolean,
+        lambda integer: bool(integer),
     ),
     list: (
         lambda obj: json.dumps(obj),
-        lambda data: json.loads(data),
+        lambda string: json.loads(string),
     ),
     dict: (
         lambda obj: json.dumps(obj),
-        lambda data: json.loads(data),
+        lambda string: json.loads(string),
     ),
     dt.date: (
         lambda date: date.isoformat(),
-        lambda data: dt.date.fromisoformat(data.decode()),
+        lambda string: dt.date.fromisoformat(string),
     ),
     dt.datetime: (
         lambda datetime: datetime.isoformat(),
-        lambda data: dt.datetime.fromisoformat(data.decode()),
+        lambda string: dt.datetime.fromisoformat(string),
     ),
 }
-
-
-def register_standard_adaptconverters(Types: Iterable[type] | None = None, *, overwrite: bool = True) -> None:
-    """Enable the standard adapt/converters:
-    bool, list, dict, dt.date, dt.datetime
-
-    You can pass a list of types to select which ones to register.
-    """
-    if Types is None:
-        Types = included_adapt_converters.keys()
-
-    for Type in Types:
-        adapt, convert = included_adapt_converters[Type]
-        register_adapt_convert(Type, adapt, convert, overwrite=overwrite)
