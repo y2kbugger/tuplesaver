@@ -24,7 +24,7 @@ sql = "SELECT 1 as id, 'Alice' as name, 30 as age UNION SELECT 2, 'Bob', 40;"
 def proxy(engine: Engine) -> TypedCursorProxy[M]:
     connection = engine.connection
     cursor = connection.execute(sql)
-    proxy = TypedCursorProxy.proxy_cursor_deep(M, cursor)
+    proxy = TypedCursorProxy.proxy_cursor_lazy(M, cursor, engine)
     assert_type(proxy, TypedCursorProxy[M])  # type: ignore slight bug in pyright, masked by both fixure here and engine.query in engine.py
     return proxy
 
@@ -72,7 +72,7 @@ def test_proxy__fetchone_returns_none(proxy: TypedCursorProxy[M]) -> None:
 def test_proxy__after_usage__rowfactory_doesnt_leak_to_new_cursors(engine: Engine) -> None:
     # Proxy a cursor with custom row_factory
     cursor = engine.connection.cursor()
-    proxy = TypedCursorProxy.proxy_cursor_deep(M, cursor)
+    proxy = TypedCursorProxy.proxy_cursor_lazy(M, cursor, engine)
     assert cursor.row_trace is proxy.row_trace
 
     # new cursors must come back completely standard
@@ -141,27 +141,13 @@ def test_lazy__lazymodel_and_model_different__are_not_equal() -> None:
     assert n1 != l1
 
 
-def test_proxy__relations_can_be_fetched_eagerly(engine: Engine) -> None:
-    engine.ensure_table_created(Team)
-    engine.ensure_table_created(Person)
-    team = engine.save(Team(None, "Team A", 5))
-    person = engine.save(Person(None, "Alice", team))
-
-    found_person = engine.find(Person, person.id, deep=True)
-
-    assert found_person == person
-    assert isinstance(found_person[2], Team)
-    assert isinstance(found_person.team, Team)
-    assert found_person.team == team
-
-
 def test_proxy__relations_can_be_fetched_lazily(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Person)
     team = engine.save(Team(None, "Team A", 5))
     person = engine.save(Person(None, "Alice", team))
 
-    found_person = engine.find(Person, person.id, deep=False)
+    found_person = engine.find(Person, person.id)
 
     assert found_person == person  # equal despite not having relationship loaded
     assert isinstance(found_person[2], Lazy)
@@ -171,19 +157,20 @@ def test_proxy__relations_can_be_fetched_lazily(engine: Engine) -> None:
     assert found_person == person  # Still equal after lazy loading
 
 
-def test_proxy__lazy_and_eager__are_equal(engine: Engine) -> None:
+def test_proxy__lazy_relations__equal_by_id(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Person)
-    person = engine.save(Person(None, "Alice", Team(None, "Team A", 5)), deep=True)
+    team = engine.save(Team(None, "Team A", 5))
+    person = engine.save(Person(None, "Alice", team))
 
-    found_person_lazy = engine.find(Person, person.id, deep=False)
-    found_person_eager = engine.find(Person, person.id, deep=True)
+    found_person1 = engine.find(Person, person.id)
+    found_person2 = engine.find(Person, person.id)
 
-    assert found_person_lazy == found_person_eager
-    assert found_person_eager == found_person_lazy
+    assert found_person1 == found_person2
+    assert found_person2 == found_person1
 
 
-def test_proxy__deep_regression_case__doesnt_fail(engine: Engine) -> None:
+def test_proxy__lazy_query__multiple_rows__doesnt_fail(engine: Engine) -> None:
     """This was a real bug where the proxy cursor row factory reused the
     same outer cursor and through away subsequent results."""
 
@@ -194,7 +181,7 @@ def test_proxy__deep_regression_case__doesnt_fail(engine: Engine) -> None:
     person1 = engine.save(Person(None, "Alice", team))
     person2 = engine.save(Person(None, "Bob", team))
 
-    rows = engine.query(Person, "SELECT * FROM Person;", deep=True).fetchall()
+    rows = engine.query(Person, "SELECT * FROM Person;").fetchall()
 
     assert rows == [person1, person2]
 

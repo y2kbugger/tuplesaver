@@ -129,14 +129,14 @@ class Engine:
         self.adapt_convert_registry.register_adapt_convert(Model, adapt=lambda row: row[0], convert=lambda _id: _id)
 
     ##### Reading
-    def find[R: Row](self, Model: type[R], row_id: int | None, *, deep: bool = False) -> R:
+    def find[R: Row](self, Model: type[R], row_id: int | None) -> R:
         """Find a row by its id. This is a special case of find_by."""
         if row_id is None:
             raise IdNoneError("Cannot SELECT, id=None")
 
-        return self.find_by(Model, deep=deep, id=row_id)
+        return self.find_by(Model, id=row_id)
 
-    def find_by[R: Row](self, Model: type[R], *, deep: bool = False, **kwargs: Any) -> R:
+    def find_by[R: Row](self, Model: type[R], **kwargs: Any) -> R:
         """Find a row by its fields, e.g. `find_by(Model, name="Alice")`"""
 
         if not kwargs:
@@ -154,7 +154,7 @@ class Engine:
         # Use cached query generation
         sql = generate_select_by_field_sql(Model, frozenset(kwargs.keys()))
 
-        row = self.query(Model, sql, kwargs, deep=deep).fetchone()
+        row = self.query(Model, sql, kwargs).fetchone()
 
         if row is None:
             kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
@@ -162,24 +162,17 @@ class Engine:
 
         return row
 
-    def query[R: Row](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple(), *, deep: bool = False) -> TypedCursorProxy[R]:
+    def query[R: Row](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple()) -> TypedCursorProxy[R]:
         cursor = self.connection.execute(sql, parameters)
-        if deep:
-            return TypedCursorProxy.proxy_cursor_deep(Model, cursor)
-        else:
-            return TypedCursorProxy.proxy_cursor_lazy(Model, cursor, self)
+        return TypedCursorProxy.proxy_cursor_lazy(Model, cursor, self)
 
     #### Writing
-    def save[R: Row](self, row: R, *, deep: bool = False) -> R:
+    def save[R: Row](self, row: R) -> R:
         """insert or update records, based on the presence of an id"""
 
-        if deep:
-            # If deep is True, we save all related rows recursively
-            row = row._make(self.save(f, deep=deep) if is_row_model(type(f)) else f for f in row)
-        else:
-            # Don't allow saving if a related row is not persisted
-            if any(related_row.id is None for related_row in row[1:] if is_row_model(related_row.__class__)):
-                raise UnpersistedRelationshipError(type(row).__name__, "related row", row)
+        # Don't allow saving if a related row is not persisted
+        if any(related_row.id is None for related_row in row[1:] if is_row_model(related_row.__class__)):
+            raise UnpersistedRelationshipError(type(row).__name__, "related row", row)
 
         if row[0] is None:
             insert = generate_insert_sql(type(row))
