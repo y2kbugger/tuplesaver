@@ -1,4 +1,5 @@
 # WIP
+combine rowtrace for type converting types and lazy maker all together
 ## Roww Model
 - [x] Remove non-schema models and tests
 - [x] Switch to `Roww` ipo NameTuple as base model

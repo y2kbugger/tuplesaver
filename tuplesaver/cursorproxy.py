@@ -72,7 +72,14 @@ class TypedCursorProxy[R: Row](apsw.Cursor):
 
     @staticmethod
     def proxy_cursor_lazy(Model: type[R], cursor: apsw.Cursor, engine: Engine) -> TypedCursorProxy[R]:
+        # Save the existing row_trace (the adapt/convert converter)
+        existing_row_trace = cursor.row_trace
+
         def row_fac_lazy(c: apsw.Cursor, r: apsw.SQLiteValues) -> R:
+            # First apply the adapt/convert converters if they exist
+            if existing_row_trace is not None:
+                r = existing_row_trace(c, r)
+            # Then apply the model creation logic
             return _make_model_lazy(Model, c, r, engine)
 
         cursor.row_trace = row_fac_lazy
