@@ -3,7 +3,7 @@ name = "tuplesaver"
 version = "0.1.0"
 description = "A simple, opinionated, NamedTuple persister for SQLite."
 authors = [{ name = "y2k", email = "git@y2kbugger.com" }]
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 readme = "README.md"
 dependencies = [
     "apsw>=3.51.1.0",
