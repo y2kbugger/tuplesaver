@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from dataclasses import fields
 from typing import Optional
 
 import pytest
@@ -18,7 +19,6 @@ def test_registering_adapt_convert_pair(engine: Engine) -> None:
             self.values = values
 
     class ModelUnknownType(Roww):
-        id: int | None
         name: str
         custom: NewType
 
@@ -36,14 +36,14 @@ def test_registering_adapt_convert_pair(engine: Engine) -> None:
     cursor = engine.connection.cursor()
     cursor.execute(f"PRAGMA table_info({ModelUnknownType.__name__});")
     columns = cursor.fetchall()
-    assert len(columns) == len(ModelUnknownType._fields)
+    assert len(columns) == len(fields(ModelUnknownType))
     assert columns[2][1] == "custom"  # Column Name
     assert columns[2][2] == "tuplesaver.adaptconvert_test.test_registering_adapt_convert_pair.<locals>.NewType"  # Column Type
     assert columns[2][3] == 1  # Not Null
     assert columns[2][5] == 0  # Not Primary Key
 
     ### Adapt
-    row = ModelUnknownType(None, "Alice", NewType(["a", "b", "c"]))
+    row = ModelUnknownType("Alice", NewType(["a", "b", "c"]))
     row = engine.save(row)
 
     cursor.execute(f"SELECT substr(custom,0) FROM {ModelUnknownType.__name__};")  # substr converting to NewType with converter
@@ -112,12 +112,11 @@ def test_attempted_registration_of_already_registered_type(engine: Engine) -> No
 
 def test_can_store_and_retrieve_datetime_as_iso(engine: Engine) -> None:
     class T(Roww):
-        id: int | None
         date: dt.datetime
 
     engine.ensure_table_created(T)
     now = dt.datetime.now()
-    row = engine.save(T(None, now))
+    row = engine.save(T(now))
 
     returned_row = engine.find(T, row.id)
 
@@ -126,12 +125,11 @@ def test_can_store_and_retrieve_datetime_as_iso(engine: Engine) -> None:
 
 def test_can_store_and_retrieve_date_as_iso(engine: Engine) -> None:
     class T(Roww):
-        id: int | None
         date: dt.date
 
     engine.ensure_table_created(T)
     today = dt.date.today()
-    row = engine.save(T(None, today))
+    row = engine.save(T(today))
 
     returned_row = engine.find(T, row.id)
 
@@ -140,17 +138,16 @@ def test_can_store_and_retrieve_date_as_iso(engine: Engine) -> None:
 
 def test_can_store_and_retrieve_bool_as_int(engine: Engine) -> None:
     class T(Roww):
-        id: int | None
         flag: bool
 
     engine.ensure_table_created(T)
-    row = engine.save(T(None, True))
+    row = engine.save(T(True))
 
     returned_row = engine.find(T, row.id)
 
     assert returned_row.flag is True
 
-    row = engine.save(T(None, False))
+    row = engine.save(T(False))
 
     returned_row = engine.find(T, row.id)
 
@@ -159,12 +156,11 @@ def test_can_store_and_retrieve_bool_as_int(engine: Engine) -> None:
 
 def test_can_store_and_retrieve_list_as_json(engine: Engine) -> None:
     class T(Roww):
-        id: int | None
         names: list
 
     engine.ensure_table_created(T)
     names = ["Alice", "Bob", "Charlie", 2]
-    row = engine.save(T(None, names))
+    row = engine.save(T(names))
 
     returned_row = engine.find(T, row.id)
 
@@ -173,12 +169,11 @@ def test_can_store_and_retrieve_list_as_json(engine: Engine) -> None:
 
 def test_can_store_and_retrieve_dict_as_json(engine: Engine) -> None:
     class T(Roww):
-        id: int | None
         names: dict
 
     engine.ensure_table_created(T)
     names = {"Alice": 1, "Bob": 2, "Charlie": 3}
-    row = engine.save(T(None, names))
+    row = engine.save(T(names))
 
     returned_row = engine.find(T, row.id)
 
@@ -187,13 +182,12 @@ def test_can_store_and_retrieve_dict_as_json(engine: Engine) -> None:
 
 def test_raises_on_json_when_nonserializeable(engine: Engine) -> None:
     class T(Roww):
-        id: int | None
         dates: list
 
     engine.ensure_table_created(T)
 
     with pytest.raises(TypeError, match="Object of type datetime is not JSON serializable"):
-        engine.save(T(None, [dt.datetime.now()]))
+        engine.save(T([dt.datetime.now()]))
 
 
 class PickleableTestType:
@@ -205,14 +199,13 @@ class PickleableTestType:
 
 def test_can_store_and_retrieve_pickleable_type(engine: Engine) -> None:
     class T(Roww):
-        id: int | None
         data: PickleableTestType
 
     engine.adapt_convert_registry.register_pickleable_adapt_convert(PickleableTestType)
     engine.ensure_table_created(T)
 
     sentinel_instance = PickleableTestType(42)
-    row = engine.save(T(None, sentinel_instance))
+    row = engine.save(T(sentinel_instance))
     returned_row = engine.find(T, row.id)
 
     assert returned_row.data.value == sentinel_instance.value

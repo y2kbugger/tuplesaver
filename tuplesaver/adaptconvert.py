@@ -9,7 +9,7 @@ from typing import Any
 
 import apsw
 
-from .model import native_columntypes, schematype
+from .model import is_row_model, native_columntypes, schematype
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +43,12 @@ class AdaptConvertRegistry:
     def adapt_value(self, value: Any) -> apsw.SQLiteValue:
         "Returns SQLite representation of `value`"
         adapter = self._adapters.get(type(value))
-        if not adapter:
-            raise TypeError(f"No adapter registered for type {type(value)}")
-        return adapter(value)
+        if adapter:
+            return adapter(value)
+        # Fallback for Roww models - extract id for FK storage
+        if is_row_model(type(value)):
+            return value.id
+        raise TypeError(f"No adapter registered for type {type(value)}")
 
     def convert_value(self, schematype: str, value: apsw.SQLiteValue) -> Any:
         "Returns Python object from schema type and SQLite value"
@@ -70,7 +73,7 @@ class AdaptConvertRegistry:
             return tuple(self.factory.convert_value(d[1], v) for d, v in zip(cursor.get_description(), values, strict=True))
 
     def register_adapt_convert[D, V: apsw.SQLiteValue | bytes](self, AdaptConvertType: type[D], adapt: Callable[[D], V], convert: Callable[[V], D]) -> None:
-        if type(AdaptConvertType) is not type:
+        if not isinstance(AdaptConvertType, type):
             raise InvalidAdaptConvertType(AdaptConvertType)
 
         self._adapters[AdaptConvertType] = adapt

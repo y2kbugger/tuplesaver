@@ -7,7 +7,6 @@ import pytest
 
 from .model import (
     FieldZeroIdMalformed,
-    FieldZeroIdRequired,
     Meta,
     MetaField,
     _sql_columndef,
@@ -79,7 +78,6 @@ def test_is_row_model() -> None:
     assert is_row_model(int | None) is False
 
     class Model(Roww):
-        id: int | None
         name: str
 
     assert is_row_model(Model) is True
@@ -88,7 +86,6 @@ def test_is_row_model() -> None:
     assert is_row_model(Model | int) is False  # invalid
 
     class NTModel(NamedTuple):
-        id: int | None
         name: str
 
     assert is_row_model(NTModel) is False
@@ -97,7 +94,6 @@ def test_is_row_model() -> None:
 
     @dataclasses.dataclass
     class DCModel:
-        id: int | None
         name: str
 
     assert is_row_model(DCModel) is False
@@ -117,7 +113,6 @@ def test_get_sqltypename() -> None:
 
     # Test related models as fields
     class ModelA(Roww):
-        id: int | None
         name: str
 
     assert schematype(ModelA) == "ModelA_ID"
@@ -125,7 +120,6 @@ def test_get_sqltypename() -> None:
 
 def test_get_meta__valid_table_model() -> None:
     class ModelA(Roww):
-        id: int | None
         name: str
 
     assert get_meta(ModelA) == Meta(
@@ -148,7 +142,6 @@ def test_column_definition() -> None:
     assert _sql_columndef("value", True, float) == "value [REAL] NULL"
 
     class ModelA(Roww):
-        id: int | None
         name: str
 
     assert _sql_columndef("moda", False, ModelA) == "moda [ModelA_ID] NOT NULL"
@@ -156,38 +149,40 @@ def test_column_definition() -> None:
 
 
 def test_meta__model_missing_id() -> None:
-    class TBadID(Roww):
+    """With Roww base class, id is always inherited - test removed as no longer applicable"""
+
+    # The id field is now always inherited from Roww, so this test is no longer needed
+    class TWithInheritedId(Roww):
         name: str
 
-    with pytest.raises(FieldZeroIdRequired):
-        get_meta(TBadID)
+    # This should work fine - id is inherited
+    meta = get_meta(TWithInheritedId)
+    assert meta.fields[0].name == "id"
 
 
 def test_meta__model_malformed_id_raises() -> None:
-    class TBadID(Roww):
-        id: str | None  # id is not int
-        name: str
+    """Overriding id with wrong type causes TypeError at class definition time"""
+    with pytest.raises(TypeError, match="non-default argument"):
 
-    with pytest.raises(FieldZeroIdMalformed):
-        get_meta(TBadID)
+        class TBadID(Roww):
+            id: str | None  # id is not int - override causes kw_only conflict
+            name: str
 
 
 def test_meta__model_id_not_optional() -> None:
-    class TBadID(Roww):
-        id: int  # id is not optional
-        name: str
+    """Overriding id to be non-optional causes TypeError at class definition time"""
+    with pytest.raises(TypeError, match="non-default argument"):
 
-    with pytest.raises(FieldZeroIdMalformed):
-        get_meta(TBadID)
+        class TBadID(Roww):
+            id: int  # id is not optional - override causes kw_only conflict
+            name: str
 
 
 def test_table_meta___related_model() -> None:
     class A(Roww):
-        id: int | None
         name: str
 
     class B(Roww):
-        id: int | None
         name: str
         unknown: A
 
@@ -198,12 +193,10 @@ def test_table_meta__related_model_containing_class_declared_first() -> None:
     """This works because we made M._meta a lazy lambda, which initializes only when first accessed."""
 
     class B(Roww):
-        id: int | None
         name: str
         unknown: A
 
     class A(Roww):
-        id: int | None
         name: str
 
     get_meta(B)
@@ -211,7 +204,6 @@ def test_table_meta__related_model_containing_class_declared_first() -> None:
 
 def test_table_meta__related_model_recursive() -> None:
     class A(Roww):
-        id: int | None
         name: str
         a: A | None
 
@@ -222,7 +214,6 @@ def test_table_meta__unregistered_field_type__doesnt_raise() -> None:
     class NewType: ...
 
     class ModelUnknownType(Roww):
-        id: int | None
         name: str
         unknown: NewType
 

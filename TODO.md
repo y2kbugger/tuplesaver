@@ -1,26 +1,11 @@
 # WIP
 combine rowtrace for type converting types and lazy maker all together
+pragma user_version and pragma application_id for versioning and migrations
+https://rogerbinns.github.io/apsw/tips.html#query-patterns
+
 ## Roww Model
-- [x] Remove non-schema models and tests
-- [x] Switch to `Roww` ipo NameTuple as base model
-- [x] Remove is_registered_table_model and is_registered_row_model
-- [x] Move existing meta to class attribute
-- [x] Work through model_test.py
-- [x] Work through engine_test.py
-- [x] Work through conftest_test.py
-- [x] Work through adaptconvert_test.py
-- [x] Work through engine_ddl_test.py
-- [x] Work through cursorproxy_test.py
-- [x] Work through sql_test.py
-- [x] Work through example.ipynb
-- [x] Put back column adapters for tables
-- [x] switch backend to apsw
-  - Why did we previously insist that the table had to be created registering sqlite column adapter?
-    - maybe it was something to do with interactive ipython usage?
-    - What if I remove the check for Forgeign keys being already created?, they would just come down as ints right?
-      - This would simplify logic around ensure_table_created
-  - Test case for this if they are now gone
-  - Test case for interactive usage if deemed applicable
+- relax eager enforcement of FK Models being registered
+  - Test case for this
 - Test case that you cannot subclass a model, e.g.
   ```python
   class BaseModel(Roww):
@@ -33,22 +18,15 @@ combine rowtrace for type converting types and lazy maker all together
 - Try and rework def Roww to just be a class??
 - Move model metaclass to model.py after cleanup
 - Find a remove unused exceptions
-- [x] Test case for self referential models Column Types and Names. e.g. class Node(Roww): id: int | None, parent: Node | None
-- Deal with conftest_test pingpong where meta isn't being reset between tests
-  - one answer could be: if you really need resetting in test, make the model local to the test function
 - Resolve ergonomics of using a NamedTuple based Adhoc model when running e.query
 - Worry about types last
 - fix all ty and ruff errors in all files
 - Document RM deeply compared to typing.NamedTuple
 - Document how any type that implements buffer is auto adapted and you only need to add converter for it (might me annonying if trying to just pickle a numpy array)
+- test that you can add extra defs to a model without things blowing up (or add eager enforcement that you can't do this)
 
 ## Other
 - confusion between ensure created and check created and "auto create"......
-- Remove deep save options and tests
-  - I think i said this because it can be amibiguous what to save and when.
-  - Leave deep loading, one day handle cycles with selective field loading.
-    - hmmm, it is cool for when it is cool
-    - but pragmatically, just round trip it instead.
 - how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?
   - then we can use that exact where clause in select, update, and delete
     - attempt to overload these in a way feels natural, e.g. find returns one, select returns many, update and delete can work either by id or by where clause.

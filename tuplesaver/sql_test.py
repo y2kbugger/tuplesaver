@@ -7,18 +7,15 @@ from .sql import QueryError, select
 
 
 class League(Roww):
-    id: int | None
     leaguename: str
 
 
 class Team(Roww):
-    id: int | None
     teamname: str
     league: League
 
 
 class Athlete(Roww):
-    id: int | None
     name: str
     team: Team
 

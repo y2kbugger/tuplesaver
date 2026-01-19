@@ -1,5 +1,6 @@
 from dataclasses import dataclass as _dc
-from typing import Any, ParamSpec, Protocol, Self, TypeVar, dataclass_transform
+from dataclasses import field
+from typing import Any, assert_type, dataclass_transform
 
 
 class Column:
@@ -13,88 +14,85 @@ class Column:
 
 @dataclass_transform()
 class ModelMeta(type):
-    id: int | None = None
     __columnss__: dict[str, Column]
 
     def __new__(mcls, name, bases, namespace):  # noqa: ANN001
-        ann: dict = dict(namespace.get("__annotations__", {}))
-        if not ann:
-            return super().__new__(mcls, name, bases, namespace)
+        cls = super().__new__(mcls, name, bases, namespace)
 
-        # # Add id field to annotations before creating dataclass
-        # ann["id"] = int | None
-        # namespace["__annotations__"] = ann
-        # # Set default value for id
-        # namespace["id"] = None
+        # Only apply dataclass if not already a dataclass (avoid recursion from slots=True)
+        # Check __dict__ directly to avoid finding inherited __dataclass_fields__
+        if '__dataclass_fields__' not in cls.__dict__:
+            cls = _dc(cls, slots=True, frozen=True)
 
-        cls = super().__new__(mcls, name, bases, dict(namespace))
-        cls = _dc(cls)  # type: ignore
-
-        @classmethod
-        def from_identified_args(cls_, ident, /, *args, **kwargs):  # noqa: ANN001
-            obj = cls_(*args, **kwargs)
-            obj.id = ident
-            return obj
-
-        cls.from_identified_args = from_identified_args  # type: ignore[attr-defined]
-
+        # Merge columnss in from base classes, e.g. at least the id field from ModelBase.
         cls.__columnss__ = {}
+        for base in bases:
+            cls.__columnss__.update(getattr(base, "__columnss__", {}))
 
-        # Add all fields (including id) to columnss
+        ann: dict = dict(namespace.get("__annotations__", {}))
+
+        # Add all fields from the current class to columnss
         for field_name, field_type in ann.items():
             cls.__columnss__[field_name] = Column(name=field_name, type=field_type)
 
         return cls
 
-    def __getattribute__(self, name: str) -> Any:
-        # First try to get the attribute normally
+    def __getattr__(self, name: str) -> Any:
+        # Only called when attribute is NOT found normally
+        print(f"%%getattr called for: {name}")
+        # Use object.__getattribute__ to avoid recursion if __columnss__ doesn't exist yet
         try:
-            return super().__getattribute__(name)
+            columnss = object.__getattribute__(self, "__columnss__")
         except AttributeError:
-            # If that fails, check if it's a column name
-            columnss = super().__getattribute__("__columnss__")
-            if name in columnss:
-                print(f"Returning Column object for {name}")
-                return columnss[name]
-            raise AttributeError(f"'{self.__name__}' class has no attribute '{name}'")
-
-
-P = ParamSpec("P")
-T = TypeVar("T", bound="ModelBase")
-
-
-class _Ctor(Protocol[P, T]):  # type: ignore for now
-    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> T: ...
+            raise AttributeError(f"'{self.__name__}' class has no attribute '{name}'") from None
+        if name in columnss:
+            print(f"\tFound column {name} in __columnss__, returning it")
+            return columnss[name]
+        raise AttributeError(f"'{self.__name__}' class has no attribute '{name}'")
 
 
 class ModelBase(metaclass=ModelMeta):
-    # Fully type-checked varargs constructor based on the dataclass __init__
-    @classmethod  # type: ignore for now
-    def from_identified_args(cls: _Ctor[P, Self], ident: int | None, /, *args: P.args, **kwargs: P.kwargs) -> Self: ...  # type: ignore for now
+    id: int | None = field(default=None, kw_only=True)
 
 
-class MyRowDCT(ModelBase):
-    name: str
-    active: bool
+class Car(ModelBase):
+    make: str
+    year: int
 
 
-# # KWARGS
-# car = MyRowDCT(name="Car", active=True)
-# # ARGS
-# car = MyRowDCT("Car", True)
-# assert_type(car.id, int | None)
-# assert_type(car.name, str)
-# assert_type(car.active, bool)
+# KWARGS
+car = Car(make="Honda", year=2020)
+assert_type(car, Car)
+assert_type(car.id, int | None)
+assert_type(car.make, str)
+assert_type(car.year, int)
+assert car.id is None
+assert car.make == "Honda"
+assert car.year == 2020
 
-# assert car.id == None
-# assert car.name == "Car"
-# assert car.active is True
+# ARGS
+car2 = Car("Toyota", 2017)
+assert_type(car2.id, int | None)
+assert_type(car2.make, str)
+assert_type(car2.year, int)
+assert car2.id is None
+assert car2.make == "Toyota"
+assert car2.year == 2017
 
-# car = MyRowDCT.from_identified_args(101, "SUV", True)
-# assert car.id == 101
-# assert car.name == "SUV"
-# assert car.active is True
 
+car3 = Car("Hyundai", 1999, id=101)
+assert_type(car3.id, int | None)
+assert_type(car3.make, str)
+assert_type(car3.year, int)
+assert car3.id == 101
+assert car3.make == "Hyundai"
+assert car3.year == 1999
 
-# print(MyRowDCT.id)
-# print(MyRowDCT.name)
+print("\nClass level shits:")
+print(Car.make)
+print(Car.year)
+print(Car.id)
+print(Car.__columnss__)
+print(Car.__columnss__["make"])
+print(Car.__columnss__["year"])
+print(Car.__columnss__["id"])

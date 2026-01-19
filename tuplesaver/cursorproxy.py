@@ -1,6 +1,7 @@
 # Provides various useful routines
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
 import apsw
@@ -34,7 +35,7 @@ class Lazy[Model]:
         if isinstance(other, int):
             return self._id == other
         elif type(other) is self._model:
-            return self._id == other[0]
+            return self._id == other.id
         elif isinstance(other, Lazy):
             return self._model == other._model and self._id == other._id
         return False
@@ -47,20 +48,23 @@ class Lazy[Model]:
 
 def _make_model_lazy[R: Row](RootModel: type[R], c: apsw.Cursor, root_row: apsw.SQLiteValues, engine: Engine) -> R:
     """Lazy loading of relationships, only fetches sub-models when accessed."""
-    # First just create the root RootModel with FKs in related fields
-    row = RootModel._make(root_row)
+    # For NamedTuples (ad-hoc models), just create directly without lazy loading
+    if not is_row_model(RootModel):
+        return RootModel._make(root_row)  # type: ignore[attr-defined]
+
+    # For Roww models, create with kwargs (handles kw_only id field)
+    meta = get_meta(RootModel)
+    field_names = [f.name for f in meta.fields]
+    row = RootModel(**dict(zip(field_names, root_row, strict=True)))
 
     # Now iterate over the fields and replace any foreign keys with Lazy proxies
-    if not is_row_model(RootModel):
-        return row  # return early if not a model
-
-    for idx, field in enumerate(get_meta(RootModel).fields):
-        if field.type is not None and is_row_model(field.type):
+    for idx, fld in enumerate(meta.fields):
+        if fld.type is not None and is_row_model(fld.type):
             # Replace with Lazy proxy
             fk_value = root_row[idx]
             assert isinstance(fk_value, int | type(None))
             if fk_value is not None:
-                row = row._replace(**{field.name: Lazy(engine, field.type, fk_value)})
+                row = replace(row, **{fld.name: Lazy(engine, fld.type, fk_value)})
 
     return row  # Return the root model with lazy-loaded relationships
 

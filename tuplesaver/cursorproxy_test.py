@@ -12,7 +12,6 @@ from .RM import Roww
 
 
 class M(Roww):
-    id: int | None
     name: str
     age: int
 
@@ -45,21 +44,21 @@ def test_proxy_typehints(proxy: TypedCursorProxy[M]) -> None:
 def test_proxy_fetchone(proxy: TypedCursorProxy[M]) -> None:
     row = proxy.fetchone()
     assert type(row) is M
-    assert row == M(1, "Alice", 30)
+    assert row == M("Alice", 30, id=1)
 
 
 def test_proxy_fetchall(proxy: TypedCursorProxy[M]) -> None:
     rows = proxy.fetchall()
-    assert rows == [M(1, "Alice", 30), M(2, "Bob", 40)]
+    assert rows == [M("Alice", 30, id=1), M("Bob", 40, id=2)]
 
 
 def test_proxy__after_usage__rowfactory_persists(proxy: TypedCursorProxy[M]) -> None:
     row = proxy.fetchone()
-    assert row == M(1, "Alice", 30)
+    assert row == M("Alice", 30, id=1)
 
     row = proxy.fetchone()
     assert proxy.row_trace is not None
-    assert row == M(2, "Bob", 40)
+    assert row == M("Bob", 40, id=2)
 
 
 def test_proxy__fetchone_returns_none(proxy: TypedCursorProxy[M]) -> None:
@@ -107,22 +106,22 @@ def test_lazy__lazyid_and_int_same__are_equal() -> None:
 
 def test_lazy__ids_same__are_equal() -> None:
     l1 = Lazy(None, M, 1)  # type: ignore
-    m1 = M(1, "Alice", 30)
-    m1 = M(1, "Alice", 30)
+    m1 = M("Alice", 30, id=1)
+    m1 = M("Alice", 30, id=1)
     assert l1 == m1
     assert m1 == l1
 
 
 def test_lazy__ids_different__are_not_equal() -> None:
     l1 = Lazy(None, M, 1)  # type: ignore
-    m1 = M(2, "Bob", 40)
+    m1 = M("Bob", 40, id=2)
     assert l1 != m1
     assert m1 != l1
 
 
 def test_lazy__models_different__are_not_equal() -> None:
     class N(NamedTuple):
-        id: int | None
+        pass
 
     l1 = Lazy(None, M, 1)  # type: ignore
     l2 = Lazy(None, N, 1)  # type: ignore
@@ -132,7 +131,7 @@ def test_lazy__models_different__are_not_equal() -> None:
 
 def test_lazy__lazymodel_and_model_different__are_not_equal() -> None:
     class N(NamedTuple):
-        id: int | None
+        id: int
 
     l1 = Lazy(None, M, 1)  # type: ignore
     n1 = N(1)
@@ -144,13 +143,14 @@ def test_lazy__lazymodel_and_model_different__are_not_equal() -> None:
 def test_proxy__relations_can_be_fetched_lazily(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Person)
-    team = engine.save(Team(None, "Team A", 5))
-    person = engine.save(Person(None, "Alice", team))
+    team = engine.save(Team("Team A", 5))
+    person = engine.save(Person("Alice", team))
 
     found_person = engine.find(Person, person.id)
 
     assert found_person == person  # equal despite not having relationship loaded
-    assert isinstance(found_person[2], Lazy)
+    # Access raw field value (before Lazy is unwrapped) via object.__getattribute__
+    assert isinstance(object.__getattribute__(found_person, 'team'), Lazy)
     assert isinstance(found_person.team, Team)
     assert found_person.team.id == team.id
     assert found_person.team.name == team.name
@@ -160,8 +160,8 @@ def test_proxy__relations_can_be_fetched_lazily(engine: Engine) -> None:
 def test_proxy__lazy_relations__equal_by_id(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Person)
-    team = engine.save(Team(None, "Team A", 5))
-    person = engine.save(Person(None, "Alice", team))
+    team = engine.save(Team("Team A", 5))
+    person = engine.save(Person("Alice", team))
 
     found_person1 = engine.find(Person, person.id)
     found_person2 = engine.find(Person, person.id)
@@ -177,9 +177,9 @@ def test_proxy__lazy_query__multiple_rows__doesnt_fail(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.ensure_table_created(Person)
 
-    team = engine.save(Team(None, "Team A", 5))
-    person1 = engine.save(Person(None, "Alice", team))
-    person2 = engine.save(Person(None, "Bob", team))
+    team = engine.save(Team("Team A", 5))
+    person1 = engine.save(Person("Alice", team))
+    person2 = engine.save(Person("Bob", team))
 
     rows = engine.query(Person, "SELECT * FROM Person;").fetchall()
 

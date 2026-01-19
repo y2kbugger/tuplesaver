@@ -52,7 +52,8 @@ native_columntypes: dict[type, str] = {
 def is_row_model(cls: object) -> bool:
     """Test at runtime whether an object is a Row, e.g. a NamedTuple model"""
     if hasattr(cls, "__dict__"):
-        return "_meta" in cls.__dict__
+        # Check for either initialized _meta or lazy marker
+        return "_meta" in cls.__dict__ or "_lazy_meta" in cls.__dict__
     else:
         return False
 
@@ -83,7 +84,7 @@ def get_meta(Model: type[Row]) -> Meta:
 
 def make_model_meta(Model: type[Row]) -> Meta:
     annotations = _get_resolved_annotations(Model)
-    fieldnames = Model._fields
+    fieldnames = Model.__dataclass_fields__.keys()
     full_types = tuple(annotations.values())
     unwrapped_types = tuple(_unwrap_optional_type(t) for t in full_types)
 
@@ -113,10 +114,7 @@ def make_model_meta(Model: type[Row]) -> Meta:
     if "_" in meta.model_name:
         raise InvalidTableName(meta.model_name)
 
-    # Check that the first field is `id: int | None`
-    field_zero = meta.fields[0]
-    if field_zero.name != "id" or field_zero.full_type != (int | None):
-        raise FieldZeroIdRequired(meta.model_name, field_zero.name, field_zero.full_type)
+    # Note: id field validation removed - it's now inherited from Roww base class
 
     # monkey-patch Model so any Lazy field is transparently unwrapped
     from .cursorproxy import Lazy
@@ -187,11 +185,25 @@ def _unwrap_optional_type(type_hint: Any) -> tuple[bool, Any]:
 
 
 def _get_resolved_annotations(Model: Any) -> dict[str, Any]:
-    """Resolve ForwardRef type hints by combining all local and global namespaces up the call stack."""
+    """Resolve ForwardRef type hints by combining all local and global namespaces up the call stack.
+
+    Includes inherited annotations from base classes.
+    """
     globalns = getattr(inspect.getmodule(Model), "__dict__", {})
     localns = {}
 
     for frame in inspect.stack():
         localns.update(frame.frame.f_locals)
 
-    return get_type_hints(Model, globalns=globalns, localns=localns)
+    # get_type_hints includes inherited annotations
+    hints = get_type_hints(Model, globalns=globalns, localns=localns, include_extras=True)
+
+    # Ensure ordering matches dataclass field order
+    if hasattr(Model, "__dataclass_fields__"):
+        ordered = {}
+        for name in Model.__dataclass_fields__:
+            if name in hints:
+                ordered[name] = hints[name]
+        return ordered
+
+    return hints

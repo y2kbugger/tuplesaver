@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from dataclasses import fields
 from typing import Any, NamedTuple
 
 import pytest
@@ -29,7 +30,6 @@ def test_ensure_table_created__any_type__raises(engine: Engine) -> None:
 
 def test_ensure_table_created__optional_any_type__raises(engine: Engine) -> None:
     class T(Roww):
-        id: int | None
         data: Any | None
 
     with pytest.raises(UnregisteredFieldTypeError):
@@ -40,7 +40,6 @@ def test_ensure_table_created__unregistered_columntype__raises(engine: Engine) -
     from array import array
 
     class T(Roww):
-        id: int | None
         data: array
 
     with pytest.raises(UnregisteredFieldTypeError):
@@ -49,7 +48,6 @@ def test_ensure_table_created__unregistered_columntype__raises(engine: Engine) -
 
 def test_ensure_table_created(engine: Engine) -> None:
     class TblDates(Roww):
-        id: int | None
         name: str
         score: float
         age: int
@@ -76,7 +74,7 @@ def test_ensure_table_created(engine: Engine) -> None:
     # Columns
     cols = engine.query(TableInfo, f"PRAGMA table_info({TblDates.__name__})").fetchall()
 
-    assert len(cols) == len(TblDates._fields)
+    assert len(cols) == len(fields(TblDates))
 
     assert cols[0] == TableInfo(0, "id", "INTEGER", 1, None, 1)
     assert cols[1] == TableInfo(1, "name", "TEXT", 1, None, 0)
@@ -90,10 +88,9 @@ def test_ensure_table_created(engine: Engine) -> None:
 
 def test_ensure_table_created_with_related_table(engine: Engine) -> None:
     class A(Roww):
-        id: int | None
+        pass
 
     class B(Roww):
-        id: int | None
         team: A
 
     engine.ensure_table_created(A)
@@ -101,7 +98,7 @@ def test_ensure_table_created_with_related_table(engine: Engine) -> None:
 
     cols = engine.query(TableInfo, f"PRAGMA table_info({B.__name__})").fetchall()
 
-    assert len(cols) == len(B._fields)
+    assert len(cols) == len(fields(B))
 
     assert cols[0] == TableInfo(0, "id", "INTEGER", 1, None, 1)
     assert cols[1] == TableInfo(1, "team", "A_ID", 1, None, 0)
@@ -109,10 +106,9 @@ def test_ensure_table_created_with_related_table(engine: Engine) -> None:
 
 def test_ensure_table_created_with_optional_related_table(engine: Engine) -> None:
     class A(Roww):
-        id: int | None
+        pass
 
     class B(Roww):
-        id: int | None
         team: A | None  # Optional relationship
 
     engine.ensure_table_created(A)
@@ -120,7 +116,7 @@ def test_ensure_table_created_with_optional_related_table(engine: Engine) -> Non
 
     cols = engine.query(TableInfo, f"PRAGMA table_info({B.__name__})").fetchall()
 
-    assert len(cols) == len(B._fields)
+    assert len(cols) == len(fields(B))
 
     assert cols[0] == TableInfo(0, "id", "INTEGER", 1, None, 1)
     assert cols[1] == TableInfo(1, "team", "A_ID", 0, None, 0)
@@ -128,7 +124,6 @@ def test_ensure_table_created_with_optional_related_table(engine: Engine) -> Non
 
 def test_ensure_table_created_with_table_already_created_correct_is_silent(engine: Engine) -> None:
     class TblAlreadyCreated(Roww):
-        id: int | None
         name: str
         age: int
 
@@ -138,14 +133,12 @@ def test_ensure_table_created_with_table_already_created_correct_is_silent(engin
 
 def test_ensure_table_created_with_table_already_created_incorrect_raises(engine: Engine) -> None:
     class TblAlreadyCreated(Roww):  # type: ignore shadowing is part of the test
-        id: int | None
         name: str
         age: int
 
     engine.ensure_table_created(TblAlreadyCreated)
 
     class TblAlreadyCreated(Roww):
-        id: int | None
         name: str
         age: int
         data: bytes
@@ -156,7 +149,6 @@ def test_ensure_table_created_with_table_already_created_incorrect_raises(engine
 
 def test_ensure_table_created_catches_mismatched_from_out_of_band_alters(engine: Engine) -> None:
     class TblAlreadyCreated(Roww):
-        id: int | None
         name: str
         age: int
 
@@ -170,7 +162,6 @@ def test_ensure_table_created_catches_mismatched_from_out_of_band_alters(engine:
 
 def test_ensure_table_created__nontable_model_raises(engine: Engine) -> None:
     class NonTable_Model(Roww):
-        id: int | None
         name: str
 
     with pytest.raises(InvalidTableName):

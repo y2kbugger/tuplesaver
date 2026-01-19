@@ -4,6 +4,7 @@ import logging
 import os
 import re
 from collections.abc import Sequence
+from dataclasses import fields, replace
 from typing import Any, overload
 
 import apsw.bestpractice
@@ -13,10 +14,10 @@ from .cursorproxy import TypedCursorProxy
 
 # NOTE: engine.py should only know about .model, but not .query
 from .model import (
-    Row,
     get_meta,
     is_row_model,
 )
+from .RM import Roww
 from .sql import (
     generate_create_table_ddl,
     generate_delete_sql,
@@ -37,7 +38,7 @@ class TableSchemaMismatch(Exception):
 
 
 class UnpersistedRelationshipError(Exception):
-    def __init__(self, model_name: str, field_name: str, row: Row) -> None:
+    def __init__(self, model_name: str, field_name: str, row: Roww) -> None:
         super().__init__(self, f"Cannot save {model_name} with unpersisted {model_name}.{field_name} of row {row}")
 
 
@@ -52,7 +53,7 @@ class NoKwargFieldSpecifiedError(ValueError):
 
 
 class InvalidKwargFieldSpecifiedError(ValueError):
-    def __init__(self, Model: type[Row], kwargs: dict[str, Any]) -> None:
+    def __init__(self, Model: type[Roww], kwargs: dict[str, Any]) -> None:
         super().__init__(f"Invalid fields for {Model.__name__}: {', '.join(kwargs.keys())}. Valid fields are: {', '.join(f.name for f in get_meta(Model).fields)}")
 
 
@@ -88,7 +89,7 @@ class Engine:
         self.adapt_convert_registry = AdaptConvertRegistry()
         self.connection.cursor_factory = self.adapt_convert_registry
 
-    def ensure_table_created(self, Model: type[Row]) -> None:
+    def ensure_table_created(self, Model: type[Roww]) -> None:
         meta = get_meta(Model)
         ddl = generate_create_table_ddl(Model)
 
@@ -126,17 +127,17 @@ class Engine:
         except Exception as e:
             raise e
 
-        self.adapt_convert_registry.register_adapt_convert(Model, adapt=lambda row: row[0], convert=lambda _id: _id)
+        self.adapt_convert_registry.register_adapt_convert(Model, adapt=lambda row: row.id, convert=lambda _id: _id)
 
     ##### Reading
-    def find[R: Row](self, Model: type[R], row_id: int | None) -> R:
+    def find[R: Roww](self, Model: type[R], row_id: int | None) -> R:
         """Find a row by its id. This is a special case of find_by."""
         if row_id is None:
             raise IdNoneError("Cannot SELECT, id=None")
 
         return self.find_by(Model, id=row_id)
 
-    def find_by[R: Row](self, Model: type[R], **kwargs: Any) -> R:
+    def find_by[R: Roww](self, Model: type[R], **kwargs: Any) -> R:
         """Find a row by its fields, e.g. `find_by(Model, name="Alice")`"""
 
         if not kwargs:
@@ -162,41 +163,43 @@ class Engine:
 
         return row
 
-    def query[R: Row](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple()) -> TypedCursorProxy[R]:
+    def query[R: Roww](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple()) -> TypedCursorProxy[R]:
         cursor = self.connection.execute(sql, parameters)
         return TypedCursorProxy.proxy_cursor_lazy(Model, cursor, self)
 
     #### Writing
-    def save[R: Row](self, row: R) -> R:
+    def save[R: Roww](self, row: R) -> R:
         """insert or update records, based on the presence of an id"""
 
         # Don't allow saving if a related row is not persisted
-        if any(related_row.id is None for related_row in row[1:] if is_row_model(related_row.__class__)):
-            raise UnpersistedRelationshipError(type(row).__name__, "related row", row)
+        for f in fields(row)[1:]:  # skip id field
+            related_row = getattr(row, f.name)
+            if is_row_model(related_row.__class__) and related_row.id is None:
+                raise UnpersistedRelationshipError(type(row).__name__, f.name, row)
 
-        if row[0] is None:
+        if row.id is None:
             insert = generate_insert_sql(type(row))
-            self.connection.execute(insert, row._asdict())
-            return row._replace(id=self.connection.last_insert_rowid())
+            self.connection.execute(insert, vars(row))
+            return replace(row, id=self.connection.last_insert_rowid())
         else:
             update = generate_update_sql(type(row))
-            self.connection.execute(update, row._asdict())
+            self.connection.execute(update, vars(row))
             if self.connection.changes() == 0:
-                raise MatchNotFoundError(f"Cannot UPDATE, no row with id={row[0]} in table `{row.__class__.__name__}`")
+                raise MatchNotFoundError(f"Cannot UPDATE, no row with id={row.id} in table `{row.__class__.__name__}`")
             return row
 
     @overload
-    def delete(self, Model: type[Row], row_id: int | None) -> None: ...
+    def delete(self, Model: type[Roww], row_id: int | None) -> None: ...
 
     @overload
-    def delete(self, row: Row) -> None: ...
+    def delete(self, row: Roww) -> None: ...
 
-    def delete(self, Model_or_row: type[Row] | Row, row_id: int | None = None) -> None:  # pyright: ignore [reportInconsistentOverload] allow overloads with different parameter names
+    def delete(self, Model_or_row: type[Roww] | Roww, row_id: int | None = None) -> None:  # pyright: ignore [reportInconsistentOverload] allow overloads with different parameter names
         if not isinstance(Model_or_row, type):
             row = Model_or_row
             Model = row.__class__
             assert row_id is None, "Do not provide row_id when passing a row instance."
-            row_id = row[0]
+            row_id = row.id
         else:
             Model = Model_or_row
 
