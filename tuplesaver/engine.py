@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from dataclasses import fields, replace
 from typing import Any, overload
 
-import apsw.bestpractice
+import apsw
 
 from .adaptconvert import AdaptConvertRegistry
 from .cursorproxy import TypedCursorProxy
@@ -27,7 +27,6 @@ from .sql import (
 )
 
 logger = logging.getLogger(__name__)
-apsw.bestpractice.apply(apsw.bestpractice.recommended)
 
 
 class TableSchemaMismatch(Exception):
