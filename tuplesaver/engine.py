@@ -81,9 +81,13 @@ class MatchNotFoundError(ValueError):
 
 
 class Engine:
-    def __init__(self, db_path: str | os.PathLike[str]) -> None:
-        self.db_path = db_path
-        self.connection: apsw.Connection = apsw.Connection(str(db_path))
+    def __init__(self, db_path: str | os.PathLike[str] | apsw.Connection) -> None:
+        if isinstance(db_path, apsw.Connection):
+            self.connection = db_path
+            self.db_path = self.connection.filename
+        else:
+            self.db_path = db_path
+            self.connection: apsw.Connection = apsw.Connection(str(db_path))
 
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.adapt_convert_registry = AdaptConvertRegistry()
