@@ -144,8 +144,8 @@ def test_column_definition() -> None:
     class ModelA(Roww):
         name: str
 
-    assert _sql_columndef("moda", False, ModelA) == "moda [ModelA_ID] NOT NULL"
-    assert _sql_columndef("moda", True, ModelA) == "moda [ModelA_ID] NULL"
+    assert _sql_columndef("moda", False, ModelA) == "moda [ModelA_ID] NOT NULL REFERENCES ModelA(id)"
+    assert _sql_columndef("moda", True, ModelA) == "moda [ModelA_ID] NULL REFERENCES ModelA(id)"
 
 
 def test_meta__model_missing_id() -> None:

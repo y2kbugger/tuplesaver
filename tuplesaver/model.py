@@ -153,7 +153,13 @@ def _sql_columndef(field_name: str, nullable: bool, FieldType: type) -> str:
 
     columntype = schematype(FieldType)
 
-    return f"{field_name} [{columntype}] {nullable_sql}"
+    # Add FK constraint for related models
+    if is_row_model(FieldType):
+        fk_clause = f" REFERENCES {FieldType.__name__}(id)"
+    else:
+        fk_clause = ""
+
+    return f"{field_name} [{columntype}] {nullable_sql}{fk_clause}"
 
 
 def _unwrap_optional_type(type_hint: Any) -> tuple[bool, Any]:
