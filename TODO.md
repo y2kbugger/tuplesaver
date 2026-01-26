@@ -3,50 +3,41 @@ combine rowtrace for type converting types and lazy maker all together
 pragma user_version and pragma application_id for versioning and migrations
 https://rogerbinns.github.io/apsw/tips.html#query-patterns
 
-## Roww Model
-- relax eager enforcement of FK Models being registered
-  - Test case for this
-- Test case that you cannot subclass a model, e.g.
-  ```python
-  class BaseModel(Roww):
-      id: int | None
-
-  class SubModel(BaseModel):  # should raise
-      name: str
-  ```
-- Move lazy proxy descriptors to metaclass RM.py
-- Try and rework def Roww to just be a class??
+## TableRow Model
+- inline get_meta to just Model.meta
+- disambiguate Row vs TableRow in relation to `is_row_model` and `get_meta`
+- Move lazy proxy descriptors to the metaclass
 - Move model metaclass to model.py after cleanup
 - Find a remove unused exceptions
-- Resolve ergonomics of using a NamedTuple based Adhoc model when running e.query
-- Worry about types last
 - fix all ty and ruff errors in all files
-- Document RM deeply compared to typing.NamedTuple
 - Document how any type that implements buffer is auto adapted and you only need to add converter for it (might me annonying if trying to just pickle a numpy array)
 - test that you can add extra defs to a model without things blowing up (or add eager enforcement that you can't do this)
 
 ## Other
-- confusion between ensure created and check created and "auto create"......
 - how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?
   - then we can use that exact where clause in select, update, and delete
     - attempt to overload these in a way feels natural, e.g. find returns one, select returns many, update and delete can work either by id or by where clause.
     - Also allow an fstring for the where clause, e.g. `engine.find(MyModel, f"{MyModel.name} = 'Bart'")`
     - maybe we can rely on our getattribute hack to make fstrings work without AST hacking.
-- Add foreign key constraints to the table creation
-  - through the metadata system?? appending to meta during ensure_table_created?
-  `foreign key (team_id) references Team(id)`
 - Think about asymmetry between getting a cursor proxy from query vs getting collection from foreign key relationships
   - how often do we need to control fetchall vs fetchmany.
-- I'm also thinking perfect typing through querying is less important that minimizing the amount of concepts and magic.
-  - rich hickey said typo errors are the easiest to fix and to not worry about them.
-- Explore DCT file and think about id as a default field, (or is that just more magic?)
 - NewType instead of type aliasing for Row?
-
 
 # Bugs
 
 
 # Testing
+- test `Any` type on TableRow models. Ban? Allow?
+- relax eager enforcement of FK Models being registered
+    - Test case for this
+- Test case that you cannot subclass a model, e.g.
+    ```python
+    class BaseModel(TableRow):
+        name: str
+
+    class SubModel(BaseModel):  # should raise
+        boogie: int
+    ```
 - test that adapt convert can't be added after Models start being registered.
 - test that everything works on when doing arbitrary adhoc model queries that select FK in as model relationships
 - unit test for self join also
@@ -252,6 +243,7 @@ Off by default, but can be enabled with
 - However it works, i would really like to be able to have models scoped to a
 single module, without any import dances one way or another.eg. importing
 blueprints/app objects, or importing models just to register them.
+- confusion between ensure created and check created and "auto create"......
 
 ## Migrations
 - consider https://martinfowler.com/articles/evodb.html
