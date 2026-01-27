@@ -130,6 +130,7 @@ class Engine:
                     query = f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table_name}'"
                     cursor = self.connection.execute(query)
                     result = cursor.fetchone()
+                    cursor.close()
                     assert result is not None, f"Table {table_name} not found in sqlite_master"
                     return result[0]
 
@@ -172,7 +173,9 @@ class Engine:
         # Use cached query generation
         sql = generate_select_by_field_sql(Model, frozenset(kwargs.keys()))
 
-        row = self.query(Model, sql, kwargs).fetchone()
+        cur = self.query(Model, sql, kwargs)
+        row = cur.fetchone()
+        cur.close()
 
         if row is None:
             kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
