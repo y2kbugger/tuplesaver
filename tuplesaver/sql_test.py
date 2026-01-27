@@ -2,20 +2,19 @@ from textwrap import dedent
 
 import pytest
 
-from .RM import Roww
-from .sql import QueryError, select
+from .sql import QueryError, TableRow, select
 
 
-class League(Roww):
+class League(TableRow):
     leaguename: str
 
 
-class Team(Roww):
+class Team(TableRow):
     teamname: str
     league: League
 
 
-class Athlete(Roww):
+class Athlete(TableRow):
     name: str
     team: Team
 

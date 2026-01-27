@@ -14,10 +14,10 @@ from .cursorproxy import TypedCursorProxy
 
 # NOTE: engine.py should only know about .model, but not .query
 from .model import (
-    get_meta,
+    Row,
+    TableRow,
     is_row_model,
 )
-from .RM import Roww
 from .sql import (
     generate_create_table_ddl,
     generate_delete_sql,
@@ -37,7 +37,7 @@ class TableSchemaMismatch(Exception):
 
 
 class UnpersistedRelationshipError(Exception):
-    def __init__(self, model_name: str, field_name: str, row: Roww) -> None:
+    def __init__(self, model_name: str, field_name: str, row: TableRow) -> None:
         super().__init__(self, f"Cannot save {model_name} with unpersisted {model_name}.{field_name} of row {row}")
 
 
@@ -52,8 +52,8 @@ class NoKwargFieldSpecifiedError(ValueError):
 
 
 class InvalidKwargFieldSpecifiedError(ValueError):
-    def __init__(self, Model: type[Roww], kwargs: dict[str, Any]) -> None:
-        super().__init__(f"Invalid fields for {Model.__name__}: {', '.join(kwargs.keys())}. Valid fields are: {', '.join(f.name for f in get_meta(Model).fields)}")
+    def __init__(self, Model: type[TableRow], kwargs: dict[str, Any]) -> None:
+        super().__init__(f"Invalid fields for {Model.__name__}: {', '.join(kwargs.keys())}. Valid fields are: {', '.join(f.name for f in Model.meta.fields)}")
 
 
 class UnregisteredFieldTypeError(ValueError):
@@ -79,6 +79,18 @@ class MatchNotFoundError(ValueError):
     pass
 
 
+__all_errors__ = [
+    TableSchemaMismatch,
+    UnpersistedRelationshipError,
+    LookupByAdHocModelImpossible,
+    NoKwargFieldSpecifiedError,
+    InvalidKwargFieldSpecifiedError,
+    UnregisteredFieldTypeError,
+    IdNoneError,
+    MatchNotFoundError,
+]
+
+
 class Engine:
     def __init__(self, db_path: str | os.PathLike[str] | apsw.Connection) -> None:
         if isinstance(db_path, apsw.Connection):
@@ -87,13 +99,15 @@ class Engine:
         else:
             self.db_path = db_path
             self.connection: apsw.Connection = apsw.Connection(str(db_path))
+            self.connection.execute("PRAGMA journal_mode=WAL")
 
-        self.connection.execute("PRAGMA journal_mode=WAL")
         self.adapt_convert_registry = AdaptConvertRegistry()
         self.connection.cursor_factory = self.adapt_convert_registry
 
-    def ensure_table_created(self, Model: type[Roww]) -> None:
-        meta = get_meta(Model)
+    def ensure_table_created(self, Model: type[TableRow]) -> None:
+        assert is_row_model(Model), f"Model `{Model.__name__}` is not a valid table model."
+        meta = Model.meta
+
         ddl = generate_create_table_ddl(Model)
 
         for field in meta.fields:
@@ -133,14 +147,14 @@ class Engine:
         self.adapt_convert_registry.register_adapt_convert(Model, adapt=lambda row: row.id, convert=lambda _id: _id)
 
     ##### Reading
-    def find[R: Roww](self, Model: type[R], row_id: int | None) -> R:
+    def find[R: TableRow](self, Model: type[R], row_id: int | None) -> R:
         """Find a row by its id. This is a special case of find_by."""
         if row_id is None:
             raise IdNoneError("Cannot SELECT, id=None")
 
         return self.find_by(Model, id=row_id)
 
-    def find_by[R: Roww](self, Model: type[R], **kwargs: Any) -> R:
+    def find_by[R: TableRow](self, Model: type[R], **kwargs: Any) -> R:
         """Find a row by its fields, e.g. `find_by(Model, name="Alice")`"""
 
         if not kwargs:
@@ -149,7 +163,7 @@ class Engine:
         if not is_row_model(Model):
             raise LookupByAdHocModelImpossible(Model.__name__)
 
-        meta = get_meta(Model)
+        meta = Model.meta
 
         field_names = [f.name for f in meta.fields]
         if not all(k in field_names for k in kwargs):
@@ -166,12 +180,12 @@ class Engine:
 
         return row
 
-    def query[R: Roww](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple()) -> TypedCursorProxy[R]:
+    def query[R: Row | TableRow](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple()) -> TypedCursorProxy[R]:
         cursor = self.connection.execute(sql, parameters)
         return TypedCursorProxy.proxy_cursor_lazy(Model, cursor, self)
 
     #### Writing
-    def save[R: Roww](self, row: R) -> R:
+    def save[R: TableRow](self, row: R) -> R:
         """insert or update records, based on the presence of an id"""
 
         # Don't allow saving if a related row is not persisted
@@ -192,12 +206,12 @@ class Engine:
             return row
 
     @overload
-    def delete(self, Model: type[Roww], row_id: int | None) -> None: ...
+    def delete(self, Model: type[TableRow], row_id: int | None) -> None: ...
 
     @overload
-    def delete(self, row: Roww) -> None: ...
+    def delete(self, row: TableRow) -> None: ...
 
-    def delete(self, Model_or_row: type[Roww] | Roww, row_id: int | None = None) -> None:  # pyright: ignore [reportInconsistentOverload] allow overloads with different parameter names
+    def delete(self, Model_or_row: type[TableRow] | TableRow, row_id: int | None = None) -> None:  # pyright: ignore [reportInconsistentOverload] allow overloads with different parameter names
         if not isinstance(Model_or_row, type):
             row = Model_or_row
             Model = row.__class__
@@ -212,3 +226,6 @@ class Engine:
         self.connection.execute(query, {'id': row_id})
         if self.connection.changes() == 0:
             raise MatchNotFoundError(f"Cannot DELETE, no row with id={row_id} in table `{Model.__name__}`")
+
+
+__all__ = [Engine, *__all_errors__]

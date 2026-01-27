@@ -3,12 +3,46 @@ from __future__ import annotations
 import inspect
 import logging
 import types
-from typing import Any, NamedTuple, Union, get_args, get_origin, get_type_hints
+from dataclasses import dataclass, field
+from typing import Any, ClassVar, NamedTuple, Union, dataclass_transform, get_args, get_origin, get_type_hints
 
 logger = logging.getLogger(__name__)
 
 
-type Row = NamedTuple
+class LazyMeta:
+    """Descriptor that lazily creates and caches the Meta object on first access."""
+
+    def __get__(self, obj: Any, cls: type[TableRow]):
+        meta = make_model_meta(cls)
+        cls.meta = meta
+        return meta
+
+
+@dataclass_transform()
+class RowMeta(type):
+    """Metaclass that transforms classes into frozen dataclasses."""
+
+    meta: ClassVar[Meta]
+
+    def __new__(cls, typename: str, bases: tuple[type, ...], ns: dict[str, Any]) -> type:
+        new_cls = super().__new__(cls, typename, bases, ns)
+
+        # apply the dataclass decorator if not already applied
+        if "__dataclass_fields__" not in new_cls.__dict__:
+            new_cls = dataclass(new_cls)
+
+        # Add lazy _meta descriptor, subclasses each get their own Meta instance, thats why we add it here.
+        new_cls.meta = LazyMeta()  # type: ignore[attr-defined]
+
+        return new_cls
+
+
+class Row(metaclass=RowMeta):
+    pass
+
+
+class TableRow(metaclass=RowMeta):
+    id: int | None = field(default=None, kw_only=True)
 
 
 class ModelDefinitionError(Exception):
@@ -36,11 +70,6 @@ class InvalidTableName(ModelDefinitionError):
         super().__init__(f"Invalid table name: `{table_name}`. Table names must not contain underscores, these are reserved for alternate models.")
 
 
-class NotATableModel(ModelDefinitionError):
-    def __init__(self, model_name: str) -> None:
-        super().__init__(f"Model `{model_name}` is not a valid table model.")
-
-
 native_columntypes: dict[type, str] = {
     str: "TEXT",
     float: "REAL",
@@ -50,16 +79,12 @@ native_columntypes: dict[type, str] = {
 
 
 def is_row_model(cls: object) -> bool:
-    """Test at runtime whether an object is a Row, e.g. a NamedTuple model"""
-    if hasattr(cls, "__dict__"):
-        # Check for either initialized _meta or lazy marker
-        return "_meta" in cls.__dict__ or "_lazy_meta" in cls.__dict__
-    else:
-        return False
+    """Test at runtime whether an object is a Row, e.g. a TableRow model."""
+    return isinstance(cls, type) and issubclass(cls, TableRow)
 
 
 class Meta(NamedTuple):
-    Model: type[Row]
+    Model: type[TableRow]
     model_name: str
     table_name: str
     fields: tuple[MetaField, ...]
@@ -76,13 +101,7 @@ class MetaField(NamedTuple):
     sql_columndef: str
 
 
-def get_meta(Model: type[Row]) -> Meta:
-    if not is_row_model(Model):
-        raise NotATableModel(Model.__name__)
-    return Model._meta  # type: ignore[attr-defined]  # noqa: SLF001
-
-
-def make_model_meta(Model: type[Row]) -> Meta:
+def make_model_meta(Model: type[TableRow]) -> Meta:
     annotations = _get_resolved_annotations(Model)
     fieldnames = Model.__dataclass_fields__.keys()
     full_types = tuple(annotations.values())

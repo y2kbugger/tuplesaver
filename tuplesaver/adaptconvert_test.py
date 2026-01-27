@@ -6,11 +6,9 @@ from typing import Optional
 
 import pytest
 
-from .adaptconvert import (
-    InvalidAdaptConvertType,
-)
+from .adaptconvert import InvalidAdaptConvertType
 from .engine import Engine
-from .RM import Roww
+from .model import TableRow
 
 
 def test_registering_adapt_convert_pair(engine: Engine) -> None:
@@ -18,7 +16,7 @@ def test_registering_adapt_convert_pair(engine: Engine) -> None:
         def __init__(self, values: list[str]) -> None:
             self.values = values
 
-    class ModelUnknownType(Roww):
+    class ModelUnknownType(TableRow):
         name: str
         custom: NewType
 
@@ -111,7 +109,7 @@ def test_attempted_registration_of_already_registered_type(engine: Engine) -> No
 
 
 def test_can_store_and_retrieve_datetime_as_iso(engine: Engine) -> None:
-    class T(Roww):
+    class T(TableRow):
         date: dt.datetime
 
     engine.ensure_table_created(T)
@@ -124,7 +122,7 @@ def test_can_store_and_retrieve_datetime_as_iso(engine: Engine) -> None:
 
 
 def test_can_store_and_retrieve_date_as_iso(engine: Engine) -> None:
-    class T(Roww):
+    class T(TableRow):
         date: dt.date
 
     engine.ensure_table_created(T)
@@ -137,7 +135,7 @@ def test_can_store_and_retrieve_date_as_iso(engine: Engine) -> None:
 
 
 def test_can_store_and_retrieve_bool_as_int(engine: Engine) -> None:
-    class T(Roww):
+    class T(TableRow):
         flag: bool
 
     engine.ensure_table_created(T)
@@ -155,7 +153,7 @@ def test_can_store_and_retrieve_bool_as_int(engine: Engine) -> None:
 
 
 def test_can_store_and_retrieve_list_as_json(engine: Engine) -> None:
-    class T(Roww):
+    class T(TableRow):
         names: list
 
     engine.ensure_table_created(T)
@@ -168,7 +166,7 @@ def test_can_store_and_retrieve_list_as_json(engine: Engine) -> None:
 
 
 def test_can_store_and_retrieve_dict_as_json(engine: Engine) -> None:
-    class T(Roww):
+    class T(TableRow):
         names: dict
 
     engine.ensure_table_created(T)
@@ -181,7 +179,7 @@ def test_can_store_and_retrieve_dict_as_json(engine: Engine) -> None:
 
 
 def test_raises_on_json_when_nonserializeable(engine: Engine) -> None:
-    class T(Roww):
+    class T(TableRow):
         dates: list
 
     engine.ensure_table_created(T)
@@ -198,7 +196,7 @@ class PickleableTestType:
 
 
 def test_can_store_and_retrieve_pickleable_type(engine: Engine) -> None:
-    class T(Roww):
+    class T(TableRow):
         data: PickleableTestType
 
     engine.adapt_convert_registry.register_pickleable_adapt_convert(PickleableTestType)

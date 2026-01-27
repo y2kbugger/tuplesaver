@@ -7,15 +7,15 @@ from functools import cache, lru_cache, wraps
 from textwrap import dedent
 from typing import Any
 
-from .model import get_meta
-from .RM import Roww
+# NOTE: sql.py should only know about .model, but not .engine or .query
+from .model import TableRow
 
 
 class QueryError(Exception):
     pass
 
 
-class SelectDual[R: Roww](tuple[type[R], str]):
+class SelectDual[R: TableRow](tuple[type[R], str]):
     def __new__(cls, Model: type[R]) -> SelectDual[R]:
         # Create a tuple (Model, select_sql)
         select_sql = generate_select_sql(Model)
@@ -34,11 +34,11 @@ class SelectDual[R: Roww](tuple[type[R], str]):
         return wrapper
 
 
-def select[R: Roww](Model: type[R]) -> SelectDual[R]:
+def select[R: TableRow](Model: type[R]) -> SelectDual[R]:
     return SelectDual.__new__(SelectDual, Model)
 
 
-def render_query_def_func(Model: type[Roww], func: Callable) -> str:
+def render_query_def_func(Model: type[TableRow], func: Callable) -> str:
     source = inspect.getsource(func)
     source = dedent(source)
     tree = ast.parse(source)
@@ -53,7 +53,7 @@ def render_query_def_func(Model: type[Roww], func: Callable) -> str:
     parameter_names = set(inspect.signature(func).parameters.keys())
     unused_parameters = parameter_names.copy()
 
-    basemeta = Model._meta
+    basemeta = Model.meta
     for v in js.values:
         match v:
             case ast.Constant():
@@ -91,7 +91,7 @@ def render_query_def_func(Model: type[Roww], func: Callable) -> str:
                             for field in meta.fields:
                                 if field.name == attrlevel.attr:
                                     found_intermediatte_field = field
-                                    meta = get_meta(field.type)
+                                    meta = field.type.meta
                                     jalias = "_".join(join_alias_parts)
                                     joins[jalias] = f"JOIN {meta.table_name} {jalias} ON {last_jalias}.{field.name} = {jalias}.id"
                                     last_jalias = "_".join(join_alias_parts)
@@ -138,9 +138,9 @@ def render_query_def_func(Model: type[Roww], func: Callable) -> str:
 
 
 @cache
-def generate_create_table_ddl(Model: type[Roww]) -> str:
+def generate_create_table_ddl(Model: type[TableRow]) -> str:
     """Generate CREATE TABLE DDL statement for a table model."""
-    meta = get_meta(Model)
+    meta = Model.meta
     assert meta.table_name is not None, "Table name must be defined for the model to create it."
     ddl = dedent(f"""
         CREATE TABLE {meta.table_name} (
@@ -151,14 +151,14 @@ def generate_create_table_ddl(Model: type[Roww]) -> str:
 
 
 @cache
-def generate_select_sql(Model: type[Roww]) -> str | None:
-    meta = get_meta(Model)
+def generate_select_sql(Model: type[TableRow]) -> str | None:
+    meta = Model.meta
     assert meta.table_name is not None, "Table name must be defined for the model"
     return f"SELECT {', '.join(meta.table_name + '.' + f.name for f in meta.fields)} FROM {meta.table_name}"
 
 
 @lru_cache(maxsize=256)
-def generate_select_by_field_sql(Model: type[Roww], field_names: frozenset[str]) -> str:
+def generate_select_by_field_sql(Model: type[TableRow], field_names: frozenset[str]) -> str:
     select = generate_select_sql(Model)
     where_clause = " AND ".join(f"{field} = :{field}" for field in sorted(field_names))
     return dedent(f"""
@@ -168,8 +168,8 @@ def generate_select_by_field_sql(Model: type[Roww], field_names: frozenset[str])
 
 
 @cache
-def generate_insert_sql(Model: type[Roww]) -> str:
-    meta = get_meta(Model)
+def generate_insert_sql(Model: type[TableRow]) -> str:
+    meta = Model.meta
     assert meta.table_name is not None, "Table name must be defined for the model to modify it."
     return dedent(f"""
         INSERT INTO {meta.table_name} (
@@ -180,8 +180,8 @@ def generate_insert_sql(Model: type[Roww]) -> str:
 
 
 @cache
-def generate_update_sql(Model: type[Roww]) -> str:
-    meta = get_meta(Model)
+def generate_update_sql(Model: type[TableRow]) -> str:
+    meta = Model.meta
     assert meta.table_name is not None, "Table name must be defined for the model to modify it."
     return dedent(f"""
         UPDATE {meta.table_name}
@@ -191,8 +191,8 @@ def generate_update_sql(Model: type[Roww]) -> str:
 
 
 @cache
-def generate_delete_sql(Model: type[Roww]) -> str:
-    meta = get_meta(Model)
+def generate_delete_sql(Model: type[TableRow]) -> str:
+    meta = Model.meta
     assert meta.table_name is not None, "Table name must be defined for the model to modify it."
     return dedent(f"""
         DELETE FROM {meta.table_name}

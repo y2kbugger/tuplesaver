@@ -7,8 +7,10 @@ from typing import TYPE_CHECKING, cast
 import apsw
 import apsw.unicode
 
+from tuplesaver.model import TableRow
+
 # NOTE: cursorproxy.py should only know about .model
-from .model import Row, get_meta, is_row_model
+from .model import Row, is_row_model
 
 if TYPE_CHECKING:
     from .engine import Engine
@@ -48,15 +50,18 @@ class Lazy[Model]:
 
 def _make_model_lazy[R: Row](RootModel: type[R], c: apsw.Cursor, root_row: apsw.SQLiteValues, engine: Engine) -> R:
     """Lazy loading of relationships, only fetches sub-models when accessed."""
-    # For NamedTuples (ad-hoc models), just create directly without lazy loading
-    if not is_row_model(RootModel):
-        return RootModel._make(root_row)  # type: ignore[attr-defined]
 
     # For Roww models, create with kwargs (handles kw_only id field)
-    meta = get_meta(RootModel)
-    field_names = [f.name for f in meta.fields]
+    # dataclasses model
+    field_names = [f for f in RootModel.__dataclass_fields__]
     row = RootModel(**dict(zip(field_names, root_row, strict=True)))
 
+    if not is_row_model(RootModel):
+        # adhoc dataclass
+        return row
+
+    RootModel: type[TableRow] = cast(type[TableRow], RootModel)
+    meta = RootModel.meta
     # Now iterate over the fields and replace any foreign keys with Lazy proxies
     for idx, fld in enumerate(meta.fields):
         if fld.type is not None and is_row_model(fld.type):

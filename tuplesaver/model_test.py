@@ -9,13 +9,13 @@ from .model import (
     FieldZeroIdMalformed,
     Meta,
     MetaField,
+    Row,
+    TableRow,
     _sql_columndef,
     _unwrap_optional_type,
-    get_meta,
     is_row_model,
     schematype,
 )
-from .RM import Roww
 
 
 def test_unwrap_optional_type() -> None:
@@ -77,7 +77,7 @@ def test_is_row_model() -> None:
     assert is_row_model(int | str) is False
     assert is_row_model(int | None) is False
 
-    class Model(Roww):
+    class Model(TableRow):
         name: str
 
     assert is_row_model(Model) is True
@@ -98,8 +98,17 @@ def test_is_row_model() -> None:
 
     assert is_row_model(DCModel) is False
 
+    class AdHocModel(Row):
+        score: float
 
-def test_get_sqltypename() -> None:
+    assert is_row_model(AdHocModel) is False
+
+    class Obj: ...
+
+    assert is_row_model(Obj) is False
+
+
+def test_sqltypename() -> None:
     assert schematype(int) == "INTEGER"
     assert schematype(str) == "TEXT"
     assert schematype(float) == "REAL"
@@ -112,25 +121,10 @@ def test_get_sqltypename() -> None:
     assert schematype(dt.datetime) == "datetime.datetime"
 
     # Test related models as fields
-    class ModelA(Roww):
+    class ModelA(TableRow):
         name: str
 
     assert schematype(ModelA) == "ModelA_ID"
-
-
-def test_get_meta__valid_table_model() -> None:
-    class ModelA(Roww):
-        name: str
-
-    assert get_meta(ModelA) == Meta(
-        Model=ModelA,
-        model_name="ModelA",
-        table_name="ModelA",
-        fields=(
-            MetaField(name="id", type=int, full_type=int | None, nullable=True, is_fk=False, is_pk=True, sql_typename="INTEGER", sql_columndef="id [INTEGER] PRIMARY KEY NOT NULL"),
-            MetaField(name="name", type=str, full_type=str, nullable=False, is_fk=False, is_pk=False, sql_typename="TEXT", sql_columndef="name [TEXT] NOT NULL"),
-        ),
-    )
 
 
 def test_column_definition() -> None:
@@ -141,7 +135,7 @@ def test_column_definition() -> None:
     assert _sql_columndef("value", False, float) == "value [REAL] NOT NULL"
     assert _sql_columndef("value", True, float) == "value [REAL] NULL"
 
-    class ModelA(Roww):
+    class ModelA(TableRow):
         name: str
 
     assert _sql_columndef("moda", False, ModelA) == "moda [ModelA_ID] NOT NULL REFERENCES ModelA(id)"
@@ -152,19 +146,34 @@ def test_meta__model_missing_id() -> None:
     """With Roww base class, id is always inherited - test removed as no longer applicable"""
 
     # The id field is now always inherited from Roww, so this test is no longer needed
-    class TWithInheritedId(Roww):
+    class TWithInheritedId(TableRow):
         name: str
 
     # This should work fine - id is inherited
-    meta = get_meta(TWithInheritedId)
+    meta = TWithInheritedId.meta
     assert meta.fields[0].name == "id"
+
+
+def test_meta__valid_table_model() -> None:
+    class ModelA(TableRow):
+        name: str
+
+    assert ModelA.meta == Meta(
+        Model=ModelA,
+        model_name="ModelA",
+        table_name="ModelA",
+        fields=(
+            MetaField(name="id", type=int, full_type=int | None, nullable=True, is_fk=False, is_pk=True, sql_typename="INTEGER", sql_columndef="id [INTEGER] PRIMARY KEY NOT NULL"),
+            MetaField(name="name", type=str, full_type=str, nullable=False, is_fk=False, is_pk=False, sql_typename="TEXT", sql_columndef="name [TEXT] NOT NULL"),
+        ),
+    )
 
 
 def test_meta__model_malformed_id_raises() -> None:
     """Overriding id with wrong type causes TypeError at class definition time"""
     with pytest.raises(TypeError, match="non-default argument"):
 
-        class TBadID(Roww):
+        class TBadID(TableRow):
             id: str | None  # id is not int - override causes kw_only conflict
             name: str
 
@@ -173,48 +182,48 @@ def test_meta__model_id_not_optional() -> None:
     """Overriding id to be non-optional causes TypeError at class definition time"""
     with pytest.raises(TypeError, match="non-default argument"):
 
-        class TBadID(Roww):
+        class TBadID(TableRow):
             id: int  # id is not optional - override causes kw_only conflict
             name: str
 
 
 def test_table_meta___related_model() -> None:
-    class A(Roww):
+    class A(TableRow):
         name: str
 
-    class B(Roww):
+    class B(TableRow):
         name: str
         unknown: A
 
-    get_meta(B)
+    _ = B.meta
 
 
 def test_table_meta__related_model_containing_class_declared_first() -> None:
-    """This works because we made M._meta a lazy lambda, which initializes only when first accessed."""
+    """This works because we made M.meta a lazy lambda, which initializes only when first accessed."""
 
-    class B(Roww):
+    class B(TableRow):
         name: str
         unknown: A
 
-    class A(Roww):
+    class A(TableRow):
         name: str
 
-    get_meta(B)
+    _ = B.meta
 
 
 def test_table_meta__related_model_recursive() -> None:
-    class A(Roww):
+    class A(TableRow):
         name: str
         a: A | None
 
-    get_meta(A)
+    _ = A.meta
 
 
 def test_table_meta__unregistered_field_type__doesnt_raise() -> None:
     class NewType: ...
 
-    class ModelUnknownType(Roww):
+    class ModelUnknownType(TableRow):
         name: str
         unknown: NewType
 
-    get_meta(ModelUnknownType)
+    _ = ModelUnknownType.meta

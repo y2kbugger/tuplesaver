@@ -5,13 +5,13 @@ from typing import NamedTuple, assert_type
 import apsw
 import pytest
 
-from .cursorproxy import Lazy, TypedCursorProxy
+from .cursorproxy import Lazy, TableRow, TypedCursorProxy
 from .engine import Engine
 from .engine_test import Person, Team
-from .RM import Roww
+from .model import Row
 
 
-class M(Roww):
+class M(TableRow):
     name: str
     age: int
 
@@ -187,7 +187,7 @@ def test_proxy__lazy_query__multiple_rows__doesnt_fail(engine: Engine) -> None:
 
 
 def test_proxy__when_querying_view_model__does_not_register_as_table_model(engine: Engine) -> None:
-    class ModelA(NamedTuple):
+    class ModelA(Row):
         name: str
 
     from .model import is_row_model

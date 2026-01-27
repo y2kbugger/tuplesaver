@@ -53,8 +53,14 @@ class DC:
     b: int
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class DS:
+    a: int
+    b: int
+
+
+@dataclass(frozen=True, slots=True)
+class DFS:
     a: int
     b: int
 
@@ -70,12 +76,13 @@ MODEL_DISPLAY_NAMES = {
     RM: "Roww (Custom NamedTuple-Like BaseClass)",
     DC: "dataclass",
     DS: "dataclass + slots",
+    DFS: "dataclass + frozen + slots",
     DCT: "DCT (Custom Dataclass-Like BaseClass)",
 }
 MODELS = [m for m in MODEL_DISPLAY_NAMES]
-UNHASHABLE_MODELS = {DC, DCT}
-REPEATS = 20
-NUMBER = 5000
+UNHASHABLE_MODELS = {DC, DS, DCT}
+REPEATS = 10
+NUMBER = 1_000_000
 TEST_GLOBALS = {model.__name__: model for model in MODELS}
 
 if __name__ == "__main__":
@@ -85,14 +92,14 @@ if __name__ == "__main__":
     for t in MODELS:
         tname = t.__name__
         print(f"Benchmarking {tname} instanciation")
-        times[('isinstanciate', tname)] = min(repeat(f"{tname}(1,2)", number=NUMBER, repeat=REPEATS, globals=TEST_GLOBALS)) / NUMBER * 1000
+        times[('isinstanciate', tname)] = min(repeat(f"{tname}(1,2)", number=NUMBER, repeat=REPEATS, globals=TEST_GLOBALS)) / NUMBER
 
         print(f"Benchmarking {tname} attribute access")
-        times[('attr_access', tname)] = min(repeat("obj.a", setup=f"obj = {tname}(1, 2)", number=NUMBER, repeat=REPEATS, globals=TEST_GLOBALS)) / NUMBER * 1000
+        times[('attr_access', tname)] = min(repeat("obj.a", setup=f"obj = {tname}(1, 2)", number=NUMBER, repeat=REPEATS, globals=TEST_GLOBALS)) / NUMBER
 
         if t not in UNHASHABLE_MODELS:
             print(f"Benchmarking {tname} hashing")
-            times[('hashing', tname)] = min(repeat("hash(obj)", setup=f"obj = {tname}(1, 2)", number=NUMBER, repeat=REPEATS, globals=TEST_GLOBALS)) / NUMBER * 1000
+            times[('hashing', tname)] = min(repeat("hash(obj)", setup=f"obj = {tname}(1, 2)", number=NUMBER, repeat=REPEATS, globals=TEST_GLOBALS)) / NUMBER
         else:
             times[('hashing', tname)] = float('nan')
 
@@ -100,12 +107,14 @@ if __name__ == "__main__":
         sizes[('size', tname)] = sys.getsizeof(t(1, 2))
 
         display_name = MODEL_DISPLAY_NAMES[t]
+        NS_PER_S = 1_000_000_000
         results[display_name] = {
-            "Model(1, 2)": times[('isinstanciate', tname)] * 1000000,  # convert to microseconds
-            "m.a": times[('attr_access', tname)] * 1000000,  # convert to microseconds
-            "hash(m)": times[('hashing', tname)] * 1000000,  # convert to microseconds
+            "Model(1, 2)": times[('isinstanciate', tname)] * NS_PER_S,
+            "m.a": times[('attr_access', tname)] * NS_PER_S,
+            "hash(m)": times[('hashing', tname)] * NS_PER_S,
             "size": sizes[('size', tname)],
         }
 
+    print("units: nanoseconds (ns) per operation, bytes (B) for size")
     df = pd.DataFrame.from_dict(results, orient="index")
     print(df)

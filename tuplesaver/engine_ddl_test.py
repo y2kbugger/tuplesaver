@@ -2,16 +2,15 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import fields
-from typing import Any, NamedTuple
+from typing import Any
 
 import pytest
 
-from .engine import Engine, TableSchemaMismatch, UnregisteredFieldTypeError
-from .model import InvalidTableName, NotATableModel
-from .RM import Roww
+from .engine import Engine, TableSchemaMismatch
+from .model import InvalidTableName, Row, TableRow
 
 
-class TableInfo(NamedTuple):
+class TableInfo(Row):
     cid: int
     name: str
     type: str
@@ -20,34 +19,37 @@ class TableInfo(NamedTuple):
     pk: int
 
 
-def test_ensure_table_created__any_type__raises(engine: Engine) -> None:
+def test_ensure_table_created__adhoc_row_model__raises(engine: Engine) -> None:
+    class T(Row):
+        a: int
+
+    with pytest.raises(AssertionError):
+        engine.ensure_table_created(T)  # ty:ignore[invalid-argument-type]
+
+
+def test_ensure_table_created__dataclass__raises(engine: Engine) -> None:
+    from dataclasses import dataclass
+
+    @dataclass
+    class T:
+        a: int
+
+    with pytest.raises(AssertionError):
+        engine.ensure_table_created(T)  # ty:ignore[invalid-argument-type]
+
+
+def test_ensure_table_created__namedtuple__raises(engine: Engine) -> None:
+    from typing import NamedTuple
+
     class T(NamedTuple):
-        data: Any
+        a: int
 
-    with pytest.raises(NotATableModel):
-        engine.ensure_table_created(T)
-
-
-def test_ensure_table_created__optional_any_type__raises(engine: Engine) -> None:
-    class T(Roww):
-        data: Any | None
-
-    with pytest.raises(UnregisteredFieldTypeError):
-        engine.ensure_table_created(T)
-
-
-def test_ensure_table_created__unregistered_columntype__raises(engine: Engine) -> None:
-    from array import array
-
-    class T(Roww):
-        data: array
-
-    with pytest.raises(UnregisteredFieldTypeError):
-        engine.ensure_table_created(T)
+    with pytest.raises(AssertionError):
+        engine.ensure_table_created(T)  # ty:ignore[invalid-argument-type]
 
 
 def test_ensure_table_created(engine: Engine) -> None:
-    class TblDates(Roww):
+    class TblDates(TableRow):
         name: str
         score: float
         age: int
@@ -59,7 +61,7 @@ def test_ensure_table_created(engine: Engine) -> None:
     engine.ensure_table_created(TblDates)
 
     # Table as a whole
-    class SqliteSchema(NamedTuple):
+    class SqliteSchema(Row):
         type: str
         name: str
         tbl_name: str
@@ -87,10 +89,10 @@ def test_ensure_table_created(engine: Engine) -> None:
 
 
 def test_ensure_table_created_with_related_table(engine: Engine) -> None:
-    class A(Roww):
+    class A(TableRow):
         pass
 
-    class B(Roww):
+    class B(TableRow):
         team: A
 
     engine.ensure_table_created(A)
@@ -105,10 +107,10 @@ def test_ensure_table_created_with_related_table(engine: Engine) -> None:
 
 
 def test_ensure_table_created_with_optional_related_table(engine: Engine) -> None:
-    class A(Roww):
+    class A(TableRow):
         pass
 
-    class B(Roww):
+    class B(TableRow):
         team: A | None  # Optional relationship
 
     engine.ensure_table_created(A)
@@ -123,7 +125,7 @@ def test_ensure_table_created_with_optional_related_table(engine: Engine) -> Non
 
 
 def test_ensure_table_created_with_table_already_created_correct_is_silent(engine: Engine) -> None:
-    class TblAlreadyCreated(Roww):
+    class TblAlreadyCreated(TableRow):
         name: str
         age: int
 
@@ -132,13 +134,13 @@ def test_ensure_table_created_with_table_already_created_correct_is_silent(engin
 
 
 def test_ensure_table_created_with_table_already_created_incorrect_raises(engine: Engine) -> None:
-    class TblAlreadyCreated(Roww):  # type: ignore shadowing is part of the test
+    class TblAlreadyCreated(TableRow):  # type: ignore shadowing is part of the test
         name: str
         age: int
 
     engine.ensure_table_created(TblAlreadyCreated)
 
-    class TblAlreadyCreated(Roww):
+    class TblAlreadyCreated(TableRow):
         name: str
         age: int
         data: bytes
@@ -148,7 +150,7 @@ def test_ensure_table_created_with_table_already_created_incorrect_raises(engine
 
 
 def test_ensure_table_created_catches_mismatched_from_out_of_band_alters(engine: Engine) -> None:
-    class TblAlreadyCreated(Roww):
+    class TblAlreadyCreated(TableRow):
         name: str
         age: int
 
@@ -161,7 +163,7 @@ def test_ensure_table_created_catches_mismatched_from_out_of_band_alters(engine:
 
 
 def test_ensure_table_created__nontable_model_raises(engine: Engine) -> None:
-    class NonTable_Model(Roww):
+    class NonTable_Model(TableRow):
         name: str
 
     with pytest.raises(InvalidTableName):

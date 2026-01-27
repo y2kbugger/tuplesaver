@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import NamedTuple
 
 import apsw
 import pytest
@@ -16,25 +15,25 @@ from .engine import (
     NoKwargFieldSpecifiedError,
     UnpersistedRelationshipError,
 )
-from .RM import Roww
+from .model import Row, TableRow
 
 
-class Team(Roww):
+class Team(TableRow):
     name: str
     size: int
 
 
-class Person(Roww):
+class Person(TableRow):
     name: str
     team: Team
 
 
-class Arm(Roww):
+class Arm(TableRow):
     length: float
     person: Person
 
 
-class AdHoc(NamedTuple):
+class AdHoc(Row):
     score: float
 
 
@@ -229,10 +228,10 @@ def test_save__three_model_relation_chain(engine: Engine) -> None:
 
 
 def test_save__null_relation(engine: Engine) -> None:
-    class A(Roww):
+    class A(TableRow):
         pass
 
-    class B(Roww):
+    class B(TableRow):
         team: A | None  # Optional relationship
 
     engine.ensure_table_created(A)

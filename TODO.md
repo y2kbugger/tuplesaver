@@ -1,27 +1,29 @@
 # WIP
-combine rowtrace for type converting types and lazy maker all together
-pragma user_version and pragma application_id for versioning and migrations
-https://rogerbinns.github.io/apsw/tips.html#query-patterns
 
 ## TableRow Model
-- inline get_meta to just Model.meta
 - disambiguate Row vs TableRow in relation to `is_row_model` and `get_meta`
 - Move lazy proxy descriptors to the metaclass
-- Move model metaclass to model.py after cleanup
 - Find a remove unused exceptions
 - fix all ty and ruff errors in all files
-- Document how any type that implements buffer is auto adapted and you only need to add converter for it (might me annonying if trying to just pickle a numpy array)
 - test that you can add extra defs to a model without things blowing up (or add eager enforcement that you can't do this)
+
+## APSW Integration
+- Document how any type that implements buffer is auto adapted and you only need to add converter for it (might me annonying if trying to just pickle a numpy array)
+- combine rowtrace for type converting types and lazy maker all together
+    pragma user_version and pragma application_id for versioning and migrations
+    https://rogerbinns.github.io/apsw/tips.html#query-patterns
+- Think about asymmetry between getting a cursor proxy from query vs getting collection from foreign key relationships
+  - how often do we need to control fetchall vs fetchmany.
+  - what about leveraging get?
+  - what about fetch one only?
 
 ## Other
 - how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?
-  - then we can use that exact where clause in select, update, and delete
+    - then we can use that exact where clause in select, update, and delete
     - attempt to overload these in a way feels natural, e.g. find returns one, select returns many, update and delete can work either by id or by where clause.
     - Also allow an fstring for the where clause, e.g. `engine.find(MyModel, f"{MyModel.name} = 'Bart'")`
     - maybe we can rely on our getattribute hack to make fstrings work without AST hacking.
-- Think about asymmetry between getting a cursor proxy from query vs getting collection from foreign key relationships
-  - how often do we need to control fetchall vs fetchmany.
-- NewType instead of type aliasing for Row?
+- think about mutable immediate vs immutable explicit and ergonomics in example.
 
 # Bugs
 
