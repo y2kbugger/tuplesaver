@@ -48,7 +48,7 @@ class Lazy[Model]:
         return f"<{self.__class__.__name__}:{self._cached!r}>"
 
 
-def _make_model_lazy[R: Row](RootModel: type[R], c: apsw.Cursor, root_row: apsw.SQLiteValues, engine: Engine) -> R:
+def _make_model_lazy[R: Row | TableRow](RootModel: type[R], c: apsw.Cursor, root_row: apsw.SQLiteValues, engine: Engine) -> R:
     """Lazy loading of relationships, only fetches sub-models when accessed."""
 
     # For Roww models, create with kwargs (handles kw_only id field)
@@ -74,7 +74,7 @@ def _make_model_lazy[R: Row](RootModel: type[R], c: apsw.Cursor, root_row: apsw.
     return row  # Return the root model with lazy-loaded relationships
 
 
-class TypedCursorProxy[R: Row](apsw.Cursor):
+class TypedCursorProxy[R: Row | TableRow](apsw.Cursor):
     def fetchone(self) -> R | None: ...
 
     def fetchall(self) -> list[R]: ...  # ty:ignore[invalid-method-override, invalid-return-type]
