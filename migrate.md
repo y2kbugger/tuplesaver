@@ -22,59 +22,28 @@ mydb.sqlite.bak/
     pre_002.mydb.sqlite.bak
 ```
 ## API
-
-### `Migrate(engine: Engine, models: list[TableRow])`
+`Migrate(engine: Engine, models: list[TableRow])`
 
 ### `check() -> CheckResult`
-Read-only checks. No side effects.
+Read-only state check. No side effects.
+State transitions are a combo of api calls and migration script changes.
 
-```python
-class State(Enum):
-    ERROR = "error"         # Blocking issues (duplicate numbers, gaps)
-    DIVERGED = "diverged"   # Script on disk differs from what was applied
-    PENDING = "pending"     # Scripts ready to apply
-    DRIFT = "drift"         # DB doesn't match models, need to generate
-    CURRENT = "current"     # Fully in sync
-
-@dataclass
-class CheckResult:
-    pending: list[str]       # scripts on disk not yet applied
-    applied: list[str]       # scripts recorded in _migrations table
-    divergent: list[str]     # applied scripts where disk content != recorded content
-    errors: list[str]        # blockers (duplicate numbers, gaps, etc.)
-    model_diff: ModelDiff    # schema differences between models and actual DB
-
-    @property
-    def state(self) -> State:
-        """Primary state for decision-making (first match wins)."""
-        if self.errors:
-            return State.ERROR
-        if self.divergent:
-            return State.DIVERGED
-        if self.pending:
-            return State.PENDING
-        if not self.model_diff.is_empty:
-            return State.DRIFT
-        return State.CURRENT
-
-    def status(self) -> str:
-        """Human-readable summary, like `git status`."""
-        ...
-```
-
-#### Error Checks:
-
-    - Migration numbers must be sequential, gapless and unique.
-
-#### Example Transitions
-
+### Example Transitions
 | State | Allowed Actions | Result |
 |-------|-----------------|--------|
 | `ERROR` | manual fix (renumber files, etc.) | → check() |
-| `DIVERGED` | restore() | → check() → usually `PENDING` |
-| `PENDING` | apply() | → check() → `DRIFT` or `CURRENT` |
+| `DIVERGED` | restore() | → check() → `PENDING` |
 | `DRIFT` | generate() | → check() → `PENDING` |
+| `PENDING` | apply() | → check() → `DRIFT` or `CURRENT` |
 | `CURRENT` | — | stay `CURRENT` |
+
+### `generate() -> Path | None`
+Auto-generate a migration scripts/instructions based on check state.
+**Only allowed in `DRIFT` state**
+
+- `CREATE TABLE`, `ADD COLUMN`, `DROP COLUMN`, `RENAME COLUMN`
+- For ambiguous renames: writes commented options for dev to choose
+- Generated file includes comment header with consolidation hint:
 
 
 ### `apply(filename: str) -> None`
@@ -88,26 +57,19 @@ Run one migration script.
 - Restore on failure.
 - `_migrations` Table something like this:
 
-    ```sql
-    CREATE TABLE _migrations (
-        number INTEGER PRIMARY KEY,  -- 1, 2, 3...
-        filename TEXT NOT NULL,      -- '001.create_users.sql'
-        script TEXT NOT NULL,        -- full SQL content (newlines normalized)
-        started_at TEXT NOT NULL,    -- ISO timestamp
-        finished_at TEXT NOT NULL    -- ISO timestamp
-    );
-    ```
-
-### `generate() -> Path | None`
-Auto-generate a migration scripts/instructions based on check state.
-**Only allowed in `DRIFT` state**
-
-- `CREATE TABLE`, `ADD COLUMN`, `DROP COLUMN`, `RENAME COLUMN`
-- For ambiguous renames: writes commented options for dev to choose
-- Generated file includes comment header with consolidation hint:
+```sql
+CREATE TABLE _migrations (
+    number INTEGER PRIMARY KEY,  -- 1, 2, 3...
+    filename TEXT NOT NULL,      -- '001.create_users.sql'
+    script TEXT NOT NULL,        -- full SQL content (newlines normalized)
+    started_at TEXT NOT NULL,    -- ISO timestamp
+    finished_at TEXT NOT NULL    -- ISO timestamp
+);
+```
 
 ```
 ### `restore() -> None`
+```
 Restore working DB from `.ref`.
 
 1. Copies `.ref` over the working DB
@@ -121,10 +83,11 @@ The reference DB (`mydb.sqlite.ref`) is a copy of the production database. It se
 ## Scenarios
 
 ### Fresh DB, models only (no scripts yet)
+
 ```python
 migrate = Migrate(engine, models)
 result = migrate.check()
-# state=DRIFT, model_diff shows missing tables
+# state=DRIFT, schema["User"].exists=False, expected_sql has CREATE TABLE DDL
 migrate.generate()  # creates 001.create_users.sql
 result = migrate.check()  # state=PENDING
 migrate.apply(result.pending[0])
@@ -148,8 +111,8 @@ result = migrate.check()
 ### Model changed, need new migration
 ```python
 result = migrate.check()
-# state=DRIFT, model_diff shows the differences
-migrate.generate()  # creates next script, e.g. 003.add_email.sql
+# state=DRIFT, schema["User"].expected_sql != actual_sql
+migrate.generate()  # creates next script, e.g. 003.add_avatar.sql
 result = migrate.check()  # state=PENDING
 migrate.apply(result.pending[0])
 ```
@@ -278,11 +241,15 @@ Tests copy the scenario to a temp dir before running to avoid mutation.
 - renamed and not edited past script
 - diverged script with .ref available
 - diverged script without .ref
-- auto generated model changes: add table, drop table, add column, drop column, rename column
+- trying to edit migration script that has already been applied to the ref
+    - e.g. restore actually restores the script from _migrations
+- auto generated model changes: add table, add column, drop column, rename column, rename table
+- Migration numbers must be sequential, gapless and unique.
 
 
 ## Milestones
-- [ ] Successfully run a check against No models.
-- [ ] Be able to generate and apply clean straightforward new model table.
+- [X] Successfully run a check against No models.
+- [ ] Be able to generate a migration script from schema check.
 - [ ] Enable the "iterate on uncommitted migration" workflow.
 - [ ] Detect and triage conflicting migration scripts from other devs
+- [ ] ability to ignore tables.
