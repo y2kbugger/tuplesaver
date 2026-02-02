@@ -1018,7 +1018,6 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "apsw" },
-    { name = "ty" },
 ]
 
 [package.dev-dependencies]
@@ -1027,6 +1026,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-benchmark" },
     { name = "ruff" },
+    { name = "ty" },
 ]
 examplenotebook = [
     { name = "ipykernel" },
@@ -1040,10 +1040,7 @@ profiling = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "apsw", specifier = ">=3.51.1.0" },
-    { name = "ty", specifier = ">=0.0.12" },
-]
+requires-dist = [{ name = "apsw", specifier = ">=3.51.1.0" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1051,6 +1048,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-benchmark", specifier = ">=5.1.0,<6" },
     { name = "ruff" },
+    { name = "ty", specifier = ">=0.0.12" },
 ]
 examplenotebook = [
     { name = "ipykernel" },

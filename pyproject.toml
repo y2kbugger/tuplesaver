@@ -7,7 +7,6 @@ requires-python = ">=3.13,<3.14"
 readme = "README.md"
 dependencies = [
     "apsw>=3.51.1.0",
-    "ty>=0.0.12",
 ]
 
 [project.scripts]
@@ -17,6 +16,7 @@ tuplesaver = "tuplesaver:main"
 dev = [
     "pytest",
     "ruff",
+    "ty>=0.0.12",
     "pre-commit",
     "pytest-benchmark>=5.1.0,<6",
 ]

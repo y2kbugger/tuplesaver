@@ -14,13 +14,28 @@ repos:
         fail_fast: true
     -   id: check-added-large-files
         fail_fast: true
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: 'v0.14.9'
+- repo: local
   hooks:
-    - id: ruff
+    - id: ruff-check
+      name: ruff check
+      entry: ruff check --force-exclude
+      language: system
+      types_or: [python, pyi, jupyter]
+      require_serial: true
       fail_fast: true
-      args: [ --fix ]
+      args: [--fix]
     - id: ruff-format
+      name: ruff format
+      entry: ruff format --force-exclude
+      language: system
+      types_or: [python, pyi, jupyter]
+      require_serial: true
+      fail_fast: true
+    - id: ty
+      name: ty check
+      entry: ty check
+      language: system
+      files: ^backend/
       fail_fast: true
 - repo: https://github.com/kynan/nbstripout
   rev: '0.8.2'
