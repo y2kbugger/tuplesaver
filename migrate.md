@@ -82,15 +82,6 @@ The reference DB (`mydb.sqlite.ref`) is a copy of the production database. It se
 
 ## Scenarios
 
-### Model changed, need new migration
-```python
-result = migrate.check()
-# state=DRIFT, schema["User"].expected_sql != actual_sql
-migrate.generate()  # creates next script, e.g. 003.add_avatar.sql
-result = migrate.check()  # state=PENDING
-migrate.apply(result.pending[0])
-```
-
 ### Iterating on uncommitted migration
 ```python
 # Applied 003, then edited model again

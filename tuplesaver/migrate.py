@@ -98,6 +98,7 @@ class Migrate:
             (table_name,),
         )
         row = cursor.fetchone()
+        cursor.close()
         return row[0] if row else None
 
     def _compute_table_schema(self, model: type[TableRow]) -> TableSchema:

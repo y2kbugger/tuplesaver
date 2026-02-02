@@ -253,6 +253,55 @@ def test_migrate__apply__raises_when_diverged(migrate: Migrate):
         migrate.apply("001.create_user.sql")
 
 
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__model_changed_need_new_migration(migrate: Migrate):
+    """Full workflow: model change → generate → apply, then change model again."""
+    # 1. Initial state: DRIFT (model exists but table doesn't)
+    result = migrate.check()
+    assert result.state == State.DRIFT
+
+    # 2. Generate first migration
+    migrate.generate()
+    result = migrate.check()
+    assert result.state == State.PENDING
+    assert result.pending == ["001.create_user.sql"]
+
+    # 3. Apply first migration
+    migrate.apply(result.pending[0])
+    result = migrate.check()
+    assert result.state == State.CURRENT
+
+    # 4. Simulate model change: add a new field to User
+    # Create an updated User model with an avatar field
+    class User(TableRow):
+        name: str
+        email: str
+        avatar: str  # new field
+
+    migrate.models = [User]
+
+    # 5. Check detects schema drift
+    result = migrate.check()
+    assert result.state == State.DRIFT
+    assert "User" in result.schema
+    assert not result.schema["User"].is_current
+
+    # 6. Generate second migration
+    filepath = migrate.generate()
+    assert filepath is not None
+    assert filepath.name == "002.alter_user.sql"
+
+    # 7. Apply second migration
+    result = migrate.check()
+    assert result.state == State.PENDING
+    assert result.pending == ["002.alter_user.sql"]
+    migrate.apply(result.pending[0])
+
+    # 8. Back to CURRENT
+    result = migrate.check()
+    assert result.state == State.CURRENT
+
+
 # edges to not miss, but will do later:
 # - All main scenarios from migrate.md
 # - Happy path and all possible migration id problems (gaps, duplicates)
