@@ -12,6 +12,10 @@ from .adaptconvert import included_adapt_convert_types
 from .engine import Engine
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line("markers", "scenario(name): specify migrate test scenario folder")
+
+
 @pytest.fixture
 def engine() -> Iterable[Engine]:
     engine = Engine(":memory:")
