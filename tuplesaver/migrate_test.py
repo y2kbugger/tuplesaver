@@ -126,3 +126,144 @@ def test_migrate__generate__raises_when_not_drift(migrate: Migrate):
 
     with pytest.raises(RuntimeError, match="DRIFT"):
         migrate.generate()
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__generate_then_check__is_pending(migrate: Migrate):
+    """After generate(), check() returns PENDING state with the new script."""
+    migrate.generate()
+
+    result = migrate.check()
+    assert result.state == State.PENDING
+    assert len(result.pending) == 1
+    assert result.pending[0] == "001.create_user.sql"
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__apply__executes_migration(migrate: Migrate):
+    """apply() executes the migration and creates the table."""
+    migrate.generate()
+    result = migrate.check()
+
+    migrate.apply(result.pending[0])
+
+    # Table should now exist
+    cursor = migrate.engine.connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='User'")
+    assert cursor.fetchone() is not None
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__apply__records_in_migrations_table(migrate: Migrate):
+    """apply() records the migration in _migrations table."""
+    migrate.generate()
+    result = migrate.check()
+
+    migrate.apply(result.pending[0])
+
+    # Check _migrations table
+    cursor = migrate.engine.connection.execute("SELECT number, filename, script FROM _migrations WHERE number = 1")
+    row = cursor.fetchone()
+    assert row is not None
+    assert row[0] == 1
+    assert row[1] == "001.create_user.sql"
+    assert "CREATE TABLE User" in row[2]
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__apply__then_check_is_current(migrate: Migrate):
+    """After applying all migrations, check() returns CURRENT."""
+    migrate.generate()
+    result = migrate.check()
+
+    migrate.apply(result.pending[0])
+
+    result = migrate.check()
+    assert result.state == State.CURRENT
+    assert len(result.pending) == 0
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__apply__raises_when_not_pending(migrate: Migrate):
+    """apply() raises error when not in PENDING state."""
+    # Still in DRIFT state, no migration generated
+    result = migrate.check()
+    assert result.state == State.DRIFT
+
+    with pytest.raises(RuntimeError, match="PENDING"):
+        migrate.apply("001.create_user.sql")
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__diverged__edit_after_apply(migrate: Migrate):
+    """Editing a migration file after apply causes DIVERGED state."""
+    # Setup: generate and apply migration
+    migrate.generate()
+    result = migrate.check()
+    migrate.apply(result.pending[0])
+
+    # Verify we're CURRENT
+    result = migrate.check()
+    assert result.state == State.CURRENT
+
+    # Edit the migration file
+    script_path = migrate.migrations_dir / "001.create_user.sql"
+    original = script_path.read_text()
+    script_path.write_text(original + "\n-- edited after apply\n")
+
+    # Now check should detect divergence
+    result = migrate.check()
+    assert result.state == State.DIVERGED
+    assert "001.create_user.sql" in result.divergent
+    assert len(result.divergent) == 1
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__generate__raises_when_diverged(migrate: Migrate):
+    """generate() raises error when in DIVERGED state."""
+    # Setup: generate, apply, then edit to cause divergence
+    migrate.generate()
+    result = migrate.check()
+    migrate.apply(result.pending[0])
+
+    script_path = migrate.migrations_dir / "001.create_user.sql"
+    script_path.write_text(script_path.read_text() + "\n-- edited\n")
+
+    result = migrate.check()
+    assert result.state == State.DIVERGED
+
+    with pytest.raises(RuntimeError, match="DRIFT"):
+        migrate.generate()
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__apply__raises_when_diverged(migrate: Migrate):
+    """apply() raises error when in DIVERGED state."""
+    # Setup: generate, apply, then edit to cause divergence
+    migrate.generate()
+    result = migrate.check()
+    migrate.apply(result.pending[0])
+
+    script_path = migrate.migrations_dir / "001.create_user.sql"
+    script_path.write_text(script_path.read_text() + "\n-- edited\n")
+
+    result = migrate.check()
+    assert result.state == State.DIVERGED
+
+    with pytest.raises(RuntimeError, match="PENDING"):
+        migrate.apply("001.create_user.sql")
+
+
+# edges to not miss, but will do later:
+# - All main scenarios from migrate.md
+# - Happy path and all possible migration id problems (gaps, duplicates)
+# - Renamed and edited (diverged) last script
+# - Renamed and not edited last script
+# - Renamed and edited (diverged) past (e.g., 2nd of 3) script
+# - Diverged script with .ref available
+# - Diverged script without .ref
+# - Auto generated model changes: add table, add column, drop column, rename column
+# - Migration numbers must be sequential, gapless and unique
+# - Pending migrations are always applied in order
+# - test that all status make sense
+# - no ref db is treated like greenfield, e.g. wipe the db and reapply all migrations.
+# - test restore works as expected

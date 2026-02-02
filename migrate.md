@@ -82,32 +82,6 @@ The reference DB (`mydb.sqlite.ref`) is a copy of the production database. It se
 
 ## Scenarios
 
-### Fresh DB, models only (no scripts yet)
-
-```python
-migrate = Migrate(engine, models)
-result = migrate.check()
-# state=DRIFT, schema["User"].exists=False, expected_sql has CREATE TABLE DDL
-migrate.generate()  # creates 001.create_users.sql
-result = migrate.check()  # state=PENDING
-migrate.apply(result.pending[0])
-```
-
-### Fresh DB with existing scripts
-```python
-migrate = Migrate(engine, models)
-result = migrate.check()
-# state=PENDING, pending=['001.create_users.sql']
-for script in result.pending:
-    migrate.apply(script)
-```
-
-### Steady state (nothing to do)
-```python
-result = migrate.check()
-# state=CURRENT
-```
-
 ### Model changed, need new migration
 ```python
 result = migrate.check()
@@ -128,40 +102,42 @@ migrate.generate()  # creates 004.add_avatar.sql
 migrate.apply('004.add_avatar.sql')
 
 # Option B: Consolidate (delete files, restore, regenerate)
-# 1. rm 003.*.sql 004.*.sql
-# 2. migrate.restore()  # restore to .ref
-# 3. migrate.generate()  # creates single 003 with all changes
-# 4. migrate.apply('003...sql')
-# 4. migrate.apply('003...sql')
+# rm 003.*.sql 004.*.sql
+migrate.restore()  # restore to .ref
+migrate.generate()  # creates single 003 with all changes
+migrate.apply('003...sql')
+
 ```
 
-### Diverged script (with .ref)
+### Migration script has diverged from mydb.sqlite but not the mydb.sqlite.ref
 ```python
 result = migrate.check()
 # state=DIVERGED, divergent=['003.add_profile.sql']
-print(result.status())  # "1 diverged: 003.add_profile.sql"
 
 # Restore DB to .ref, then re-apply pending (including edited script)
 migrate.restore()
-result = migrate.check()  # state=PENDING
+result = migrate.check()
+# state=PENDING
+
 for script in result.pending:
     migrate.apply(script)
 ```
 
-### Diverged script (no .ref — someone else's migration)
+### Migration script has diverged from mydb.sqlite.ref
 ```python
 result = migrate.check()
 # state=DIVERGED, divergent=['002.add_email.sql']
-# check() has added a warning comment to the file explaining options
 
-# Option A: Restore file from git
-# $ git checkout 002.add_email.sql
-result = migrate.check()  # state=PENDING or CURRENT
+result = migrate.restore()
+# still state=DIVERGED, divergent=['002.add_email.sql']
 
-# Option B: Delete file to restore from _migrations table
+# Either restore file to undiverged or delete file to restore it from the _migrations table
 # $ rm 002.add_email.sql
-# (system restores original from _migrations on next check)
 result = migrate.check()
+# state=DIVERGED, divergent=['002.add_email.sql']
+result = migrate.restore() # but now restored from _migrations table
+result = migrate.check()
+# state=CURRENT
 ```
 
 ### Conflicting migration numbers
@@ -171,8 +147,6 @@ result = migrate.check()
 print(result.status())  # "Error: duplicate migration number 003"
 # Developer must manually resolve by renumbering
 ```
-
----
 
 ## Integration Examples
 
@@ -215,41 +189,13 @@ match result.state:
 ```
 
 ## What This Replaces
-`engine.ensure_table_created()` goes away. Models define structure; migrations create/alter schema. The schema-diff logic moves to `generate()`.
-
-## Testing Strategy
-Each case is pytest using Migrate api + fixtures as a kind of high level DSL.
-
-There can be a handful of starting scenarios, each defined by a folder with:
-- Initial `.sqlite` file (or missing)
-- `.migrations/` folder with scripts (or missing)
-- a models.py defining the models (may or may not match DB)
-
-then each test can pick one of those scenarios and then:
-- add/mutate/delete models (if needed)
-- call `check()`, `apply()`, `generate()`, `restore()` as needed for the scenario
-- check agains Expected `CheckResult` values along the way.
-
-Tests copy the scenario to a temp dir before running to avoid mutation.
-
-### test cases to not miss (there almost surely are more)
-- All main scenarios above
-- happy path and all possible migration id problems
-- renamed and edited (diverged) last script
-- renamed and not edited last script
-- renamed and edited (diverged) past (e.g., 2nd of 3) script
-- renamed and not edited past script
-- diverged script with .ref available
-- diverged script without .ref
-- trying to edit migration script that has already been applied to the ref
-    - e.g. restore actually restores the script from _migrations
-- auto generated model changes: add table, add column, drop column, rename column, rename table
-- Migration numbers must be sequential, gapless and unique.
-
+`engine.ensure_table_created()` goes away. Models define structure; migrations create/alter schema. The schema-diff logic moves to `generate()`. Tests still need a way to create initial tables so maybe ensure_table_created becomes a dev-only helper that just creates tables directly from models without migrations.
 
 ## Milestones
 - [X] Successfully run a check against No models.
-- [ ] Be able to generate a migration script from schema check.
+- [X] Be able to generate a migration script from schema check.
 - [ ] Enable the "iterate on uncommitted migration" workflow.
 - [ ] Detect and triage conflicting migration scripts from other devs
+    - e.g. handle diverged scripts really sanely.
+    - one idea: restore ALWAYS restores from .ref and restores missing/mutated scripts from _migrations table.
 - [ ] ability to ignore tables.

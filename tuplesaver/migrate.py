@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 
@@ -110,10 +111,48 @@ class Migrate:
             actual_sql=actual_sql,
         )
 
+    def _ensure_migrations_table(self) -> None:
+        """Create _migrations table if it doesn't exist."""
+        self.engine.connection.execute("""
+            CREATE TABLE IF NOT EXISTS _migrations (
+                number INTEGER PRIMARY KEY,
+                filename TEXT NOT NULL,
+                script TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                finished_at TEXT NOT NULL
+            )
+        """)
+
+    def _get_applied_migrations(self) -> dict[int, tuple[str, str]]:
+        """Get applied migrations as {number: (filename, script)} from _migrations table."""
+        self._ensure_migrations_table()
+        cursor = self.engine.connection.execute("SELECT number, filename, script FROM _migrations ORDER BY number")
+        result: dict[int, tuple[str, str]] = {}
+        for row in cursor.fetchall():
+            result[row[0]] = (row[1], row[2])  # type: ignore[index]
+        return result
+
     def check(self) -> CheckResult:
         """Read-only checks. No side effects."""
         schema = {m.meta.table_name: self._compute_table_schema(m) for m in self.models}
-        return CheckResult(schema=schema)
+
+        # Get migration files and applied migrations
+        files = self._get_migration_files()
+        applied = self._get_applied_migrations()
+
+        pending = []
+        divergent = []
+        for number, _name, path in files:
+            if number not in applied:
+                pending.append(path.name)
+            else:
+                # Check if file content matches what was applied
+                _recorded_filename, recorded_script = applied[number]
+                current_script = path.read_text().replace("\r\n", "\n")
+                if current_script != recorded_script:
+                    divergent.append(path.name)
+
+        return CheckResult(schema=schema, pending=pending, divergent=divergent)
 
     @property
     def migrations_dir(self) -> Path:
@@ -168,10 +207,13 @@ class Migrate:
         sql_parts = []
 
         for table_name, table_schema in result.schema.items():
-            if not table_schema.is_current:
+            if not table_schema.exists:
+                # Table doesn't exist - create it
+                sql_parts.append(f"{table_schema.expected_sql};")
+            elif not table_schema.is_current:
                 # Table exists but schema differs - drop and recreate
                 sql_parts.append(f"DROP TABLE {table_name};")
-            sql_parts.append(f"{table_schema.expected_sql};")
+                sql_parts.append(f"{table_schema.expected_sql};")
 
         if not sql_parts:
             return None
@@ -191,3 +233,45 @@ class Migrate:
         filepath.write_text(sql_content + "\n")
 
         return filepath
+
+    def apply(self, filename: str) -> None:
+        """Run one migration script.
+
+        Only allowed in PENDING state. Executes the script SQL and records
+        it in the _migrations table.
+        """
+        result = self.check()
+        if result.state != State.PENDING:
+            raise RuntimeError(f"apply() only allowed in PENDING state, current state is {result.state.value}")
+
+        if filename not in result.pending:
+            raise ValueError(f"Migration '{filename}' is not pending")
+
+        # Parse filename to get number
+        match = re.match(r"^(\d+)\.(.+)\.sql$", filename)
+        if not match:
+            raise ValueError(f"Invalid migration filename format: {filename}")
+
+        number = int(match.group(1))
+        filepath = self.migrations_dir / filename
+        script = filepath.read_text()
+
+        # Normalize newlines
+        script = script.replace("\r\n", "\n")
+
+        started_at = datetime.now(UTC).isoformat()
+
+        # Execute the migration script (APSW handles multiple statements)
+        self.engine.connection.execute(script)
+
+        finished_at = datetime.now(UTC).isoformat()
+
+        # Record in _migrations table
+        self._ensure_migrations_table()
+        self.engine.connection.execute(
+            """
+            INSERT INTO _migrations (number, filename, script, started_at, finished_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (number, filename, script, started_at, finished_at),
+        )
