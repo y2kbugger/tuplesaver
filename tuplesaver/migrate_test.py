@@ -95,3 +95,34 @@ def test_migrate__fresh_db_with_model__is_drift(migrate: Migrate):
     assert not user_schema.exists
     assert user_schema.actual_sql is None
     assert "CREATE TABLE User" in user_schema.expected_sql
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__generate__creates_migration_file(migrate: Migrate):
+    """generate() creates a migration script in the migrations folder."""
+    result = migrate.check()
+    assert result.state == State.DRIFT
+
+    # Generate migration
+    filepath = migrate.generate()
+
+    # Verify file was created
+    assert filepath is not None
+    assert filepath.exists()
+    assert filepath.parent == migrate.migrations_dir
+    assert filepath.name == "001.create_user.sql"
+
+    # Verify content
+    content = filepath.read_text()
+    assert "CREATE TABLE User" in content
+    assert content.endswith(";\n")
+
+
+@pytest.mark.scenario("empty_db")
+def test_migrate__generate__raises_when_not_drift(migrate: Migrate):
+    """generate() raises error when not in DRIFT state."""
+    result = migrate.check()
+    assert result.state == State.CURRENT
+
+    with pytest.raises(RuntimeError, match="DRIFT"):
+        migrate.generate()

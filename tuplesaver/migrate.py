@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -113,3 +114,80 @@ class Migrate:
         """Read-only checks. No side effects."""
         schema = {m.meta.table_name: self._compute_table_schema(m) for m in self.models}
         return CheckResult(schema=schema)
+
+    @property
+    def migrations_dir(self) -> Path:
+        """Return the migrations directory path (e.g., mydb.sqlite.migrations/)."""
+        return self.db_path.parent / f"{self.db_path.name}.migrations"
+
+    def _get_migration_files(self) -> list[tuple[int, str, Path]]:
+        """Get all migration files as (number, name, path) tuples, sorted by number."""
+        migrations_dir = self.migrations_dir
+        if not migrations_dir.exists():
+            return []
+
+        results = []
+        for f in migrations_dir.glob("*.sql"):
+            match = re.match(r"^(\d+)\.(.+)\.sql$", f.name)
+            if match:
+                results.append((int(match.group(1)), match.group(2), f))
+
+        return sorted(results, key=lambda x: x[0])
+
+    def _get_next_migration_number(self) -> int:
+        """Determine the next migration number based on existing files."""
+        files = self._get_migration_files()
+        if not files:
+            return 1
+        return files[-1][0] + 1
+
+    def _generate_migration_name(self, schema: dict[str, TableSchema]) -> str:
+        """Generate a descriptive name for the migration based on changes."""
+        missing = [name for name, s in schema.items() if not s.exists]
+        changed = [name for name, s in schema.items() if s.exists and not s.is_current]
+
+        parts = []
+        if missing:
+            parts.append("create_" + "_".join(missing).lower())
+        if changed:
+            parts.append("alter_" + "_".join(changed).lower())
+
+        return "_".join(parts) if parts else "migration"
+
+    def generate(self) -> Path | None:
+        """Auto-generate a migration script based on schema drift.
+
+        Only allowed in DRIFT state. Returns the path to the generated file,
+        or None if nothing to generate.
+        """
+        result = self.check()
+        if result.state != State.DRIFT:
+            raise RuntimeError(f"generate() only allowed in DRIFT state, current state is {result.state.value}")
+
+        # Build migration SQL
+        sql_parts = []
+
+        for table_name, table_schema in result.schema.items():
+            if not table_schema.is_current:
+                # Table exists but schema differs - drop and recreate
+                sql_parts.append(f"DROP TABLE {table_name};")
+            sql_parts.append(f"{table_schema.expected_sql};")
+
+        if not sql_parts:
+            return None
+
+        # Create migrations directory if needed
+        migrations_dir = self.migrations_dir
+        migrations_dir.mkdir(exist_ok=True)
+
+        # Generate filename
+        number = self._get_next_migration_number()
+        name = self._generate_migration_name(result.schema)
+        filename = f"{number:03d}.{name}.sql"
+        filepath = migrations_dir / filename
+
+        # Write the migration file
+        sql_content = "\n\n".join(sql_parts)
+        filepath.write_text(sql_content + "\n")
+
+        return filepath
