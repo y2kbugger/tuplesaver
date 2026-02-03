@@ -43,6 +43,7 @@ class CheckResult:
     pending: list[str] = field(default_factory=list)  # scripts on disk not yet applied
     applied: list[str] = field(default_factory=list)  # scripts recorded in _migrations table
     divergent: list[str] = field(default_factory=list)  # disk content != recorded content
+    divergent_missing: list[str] = field(default_factory=list)  # applied but file missing
     errors: list[str] = field(default_factory=list)  # blockers
     schema: dict[str, TableSchema] = field(default_factory=dict)  # table_name -> schema comparison
 
@@ -55,7 +56,7 @@ class CheckResult:
         """Primary state for decision-making (first match wins)."""
         if self.errors:
             return State.ERROR
-        if self.divergent:
+        if self.divergent or self.divergent_missing:
             return State.DIVERGED
         if self.pending:
             return State.PENDING
@@ -69,7 +70,9 @@ class CheckResult:
         if self.errors:
             lines.append(f"Errors: {', '.join(self.errors)}")
         if self.divergent:
-            lines.append(f"Diverged: {', '.join(self.divergent)}")
+            lines.append(f"Diverged (changed): {', '.join(self.divergent)}")
+        if self.divergent_missing:
+            lines.append(f"Diverged (missing): {', '.join(self.divergent_missing)}")
         if self.pending:
             lines.append(f"Pending: {', '.join(self.pending)}")
         if self.has_schema_drift:
@@ -141,8 +144,12 @@ class Migrate:
         files = self._get_migration_files()
         applied = self._get_applied_migrations()
 
+        # Build set of file numbers for quick lookup
+        file_numbers = {number for number, _name, _path in files}
+
         pending = []
         divergent = []
+        divergent_missing = []
         for number, _name, path in files:
             if number not in applied:
                 pending.append(path.name)
@@ -153,7 +160,12 @@ class Migrate:
                 if current_script != recorded_script:
                     divergent.append(path.name)
 
-        return CheckResult(schema=schema, pending=pending, divergent=divergent)
+        # Check for applied migrations with missing files
+        for number, (recorded_filename, _recorded_script) in applied.items():
+            if number not in file_numbers:
+                divergent_missing.append(recorded_filename)
+
+        return CheckResult(schema=schema, pending=pending, divergent=divergent, divergent_missing=divergent_missing)
 
     @property
     def migrations_dir(self) -> Path:
@@ -276,3 +288,34 @@ class Migrate:
             """,
             (number, filename, script, started_at, finished_at),
         )
+
+    @property
+    def ref_path(self) -> Path:
+        """Return the reference DB path (e.g., mydb.sqlite.ref)."""
+        return self.db_path.parent / f"{self.db_path.name}.ref"
+
+    def restore(self) -> None:
+        """Restore working DB from .ref.
+
+        1. Copies .ref over the working DB
+        2. Reopens engine connection
+
+        Requires .ref to exist.
+        """
+        # Close current connection
+        self.engine.connection.close()
+
+        import shutil
+
+        if self.ref_path.exists():
+            # Copy .ref over the working DB
+            shutil.copy2(self.ref_path, self.db_path)
+        else:
+            # assume greenfield if no .ref
+            shutil.rmtree(self.db_path, ignore_errors=True)
+
+        # Reopen connection
+        import apsw
+
+        self.engine.connection = apsw.Connection(str(self.db_path))
+        self.engine.connection.execute("PRAGMA journal_mode=WAL")

@@ -218,6 +218,25 @@ def test_migrate__diverged__edit_after_apply(migrate: Migrate):
 
 
 @pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__diverged__missing_applied_script(migrate: Migrate):
+    """Deleting a migration file after apply causes DIVERGED state."""
+    # Setup: generate and apply migration
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+    assert migrate.check().state == State.CURRENT
+
+    # Delete the migration file
+    script_path = migrate.migrations_dir / "001.create_user.sql"
+    script_path.unlink()
+
+    # Now check should detect divergence
+    result = migrate.check()
+    assert result.state == State.DIVERGED
+    assert "001.create_user.sql" in result.divergent_missing
+    assert len(result.divergent_missing) == 1
+
+
+@pytest.mark.scenario("fresh_db_with_model")
 def test_migrate__generate__raises_when_diverged(migrate: Migrate):
     """generate() raises error when in DIVERGED state."""
     # Setup: generate, apply, then edit to cause divergence
@@ -302,17 +321,79 @@ def test_migrate__model_changed_need_new_migration(migrate: Migrate):
     assert result.state == State.CURRENT
 
 
-# edges to not miss, but will do later:
-# - All main scenarios from migrate.md
-# - Happy path and all possible migration id problems (gaps, duplicates)
-# - Renamed and edited (diverged) last script
-# - Renamed and not edited last script
-# - Renamed and edited (diverged) past (e.g., 2nd of 3) script
-# - Diverged script with .ref available
-# - Diverged script without .ref
-# - Auto generated model changes: add table, add column, drop column, rename column
-# - Migration numbers must be sequential, gapless and unique
-# - Pending migrations are always applied in order
-# - test that all status make sense
-# - no ref db is treated like greenfield, e.g. wipe the db and reapply all migrations.
-# - test restore works as expected
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__iterate_then_consolidate(migrate: Migrate):
+    """Option B: Consolidate multiple migrations via restore.
+
+    After iterating with multiple migrations delete them, restore to .ref, and regenerate a single migration.
+
+    This simulates the reference implementation of a devserver integration.
+    """
+    # Setup: create .ref as empty DB (simulates production baseline)
+    import shutil
+
+    shutil.copy2(migrate.db_path, migrate.ref_path)
+
+    # 1. First iteration: create table
+    migrate.generate()  # 001.create_user.sql
+    migrate.apply(migrate.check().pending[0])
+    assert migrate.check().state == State.CURRENT
+
+    # 2. Second iteration: add avatar field
+    class UserV2(TableRow):
+        name: str
+        email: str
+        avatar: str
+
+    UserV2.__name__ = "User"
+    migrate.models = [UserV2]
+
+    migrate.generate()  # 002.alter_user.sql
+    migrate.apply(migrate.check().pending[0])
+    assert migrate.check().state == State.CURRENT
+
+    # 3. Third iteration: add bio field
+    class UserV3(TableRow):
+        name: str
+        email: str
+        avatar: str
+        bio: str
+
+    UserV3.__name__ = "User"
+    migrate.models = [UserV3]
+
+    migrate.generate()  # 003.alter_user.sql
+    migrate.apply(migrate.check().pending[0])
+    assert migrate.check().state == State.CURRENT
+
+    # Verify we have 3 migration files
+    files = list(migrate.migrations_dir.glob("*.sql"))
+    assert len(files) == 3
+
+    # 4. Consolidate: delete all migration files
+    for f in files:
+        f.unlink()
+
+    assert migrate.check().state == State.DIVERGED
+
+    # 5. Restore to .ref (empty DB)
+    migrate.restore()
+
+    # 6. Regenerate single migration with all changes
+    result = migrate.check()
+    assert result.state == State.DRIFT
+
+    filepath = migrate.generate()
+    assert filepath is not None
+    assert filepath.name == "001.create_user.sql"  # starts fresh at 001
+
+    # 7. Apply the consolidated migration
+    result = migrate.check()
+    assert result.state == State.PENDING
+    assert len(result.pending) == 1
+
+    migrate.apply(result.pending[0])
+
+    # 8. Verify CURRENT with final schema
+    result = migrate.check()
+    assert result.state == State.CURRENT

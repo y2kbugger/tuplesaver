@@ -39,66 +39,108 @@ State transitions are a combo of api calls and migration script changes.
 
 ### `generate() -> Path | None`
 Auto-generate a migration scripts/instructions based on check state.
+
 **Only allowed in `DRIFT` state**
 
-- `CREATE TABLE`, `ADD COLUMN`, `DROP COLUMN`, `RENAME COLUMN`
+- DDL to align working DB schema to models
+    - First take is a naive drop if exists stub and recreate. later we will handle alters and recreate-select-into patterns
 - For ambiguous renames: writes commented options for dev to choose
 - Generated file includes comment header with consolidation hint:
 
 
 ### `apply(filename: str) -> None`
 Run one migration script.
+
 **Only allowed in `PENDING` state**
 
-0. Make backup copy
 1. Executes script SQL
 2. Records in `_migrations` table with script content and timestamps
 
-- Restore on failure.
-- `_migrations` Table something like this:
-
-```sql
-CREATE TABLE _migrations (
-    number INTEGER PRIMARY KEY,  -- 1, 2, 3...
-    filename TEXT NOT NULL,      -- '001.create_users.sql'
-    script TEXT NOT NULL,        -- full SQL content (newlines normalized)
-    started_at TEXT NOT NULL,    -- ISO timestamp
-    finished_at TEXT NOT NULL    -- ISO timestamp
-);
-```
-
-```
 ### `restore() -> None`
-```
-Restore working DB from `.ref`.
+Restore working DB from `.ref`, this allows iterating on your scripts, continually re-applying them to a production-like baseline.
 
-1. Copies `.ref` over the working DB
-2. Reopens engine connection
+The reference DB (`mydb.sqlite.ref`) should be refreshed regularly from production somehow.
 
-Requires `.ref` to exist. After restore, run `check()` and apply pending migrations as needed.
+This is meant to be a standard action to resolve `DIVERGED` states while developing migration scripts, e.g. you thought the model needed two columns, but then you noticed another.
 
-The reference DB (`mydb.sqlite.ref`) is a copy of the production database. It serves as the **restore base** — the state you can always restore to.
+---
 
+## Integration Examples
 
-## Scenarios
-
-### Iterating on uncommitted migration
+### Dev server startup
 ```python
-# Applied 003, then edited model again
-result = migrate.check()
-# model_diff shows new differences
+while True:
+    migrate = Migrate(engine, models)
+    result = migrate.check()
 
-# Option A: Generate another migration (accumulate)
-migrate.generate()  # creates 004.add_avatar.sql
-migrate.apply('004.add_avatar.sql')
-
-# Option B: Consolidate (delete files, restore, regenerate)
-# rm 003.*.sql 004.*.sql
-migrate.restore()  # restore to .ref
-migrate.generate()  # creates single 003 with all changes
-migrate.apply('003...sql')
-
+    match result.state:
+        case State.CURRENT:
+            pass  # ready to go
+        case State.PENDING:
+            for script in result.pending:
+                migrate.apply(script)
+            sys.exit(0)  # reload to recheck
+        case State.DRIFT:
+            print(result.status())
+            print("Generating migration script...")
+            migration_path = migrate.generate()
+            print(f"Generated migration script at {migration_path}")
+        case State.DIVERGED:
+            print(result.status())
+            print("Restoring to an un-diverged state...")
+            migrate.restore()
+            print("Restored. Rechecking...")
+            sys.exit(1)  # reload to recheck
+        case State.ERROR:
+            print(result.status())
+            sys.exit(1)  # reload to recheck
+        case _:
+            raise RuntimeError(f"Unexpected migration state: {result.state}")
 ```
+
+### Production CI
+```python
+migrate = Migrate(engine, models)
+result = migrate.check()
+
+match result.state:
+    case State.CURRENT:
+        print("Nothing to migrate")
+    case State.PENDING:
+        push_to_s3(db_path)  # offsite backup
+        for script in result.pending:
+            migrate.apply(script)
+    case State.DRIFT:
+        print("Model drift — generate migration first")
+        print(result.status())
+        exit(1)
+    case _:
+        print(result.status())
+        exit(1)
+```
+
+## What This Replaces
+`engine.ensure_table_created()` goes away. Models define structure; migrations create/alter schema. The schema-diff logic moves to `generate()`. Tests still need a way to create initial tables so maybe ensure_table_created becomes a dev-only helper that just creates tables directly from models without migrations.
+
+# TODO
+## Milestones
+- [X] Successfully run a check against No models.
+- [X] Be able to generate a migration script from schema check.
+- [X] Enable the "iterate on uncommitted migration" workflow.
+- [ ] Detect and triage conflicting migration scripts from other devs
+    - e.g. handle diverged scripts really sanely.
+    - one idea: restore ALWAYS restores from .ref and restores missing/mutated scripts from _migrations table.
+- [ ] ability to ignore tables.
+- [ ] the other side of restore: ability to restore a migration scripts from the _migrations table.
+- [ ] generate alters instead of drop-create
+- [ ] generate select-into general alters
+
+
+## Questions
+- should apply be in charge of backups? or should that be caller's responsibility?
+    - can all the scripts be applied in a single transaction? if so, then backup is caller's responsibility.
+
+## Testing Scenarios
 
 ### Migration script has diverged from mydb.sqlite but not the mydb.sqlite.ref
 ```python
@@ -139,54 +181,19 @@ print(result.status())  # "Error: duplicate migration number 003"
 # Developer must manually resolve by renumbering
 ```
 
-## Integration Examples
 
-### Dev server startup
-```python
-migrate = Migrate(engine, models)
-result = migrate.check()
-
-match result.state:
-    case State.CURRENT:
-        pass  # ready to go
-    case State.PENDING:
-        for script in result.pending:
-            migrate.apply(script)
-        sys.exit(0)  # reload to recheck
-    case _:
-        log.error(result.status())
-        sys.exit(1)
-```
-
-### Production CI
-```python
-migrate = Migrate(engine, models)
-result = migrate.check()
-
-match result.state:
-    case State.CURRENT:
-        print("Nothing to migrate")
-    case State.PENDING:
-        push_to_s3(db_path)  # offsite backup
-        for script in result.pending:
-            migrate.apply(script)
-    case State.DRIFT:
-        print("Model drift — generate migration first")
-        print(result.status())
-        exit(1)
-    case _:
-        print(result.status())
-        exit(1)
-```
-
-## What This Replaces
-`engine.ensure_table_created()` goes away. Models define structure; migrations create/alter schema. The schema-diff logic moves to `generate()`. Tests still need a way to create initial tables so maybe ensure_table_created becomes a dev-only helper that just creates tables directly from models without migrations.
-
-## Milestones
-- [X] Successfully run a check against No models.
-- [X] Be able to generate a migration script from schema check.
-- [ ] Enable the "iterate on uncommitted migration" workflow.
-- [ ] Detect and triage conflicting migration scripts from other devs
-    - e.g. handle diverged scripts really sanely.
-    - one idea: restore ALWAYS restores from .ref and restores missing/mutated scripts from _migrations table.
-- [ ] ability to ignore tables.
+## testing edges to not miss, but will do later:
+- All main scenarios from migrate.md
+- Happy path and all possible migration id problems (gaps, duplicates)
+- Renamed and edited (diverged) last script
+- Renamed and not edited last script
+- Renamed and edited (diverged) past (e.g., 2nd of 3) script
+- Diverged script with .ref available
+- Diverged script without .ref
+- Auto generated model changes: add table, add column, drop column, rename column
+- Migration numbers must be sequential, gapless and unique
+- Pending migrations are always applied in order
+- test that all status make sense
+- no ref db is treated like greenfield, e.g. wipe the db and reapply all migrations.
+- test restore works as expected
+- backup api for pre-migrate hooks
