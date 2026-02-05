@@ -148,14 +148,14 @@ class Engine:
         self.adapt_convert_registry.register_adapt_convert(Model, adapt=lambda row: row.id, convert=lambda _id: _id)
 
     ##### Reading
-    def find[R: TableRow](self, Model: type[R], row_id: int | None) -> R:
+    def find[R: TableRow](self, Model: type[R], row_id: int | None) -> R | None:
         """Find a row by its id. This is a special case of find_by."""
         if row_id is None:
             raise IdNoneError("Cannot SELECT, id=None")
 
         return self.find_by(Model, id=row_id)
 
-    def find_by[R: TableRow](self, Model: type[R], **kwargs: Any) -> R:
+    def find_by[R: TableRow](self, Model: type[R], **kwargs: Any) -> R | None:
         """Find a row by its fields, e.g. `find_by(Model, name="Alice")`"""
 
         if not kwargs:
@@ -176,10 +176,6 @@ class Engine:
         cur = self.query(Model, sql, kwargs)
         row = cur.fetchone()
         cur.close()
-
-        if row is None:
-            kwargs_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
-            raise MatchNotFoundError(f"Cannot SELECT, no row with {kwargs_str} in table `{Model.__name__}`")
 
         return row
 

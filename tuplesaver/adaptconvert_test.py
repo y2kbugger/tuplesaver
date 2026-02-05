@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import fields
-from typing import Optional
 
 import pytest
 
@@ -51,6 +50,7 @@ def test_registering_adapt_convert_pair(engine: Engine) -> None:
 
     ### Convert
     retrieved_row = engine.find(ModelUnknownType, row.id)
+    assert retrieved_row is not None
     assert type(retrieved_row.custom) is NewType
     assert retrieved_row.custom.values == ["a", "b", "c"]
 
@@ -78,7 +78,7 @@ def test_attempted_registration_of_an_union_raises(engine: Engine) -> None:
         return NewType()
 
     with pytest.raises(InvalidAdaptConvertType):
-        engine.adapt_convert_registry.register_adapt_convert(Optional[NewType], adapt_newtype, convert_newtype)  # type: ignore
+        engine.adapt_convert_registry.register_adapt_convert(NewType | None, adapt_newtype, convert_newtype)  # type: ignore
 
 
 def test_attempted_registration_of_already_registered_type(engine: Engine) -> None:
@@ -98,14 +98,17 @@ def test_attempted_registration_of_already_registered_type(engine: Engine) -> No
 
     engine.adapt_convert_registry.register_adapt_convert(NewType, adapt_newtype, convert_newtype)
 
+    adapters = engine.adapt_convert_registry._adapters  # noqa: SLF001
+    converters = engine.adapt_convert_registry._converters  # noqa: SLF001
+
     # verify the registration
-    assert engine.adapt_convert_registry._adapters[NewType] is adapt_newtype
-    assert engine.adapt_convert_registry._converters['tuplesaver.adaptconvert_test.test_attempted_registration_of_already_registered_type.<locals>.NewType'] is convert_newtype
+    assert adapters[NewType] is adapt_newtype
+    assert converters['tuplesaver.adaptconvert_test.test_attempted_registration_of_already_registered_type.<locals>.NewType'] is convert_newtype
 
     engine.adapt_convert_registry.register_adapt_convert(NewType, adapt_newtype2, convert_newtype2)
     # verify that the registration was overwritten
-    assert engine.adapt_convert_registry._adapters[NewType] is adapt_newtype2
-    assert engine.adapt_convert_registry._converters['tuplesaver.adaptconvert_test.test_attempted_registration_of_already_registered_type.<locals>.NewType'] is convert_newtype2
+    assert adapters[NewType] is adapt_newtype2
+    assert converters['tuplesaver.adaptconvert_test.test_attempted_registration_of_already_registered_type.<locals>.NewType'] is convert_newtype2
 
 
 def test_can_store_and_retrieve_datetime_as_iso(engine: Engine) -> None:
@@ -118,6 +121,7 @@ def test_can_store_and_retrieve_datetime_as_iso(engine: Engine) -> None:
 
     returned_row = engine.find(T, row.id)
 
+    assert returned_row is not None
     assert returned_row.date == now
 
 
@@ -131,6 +135,7 @@ def test_can_store_and_retrieve_date_as_iso(engine: Engine) -> None:
 
     returned_row = engine.find(T, row.id)
 
+    assert returned_row is not None
     assert returned_row.date == today
 
 
@@ -143,12 +148,14 @@ def test_can_store_and_retrieve_bool_as_int(engine: Engine) -> None:
 
     returned_row = engine.find(T, row.id)
 
+    assert returned_row is not None
     assert returned_row.flag is True
 
     row = engine.save(T(False))
 
     returned_row = engine.find(T, row.id)
 
+    assert returned_row is not None
     assert returned_row.flag is False
 
 
@@ -162,6 +169,7 @@ def test_can_store_and_retrieve_list_as_json(engine: Engine) -> None:
 
     returned_row = engine.find(T, row.id)
 
+    assert returned_row is not None
     assert returned_row.names == names
 
 
@@ -175,6 +183,7 @@ def test_can_store_and_retrieve_dict_as_json(engine: Engine) -> None:
 
     returned_row = engine.find(T, row.id)
 
+    assert returned_row is not None
     assert returned_row.names == names
 
 
@@ -206,4 +215,5 @@ def test_can_store_and_retrieve_pickleable_type(engine: Engine) -> None:
     row = engine.save(T(sentinel_instance))
     returned_row = engine.find(T, row.id)
 
+    assert returned_row is not None
     assert returned_row.data.value == sentinel_instance.value

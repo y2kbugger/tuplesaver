@@ -11,7 +11,6 @@ from .engine import (
     IdNoneError,
     InvalidKwargFieldSpecifiedError,
     LookupByAdHocModelImpossible,
-    MatchNotFoundError,
     NoKwargFieldSpecifiedError,
     UnpersistedRelationshipError,
 )
@@ -49,6 +48,7 @@ def test_find__by_id(engine: Engine) -> None:
 
     retrieved_row = engine.find(Team, row.id)
 
+    assert retrieved_row is not None
     assert retrieved_row == row
     assert type(retrieved_row) is Team
 
@@ -71,13 +71,12 @@ def test_find__id_is_none(engine: Engine) -> None:
 
 def test_find__id_no_match(engine: Engine) -> None:
     engine.ensure_table_created(Team)
-    with pytest.raises(MatchNotFoundError, match="Cannot SELECT, no row with id="):
-        engine.find(Team, 78787)
+    assert engine.find(Team, 78787) is None
 
 
 def test_find__adhoc_model(engine: Engine) -> None:
     with pytest.raises(LookupByAdHocModelImpossible, match="Cannot lookup via adhoc model: `AdHoc`"):
-        engine.find(AdHoc, 1)
+        engine.find(AdHoc, 1)  # ty:ignore[invalid-argument-type]
 
 
 def test_find_by__field(engine: Engine) -> None:
@@ -102,8 +101,7 @@ def test_find_by__field_no_match(engine: Engine) -> None:
     engine.save(Team("Lions", 30))
     engine.save(Team("Tigers", 33))
 
-    with pytest.raises(MatchNotFoundError, match="Cannot SELECT, no row with name='Karl' in table `Team`"):
-        assert engine.find_by(Team, name="Karl") is None
+    assert engine.find_by(Team, name="Karl") is None
 
 
 def test_find_by__fields(engine: Engine) -> None:
@@ -130,7 +128,7 @@ def test_find_by__fields_with_invalid_kwargs(engine: Engine) -> None:
 
 def test_find_by__adhoc_model(engine: Engine) -> None:
     with pytest.raises(LookupByAdHocModelImpossible, match="Cannot lookup via adhoc model: `AdHoc`"):
-        engine.find_by(AdHoc, total=7.7)
+        engine.find_by(AdHoc, total=7.7)  # ty:ignore[invalid-argument-type]
 
 
 def test_query__table_model__succeeds_with_returns_cursor_proxy(engine: Engine) -> None:
@@ -260,6 +258,7 @@ def test_save__updates_row(engine: Engine) -> None:
     assert row.id is not None
     retrieved_row = engine.find(Team, row.id)
 
+    assert retrieved_row is not None
     assert retrieved_row == Team("Alice", 30, id=row.id)
 
 
