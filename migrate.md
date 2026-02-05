@@ -69,33 +69,32 @@ This is meant to be a standard action to resolve `DIVERGED` states while develop
 
 ### Dev server startup
 ```python
-while True:
-    migrate = Migrate(engine, models)
-    result = migrate.check()
+migrate = Migrate(engine, models)
+result = migrate.check()
 
-    match result.state:
-        case State.CURRENT:
-            pass  # ready to go
-        case State.PENDING:
-            for script in result.pending:
-                migrate.apply(script)
-            sys.exit(0)  # reload to recheck
-        case State.DRIFT:
-            print(result.status())
-            print("Generating migration script...")
-            migration_path = migrate.generate()
-            print(f"Generated migration script at {migration_path}")
-        case State.DIVERGED:
-            print(result.status())
-            print("Restoring to an un-diverged state...")
-            migrate.restore()
-            print("Restored. Rechecking...")
-            sys.exit(1)  # reload to recheck
-        case State.ERROR:
-            print(result.status())
-            sys.exit(1)  # reload to recheck
-        case _:
-            raise RuntimeError(f"Unexpected migration state: {result.state}")
+match result.state:
+    case State.CURRENT:
+        pass  # ready to go
+    case State.PENDING:
+        for script in result.pending:
+            migrate.apply(script)
+        sys.exit(0)  # reload to recheck
+    case State.DRIFT:
+        print(result.status())
+        print("Generating migration script...")
+        migration_path = migrate.generate()
+        print(f"Generated migration script at {migration_path}")
+    case State.DIVERGED:
+        print(result.status())
+        print("Restoring to an un-diverged state...")
+        migrate.restore()
+        print("Restored. Rechecking...")
+        sys.exit(1)  # reload to recheck
+    case State.ERROR:
+        print(result.status())
+        sys.exit(1)  # reload to recheck
+    case _:
+        raise RuntimeError(f"Unexpected migration state: {result.state}")
 ```
 
 ### Production CI
@@ -127,10 +126,12 @@ match result.state:
 - [X] Successfully run a check against No models.
 - [X] Be able to generate a migration script from schema check.
 - [X] Enable the "iterate on uncommitted migration" workflow.
+- [ ] Make status prettier, put data on thier own lines and indent
+- [ ] dont require engine, just db path, we will manage connections internally, setting walmode etc.
 - [ ] Detect and triage conflicting migration scripts from other devs
     - e.g. handle diverged scripts really sanely.
     - one idea: restore ALWAYS restores from .ref and restores missing/mutated scripts from _migrations table.
-- [ ] ability to ignore tables.
+    - DO we need another state, diverged from ref vs diverged from working db?
 - [ ] the other side of restore: ability to restore a migration scripts from the _migrations table.
 - [ ] generate alters instead of drop-create
 - [ ] generate select-into general alters
@@ -197,3 +198,4 @@ print(result.status())  # "Error: duplicate migration number 003"
 - no ref db is treated like greenfield, e.g. wipe the db and reapply all migrations.
 - test restore works as expected
 - backup api for pre-migrate hooks
+- filename change IS a divergence
