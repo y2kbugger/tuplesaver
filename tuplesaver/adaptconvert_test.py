@@ -50,7 +50,6 @@ def test_registering_adapt_convert_pair(engine: Engine) -> None:
 
     ### Convert
     retrieved_row = engine.find(ModelUnknownType, row.id)
-    assert retrieved_row is not None
     assert type(retrieved_row.custom) is NewType
     assert retrieved_row.custom.values == ["a", "b", "c"]
 
@@ -121,7 +120,6 @@ def test_can_store_and_retrieve_datetime_as_iso(engine: Engine) -> None:
 
     returned_row = engine.find(T, row.id)
 
-    assert returned_row is not None
     assert returned_row.date == now
 
 
@@ -135,7 +133,6 @@ def test_can_store_and_retrieve_date_as_iso(engine: Engine) -> None:
 
     returned_row = engine.find(T, row.id)
 
-    assert returned_row is not None
     assert returned_row.date == today
 
 
@@ -148,14 +145,12 @@ def test_can_store_and_retrieve_bool_as_int(engine: Engine) -> None:
 
     returned_row = engine.find(T, row.id)
 
-    assert returned_row is not None
     assert returned_row.flag is True
 
     row = engine.save(T(False))
 
     returned_row = engine.find(T, row.id)
 
-    assert returned_row is not None
     assert returned_row.flag is False
 
 
@@ -169,7 +164,6 @@ def test_can_store_and_retrieve_list_as_json(engine: Engine) -> None:
 
     returned_row = engine.find(T, row.id)
 
-    assert returned_row is not None
     assert returned_row.names == names
 
 
@@ -183,7 +177,6 @@ def test_can_store_and_retrieve_dict_as_json(engine: Engine) -> None:
 
     returned_row = engine.find(T, row.id)
 
-    assert returned_row is not None
     assert returned_row.names == names
 
 
@@ -215,5 +208,4 @@ def test_can_store_and_retrieve_pickleable_type(engine: Engine) -> None:
     row = engine.save(T(sentinel_instance))
     returned_row = engine.find(T, row.id)
 
-    assert returned_row is not None
     assert returned_row.data.value == sentinel_instance.value

@@ -1,5 +1,5 @@
 # WIP
-
+Delete idempot? no raise?
 ## TableRow Model
 - disambiguate Row vs TableRow in relation to `is_row_model` and `get_meta`
 - Move lazy proxy descriptors to the metaclass
@@ -29,6 +29,7 @@
 
 
 # Testing
+- Test delete by id (no match) and update (via save) id (no match)?
 - test `Any` type on TableRow models. Ban? Allow?
 - relax eager enforcement of FK Models being registered
     - Test case for this
@@ -70,6 +71,7 @@
 
 
 # Next
+- migrate.md combine with scratch.md
 - More standard adaptconverters Enum, set, tuple, time, frozenset, Path, UUID, Decimal, bytes
   - tests?, examples?
 - I want to fall back to pickles for any type that is not configured, and just raise if pickle fails

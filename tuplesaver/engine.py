@@ -75,7 +75,15 @@ class IdNoneError(ValueError):
     pass
 
 
-class MatchNotFoundError(ValueError):
+class RecordNotFoundError(ValueError):
+    pass
+
+
+class NoRecordToUpdateError(ValueError):
+    pass
+
+
+class NoRecordToDeleteError(ValueError):
     pass
 
 
@@ -87,7 +95,9 @@ __all_errors__ = [
     InvalidKwargFieldSpecifiedError,
     UnregisteredFieldTypeError,
     IdNoneError,
-    MatchNotFoundError,
+    RecordNotFoundError,
+    NoRecordToUpdateError,
+    NoRecordToDeleteError,
 ]
 
 
@@ -148,12 +158,16 @@ class Engine:
         self.adapt_convert_registry.register_adapt_convert(Model, adapt=lambda row: row.id, convert=lambda _id: _id)
 
     ##### Reading
-    def find[R: TableRow](self, Model: type[R], row_id: int | None) -> R | None:
+    def find[R: TableRow](self, Model: type[R], row_id: int | None) -> R:
         """Find a row by its id. This is a special case of find_by."""
         if row_id is None:
             raise IdNoneError("Cannot SELECT, id=None")
+        row = self.find_by(Model, id=row_id)
 
-        return self.find_by(Model, id=row_id)
+        if row is None:
+            raise RecordNotFoundError(f"Cannot SELECT, no row with id={row_id} in table `{Model.__name__}`")
+
+        return row
 
     def find_by[R: TableRow](self, Model: type[R], **kwargs: Any) -> R | None:
         """Find a row by its fields, e.g. `find_by(Model, name="Alice")`"""
@@ -201,7 +215,7 @@ class Engine:
             update = generate_update_sql(type(row))
             self.connection.execute(update, vars(row))
             if self.connection.changes() == 0:
-                raise MatchNotFoundError(f"Cannot UPDATE, no row with id={row.id} in table `{row.__class__.__name__}`")
+                raise NoRecordToUpdateError(f"Cannot UPDATE, no row with id={row.id} in table `{row.__class__.__name__}`")
             return row
 
     @overload
@@ -224,7 +238,7 @@ class Engine:
         query = generate_delete_sql(Model)
         self.connection.execute(query, {'id': row_id})
         if self.connection.changes() == 0:
-            raise MatchNotFoundError(f"Cannot DELETE, no row with id={row_id} in table `{Model.__name__}`")
+            raise NoRecordToDeleteError(f"Cannot DELETE, no row with id={row_id} in table `{Model.__name__}`")
 
 
 __all__ = [Engine, *__all_errors__]

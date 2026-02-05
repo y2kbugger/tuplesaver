@@ -12,6 +12,7 @@ from .engine import (
     InvalidKwargFieldSpecifiedError,
     LookupByAdHocModelImpossible,
     NoKwargFieldSpecifiedError,
+    RecordNotFoundError,
     UnpersistedRelationshipError,
 )
 from .model import Row, TableRow
@@ -71,7 +72,8 @@ def test_find__id_is_none(engine: Engine) -> None:
 
 def test_find__id_no_match(engine: Engine) -> None:
     engine.ensure_table_created(Team)
-    assert engine.find(Team, 78787) is None
+    with pytest.raises(RecordNotFoundError, match="Cannot SELECT, no row with id="):
+        engine.find(Team, 78787)
 
 
 def test_find__adhoc_model(engine: Engine) -> None:

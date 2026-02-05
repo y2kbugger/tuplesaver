@@ -97,6 +97,28 @@ https://docs.python.org/3/howto/annotations.html#annotations-howto
 https://github.com/python/cpython/issues/102405
 https://peps.python.org/pep-0649/
 
+## Integrating into a web framework
+
+### Error Handling for Web Frameworks
+
+`engine.find()` raises `RecordNotFoundError` when no matching record exists, following Ruby on Rails semantics. This makes it easy to convert to HTTP 404 responses in web frameworks:
+
+```python
+from tuplesaver.engine import Engine, RecordNotFoundError
+
+# Flask example
+@app.errorhandler(RecordNotFoundError)
+def handle_not_found(e):
+    return {"error": str(e)}, 404
+
+# FastAPI example
+@app.exception_handler(RecordNotFoundError)
+async def not_found_handler(request, exc):
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
+```
+
+Note: `engine.find_by()` returns `None` instead of raising, giving you the choice of how to handle missing records.
+
 ## API Comparison
 
 |   | Feature                                | tuplesaver                                                             | Rails ActiveRecord                                               |
