@@ -68,20 +68,20 @@ class CheckResult:
         """Human-readable summary, like `git status`."""
         lines = []
         if self.errors:
-            lines.append(f"Errors: {', '.join(self.errors)}")
+            lines.append("Errors:\n" + "\n".join(f"  {e}" for e in self.errors))
         if self.divergent:
-            lines.append(f"Diverged (changed): {', '.join(self.divergent)}")
+            lines.append("Diverged (changed):\n" + "\n".join(f"  {d}" for d in self.divergent))
         if self.divergent_missing:
-            lines.append(f"Diverged (missing): {', '.join(self.divergent_missing)}")
+            lines.append("Diverged (missing):\n" + "\n".join(f"  {d}" for d in self.divergent_missing))
         if self.pending:
-            lines.append(f"Pending: {', '.join(self.pending)}")
+            lines.append("Pending:\n" + "\n".join(f"  {p}" for p in self.pending))
         if self.has_schema_drift:
-            missing_tables = [name for name, s in self.schema.items() if not s.exists]
-            changed_tables = [name for name, s in self.schema.items() if s.exists and not s.is_current]
-            if missing_tables:
-                lines.append(f"Tables to create: {', '.join(missing_tables)}")
-            if changed_tables:
-                lines.append(f"Tables with schema changes: {', '.join(changed_tables)}")
+            missing = [name for name, s in self.schema.items() if not s.exists]
+            changed = [name for name, s in self.schema.items() if s.exists and not s.is_current]
+            if missing:
+                lines.append("Tables to create:\n" + "\n".join(f"  {t}" for t in missing))
+            if changed:
+                lines.append("Tables with schema changes:\n" + "\n".join(f"  {t}" for t in changed))
         if not lines:
             lines.append("Current: schema is up to date")
         return "\n".join(lines)

@@ -126,8 +126,9 @@ match result.state:
 - [X] Successfully run a check against No models.
 - [X] Be able to generate a migration script from schema check.
 - [X] Enable the "iterate on uncommitted migration" workflow.
-- [ ] Make status prettier, put data on thier own lines and indent
+- [X] Make status prettier, put data on thier own lines and indent
 - [ ] dont require engine, just db path, we will manage connections internally, setting walmode etc.
+- [ ] Add a cli api will near parity with the python api, so that it can be used in bash scripts and make it easier to run from vscode tasks. It should also include the example integration scenarios such as "dev auto migrate" and "production ci migrate". Restore should be interactive with listing about "diverged" and contents of each with option to either restore db from .ref or restore scripts from ref._migrations table.
 - [ ] Detect and triage conflicting migration scripts from other devs
     - e.g. handle diverged scripts really sanely.
     - one idea: restore ALWAYS restores from .ref and restores missing/mutated scripts from _migrations table.
@@ -197,3 +198,4 @@ print(result.status())  # "Error: duplicate migration number 003"
 - test that all status make sense
 - backup api for pre-migrate hooks
 - filename change IS a divergence
+- test that the "dev migrate" workflow never trys to restore more than once (e.g. looping)
