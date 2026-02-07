@@ -397,3 +397,31 @@ def test_migrate__iterate_then_consolidate(migrate: Migrate):
     # 8. Verify CURRENT with final schema
     result = migrate.check()
     assert result.state == State.CURRENT
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__missing_ref__equivalent_to_empty_db(migrate: Migrate):
+    """Restoring with no .ref file is equivalent to starting from an empty db."""
+    # Ensure no .ref exists
+    assert not migrate.ref_path.exists()
+
+    # Setup: generate and apply migration so DB has state
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+    assert migrate.check().state == State.CURRENT
+
+    # Edit migration file to cause diverged state
+    script_path = next(migrate.migrations_dir.glob("001.*.sql"))
+    script_path.write_text(script_path.read_text() + "\n-- edited\n")
+    assert migrate.check().state == State.DIVERGED
+
+    # Restore without .ref → should act like empty db
+    migrate.restore()
+
+    # After restore, DB should be empty: no tables, no _migrations
+    result = migrate.check()
+    assert result.state == State.PENDING  # edited migration is ready to be reapplied
+    assert not result.applied  # no applied migrations
+    assert len(result.pending) == 1  # one pending migration
+    assert "User" in result.schema
+    assert not result.schema["User"].exists  # table doesn't exist
