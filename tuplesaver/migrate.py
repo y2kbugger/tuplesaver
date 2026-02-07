@@ -295,27 +295,21 @@ class Migrate:
         return self.db_path.parent / f"{self.db_path.name}.ref"
 
     def restore(self) -> None:
-        """Restore working DB from .ref.
+        """Restore working DB from .ref using SQLite backup API.
 
-        1. Copies .ref over the working DB
-        2. Reopens engine connection
-
-        Requires .ref to exist.
+        If .ref exists, copies it over the working DB via backup.
+        If .ref is missing, restore to greenfield (empty DB).
         """
-        # Close current connection
-        self.engine.connection.close()
-
-        import shutil
-
-        if self.ref_path.exists():
-            # Copy .ref over the working DB
-            shutil.copy2(self.ref_path, self.db_path)
-        else:
-            # assume greenfield if no .ref
-            shutil.rmtree(self.db_path, ignore_errors=True)
-
-        # Reopen connection
         import apsw
 
-        self.engine.connection = apsw.Connection(str(self.db_path))
+        if self.ref_path.exists():
+            source = apsw.Connection(str(self.ref_path), flags=apsw.SQLITE_OPEN_READONLY)
+        else:
+            # No ref → empty in-memory DB as source (greenfield)
+            source = apsw.Connection(":memory:")
+
+        with self.engine.connection.backup("main", source, "main") as backup:
+            backup.step(-1)  # copy all pages in one step
+
+        source.close()
         self.engine.connection.execute("PRAGMA journal_mode=WAL")
