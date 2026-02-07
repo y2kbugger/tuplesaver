@@ -330,9 +330,7 @@ def test_migrate__iterate_then_consolidate(migrate: Migrate):
     This simulates the reference implementation of a devserver integration.
     """
     # Setup: create .ref as empty DB (simulates production baseline)
-    import shutil
-
-    shutil.copy2(migrate.db_path, migrate.ref_path)
+    migrate.save_ref()
 
     # 1. First iteration: create table
     migrate.generate()  # 001.create_user.sql
@@ -425,3 +423,86 @@ def test_migrate__missing_ref__equivalent_to_empty_db(migrate: Migrate):
     assert len(result.pending) == 1  # one pending migration
     assert "User" in result.schema
     assert not result.schema["User"].exists  # table doesn't exist
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__save_ref__creates_ref_via_backup(migrate: Migrate):
+    """save_ref() creates a .ref file that captures current DB state."""
+    # Generate and apply so DB has a table + _migrations row
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+    assert migrate.check().state == State.CURRENT
+
+    assert not migrate.ref_path.exists()
+    migrate.save_ref()
+    assert migrate.ref_path.exists()
+
+    # Verify by restoring and checking: round-trip proves the ref captured state
+    # (add a second model so the DB diverges from ref first)
+    class Post(TableRow):
+        title: str
+        body: str
+
+    migrate.models = [migrate.models[0], Post]
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+    assert migrate.check().state == State.CURRENT
+    assert migrate.check().schema["Post"].exists
+
+    migrate.restore()
+    result = migrate.check()
+    # Post table gone, User table still there — ref was faithfully captured
+    assert not result.schema["Post"].exists
+    assert result.schema["User"].exists
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__restore__returns_to_ref_state(migrate: Migrate):
+    """Restore brings the DB back to the exact state captured in .ref.
+
+    Workflow:
+      1. Generate + apply User migration → CURRENT, make .ref
+      2. Add Post model, generate + apply → CURRENT with both tables
+      3. Restore → DB state matches step 1 snapshot
+    """
+    # -- Step 1: one model (User), generate, apply, make ref -------------------
+    migrate.generate()  # 001.create_user.sql
+    migrate.apply(migrate.check().pending[0])
+
+    ref_check = migrate.check()
+    assert ref_check.state == State.CURRENT
+    assert ref_check.schema["User"].exists
+    assert ref_check.schema["User"].is_current
+
+    migrate.save_ref()
+
+    # -- Step 2: add a second model (Post), generate, apply --------------------
+    class Post(TableRow):
+        title: str
+        body: str
+
+    migrate.models = [migrate.models[0], Post]
+
+    migrate.generate()  # 002.create_post.sql
+    migrate.apply(migrate.check().pending[0])
+
+    after_post = migrate.check()
+    assert after_post.state == State.CURRENT
+    assert after_post.schema["Post"].exists
+    assert after_post.schema["Post"].is_current
+
+    # -- Step 3: restore -------------------------------------------------------
+    migrate.restore()
+
+    restored = migrate.check()
+
+    # User table still present and unchanged
+    assert restored.schema["User"].exists
+    assert restored.schema["User"].is_current
+
+    # Post table is gone
+    assert not restored.schema["Post"].exists
+
+    # 002 migration file is on disk but not yet applied → PENDING
+    assert restored.state == State.PENDING
+    assert "002.create_post.sql" in restored.pending

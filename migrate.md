@@ -195,6 +195,5 @@ print(result.status())  # "Error: duplicate migration number 003"
 - Migration numbers must be sequential, gapless and unique
 - Pending migrations are always applied in order
 - test that all status make sense
-- test restore works as expected
 - backup api for pre-migrate hooks
 - filename change IS a divergence

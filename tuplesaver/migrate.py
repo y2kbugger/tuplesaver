@@ -294,6 +294,15 @@ class Migrate:
         """Return the reference DB path (e.g., mydb.sqlite.ref)."""
         return self.db_path.parent / f"{self.db_path.name}.ref"
 
+    def save_ref(self) -> None:
+        """Save a reference snapshot of the working DB using SQLite backup API."""
+        import apsw
+
+        dest = apsw.Connection(str(self.ref_path))
+        with dest.backup("main", self.engine.connection, "main") as backup:
+            backup.step(-1)  # copy all pages in one step
+        dest.close()
+
     def restore(self) -> None:
         """Restore working DB from .ref using SQLite backup API.
 
