@@ -37,6 +37,13 @@ class AdHoc(Row):
     score: float
 
 
+class SqliteMaster(Row):
+    __tablename__ = "sqlite_master"
+    type: str
+    sql: str
+    name: str
+
+
 def test_engine_connection(engine: Engine) -> None:
     hasattr(engine.connection, "cursor")
     hasattr(engine.connection, "execute")
@@ -129,8 +136,11 @@ def test_find_by__fields_with_invalid_kwargs(engine: Engine) -> None:
 
 
 def test_find_by__adhoc_model(engine: Engine) -> None:
-    with pytest.raises(LookupByAdHocModelImpossible, match="Cannot lookup via adhoc model: `AdHoc`"):
-        engine.find_by(AdHoc, total=7.7)  # ty:ignore[invalid-argument-type]
+    engine.ensure_table_created(Team)
+    r = engine.find_by(SqliteMaster, type='table')
+    assert r is not None
+    assert r.type == 'table'
+    assert r.name == 'Team'
 
 
 def test_select__returns_all_rows(engine: Engine) -> None:
@@ -177,8 +187,12 @@ def test_select__invalid_kwargs(engine: Engine) -> None:
 
 
 def test_select__adhoc_model(engine: Engine) -> None:
-    with pytest.raises(LookupByAdHocModelImpossible, match="Cannot lookup via adhoc model: `AdHoc`"):
-        engine.select(AdHoc, total=7.7)  # ty:ignore[invalid-argument-type]
+    r = engine.select(SqliteMaster, type='table').fetchall()
+    assert len(r) == 0
+    engine.ensure_table_created(Team)
+    r = engine.select(SqliteMaster, type='table').fetchall()
+    assert len(r) == 1
+    assert any(row.name == 'Team' for row in r)
 
 
 def test_query__table_model__succeeds_with_returns_cursor_proxy(engine: Engine) -> None:

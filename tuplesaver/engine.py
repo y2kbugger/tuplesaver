@@ -53,7 +53,7 @@ class NoKwargFieldSpecifiedError(ValueError):
 
 
 class InvalidKwargFieldSpecifiedError(ValueError):
-    def __init__(self, Model: type[TableRow], kwargs: dict[str, Any]) -> None:
+    def __init__(self, Model: type[Row | TableRow], kwargs: dict[str, Any]) -> None:
         super().__init__(f"Invalid fields for {Model.__name__}: {', '.join(kwargs.keys())}. Valid fields are: {', '.join(f.name for f in Model.meta.fields)}")
 
 
@@ -162,6 +162,9 @@ class Engine:
         """Find a row by its id. This is a special case of find_by."""
         if row_id is None:
             raise IdNoneError("Cannot SELECT, id=None")
+        if not is_row_model(Model):
+            raise LookupByAdHocModelImpossible(Model.__name__)
+
         row = self.find_by(Model, id=row_id)
 
         if row is None:
@@ -188,10 +191,10 @@ class Engine:
         Like find_by, but returns a TypedCursorProxy[R] instead of a single row.
         """
 
-        if not is_row_model(Model):
-            raise LookupByAdHocModelImpossible(Model.__name__)
-
         meta = Model.meta
+
+        if meta.table_name is None:
+            raise LookupByAdHocModelImpossible(meta.model_name)
 
         if kwargs:
             field_names = [f.name for f in meta.fields]
