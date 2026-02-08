@@ -374,7 +374,7 @@ def test_migrate__iterate_then_consolidate(migrate: Migrate):
     assert migrate.check().state == State.DIVERGED
 
     # 5. Restore to .ref (empty DB)
-    migrate.restore()
+    migrate.restore_db()
 
     # 6. Regenerate single migration with all changes
     result = migrate.check()
@@ -413,7 +413,7 @@ def test_migrate__missing_ref__equivalent_to_empty_db(migrate: Migrate):
     assert migrate.check().state == State.DIVERGED
 
     # Restore without .ref → should act like empty db
-    migrate.restore()
+    migrate.restore_db()
 
     # After restore, DB should be empty: no tables, no _migrations
     result = migrate.check()
@@ -448,7 +448,7 @@ def test_migrate__save_ref__creates_ref_via_backup(migrate: Migrate):
     assert migrate.check().state == State.CURRENT
     assert migrate.check().schema["Post"].exists
 
-    migrate.restore()
+    migrate.restore_db()
     result = migrate.check()
     # Post table gone, User table still there — ref was faithfully captured
     assert not result.schema["Post"].exists
@@ -491,7 +491,7 @@ def test_migrate__restore__returns_to_ref_state(migrate: Migrate):
     assert after_post.schema["Post"].is_current
 
     # -- Step 3: restore -------------------------------------------------------
-    migrate.restore()
+    migrate.restore_db()
 
     restored = migrate.check()
 
@@ -505,3 +505,353 @@ def test_migrate__restore__returns_to_ref_state(migrate: Migrate):
     # 002 migration file is on disk but not yet applied → PENDING
     assert restored.state == State.PENDING
     assert "002.create_post.sql" in restored.pending
+
+
+# --- CONFLICTED state tests ---
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__conflicted__edit_after_apply_with_ref(migrate: Migrate):
+    """Editing a script that's recorded in ref DB → CONFLICTED (not just DIVERGED).
+
+    Workflow:
+      1. Generate + apply → CURRENT
+      2. save_ref() → ref captures the applied script
+      3. Edit script file on disk
+      4. check() → CONFLICTED (file ≠ ref), also DIVERGED (file ≠ working)
+         but CONFLICTED wins priority
+    """
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+    assert migrate.check().state == State.CURRENT
+
+    migrate.save_ref()
+
+    # Edit the migration file
+    script_path = migrate.migrations_dir / "001.create_user.sql"
+    script_path.write_text(script_path.read_text() + "\n-- conflicting edit\n")
+
+    result = migrate.check()
+    assert result.state == State.CONFLICTED
+    assert "001.create_user.sql" in result.conflicted
+    # Also diverged from working DB
+    assert "001.create_user.sql" in result.divergent
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__conflicted__missing_file_with_ref(migrate: Migrate):
+    """Deleting a script that's recorded in ref DB → CONFLICTED."""
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+    migrate.save_ref()
+
+    # Delete the migration file
+    script_path = migrate.migrations_dir / "001.create_user.sql"
+    script_path.unlink()
+
+    result = migrate.check()
+    assert result.state == State.CONFLICTED
+    assert "001.create_user.sql" in result.conflicted_missing
+    assert "001.create_user.sql" in result.divergent_missing
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__diverged_not_conflicted__no_ref(migrate: Migrate):
+    """Editing a script with no .ref → DIVERGED (never CONFLICTED)."""
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+    assert migrate.check().state == State.CURRENT
+
+    # No save_ref() — ref doesn't exist
+    assert not migrate.ref_path.exists()
+
+    script_path = migrate.migrations_dir / "001.create_user.sql"
+    script_path.write_text(script_path.read_text() + "\n-- edited\n")
+
+    result = migrate.check()
+    assert result.state == State.DIVERGED
+    assert "001.create_user.sql" in result.divergent
+    assert not result.conflicted
+    assert not result.conflicted_missing
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__diverged_not_conflicted__ref_has_no_record(migrate: Migrate):
+    """Script diverges from working DB, but ref has no record of it → DIVERGED only.
+
+    Workflow:
+      1. save_ref() with empty DB (ref has no _migrations)
+      2. Generate + apply → CURRENT
+      3. Edit file → DIVERGED (ref doesn't know about this script)
+    """
+    migrate.save_ref()  # ref is empty, no migrations
+
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+    assert migrate.check().state == State.CURRENT
+
+    script_path = migrate.migrations_dir / "001.create_user.sql"
+    script_path.write_text(script_path.read_text() + "\n-- edited\n")
+
+    result = migrate.check()
+    assert result.state == State.DIVERGED
+    assert "001.create_user.sql" in result.divergent
+    assert not result.conflicted
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__restore_scripts__fixes_conflicted(migrate: Migrate):
+    """restore_scripts() overwrites files from ref, resolving CONFLICTED.
+
+    Workflow:
+      1. Generate + apply → CURRENT, save_ref
+      2. Edit file → CONFLICTED
+      3. restore_scripts() → file restored from ref
+      4. check() → CURRENT (file matches both working and ref)
+    """
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+    migrate.save_ref()
+
+    script_path = migrate.migrations_dir / "001.create_user.sql"
+    original_content = script_path.read_text()
+    script_path.write_text(original_content + "\n-- conflicting edit\n")
+
+    assert migrate.check().state == State.CONFLICTED
+
+    migrate.restore_scripts()
+
+    result = migrate.check()
+    assert result.state == State.CURRENT
+    assert not result.conflicted
+    assert not result.divergent
+
+    # File content restored to original
+    assert script_path.read_text() == original_content
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__restore_scripts__recreates_missing_file(migrate: Migrate):
+    """restore_scripts() recreates missing files from ref DB."""
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+    migrate.save_ref()
+
+    script_path = migrate.migrations_dir / "001.create_user.sql"
+    original_content = script_path.read_text()
+    script_path.unlink()
+
+    assert migrate.check().state == State.CONFLICTED
+
+    migrate.restore_scripts()
+
+    result = migrate.check()
+    assert result.state == State.CURRENT
+    assert script_path.exists()
+    assert script_path.read_text() == original_content
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__restore_scripts__raises_when_not_conflicted(migrate: Migrate):
+    """restore_scripts() raises error when not in CONFLICTED state."""
+    result = migrate.check()
+    assert result.state != State.CONFLICTED
+
+    with pytest.raises(RuntimeError, match="CONFLICTED"):
+        migrate.restore_scripts()
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__conflicted_then_restore_db_still_conflicted(migrate: Migrate):
+    """restore_db doesn't fix CONFLICTED — only restore_scripts does.
+
+    Workflow:
+      1. Generate + apply → CURRENT, save_ref
+      2. Edit file → CONFLICTED
+      3. restore_db() → DB reset to ref, but file still edited
+      4. check() → still CONFLICTED (file ≠ ref)
+    """
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+    migrate.save_ref()
+
+    script_path = migrate.migrations_dir / "001.create_user.sql"
+    script_path.write_text(script_path.read_text() + "\n-- conflicting edit\n")
+
+    assert migrate.check().state == State.CONFLICTED
+
+    migrate.restore_db()
+
+    # Still CONFLICTED because file still differs from ref
+    result = migrate.check()
+    assert result.state == State.CONFLICTED
+    assert "001.create_user.sql" in result.conflicted
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__conflicting_migration_from_other_dev(migrate: Migrate):
+    """Simulate another dev pushing a migration with the same number we generated locally.
+
+    Workflow:
+      1. Both devs start from same baseline (001 applied, ref saved)
+      2. We generate 002.create_post.sql locally
+      3. Other dev pushes 002.add_index.sql to prod (arrives via git pull + ref refresh)
+      4. Now two 002.*.sql files on disk — number collision
+      5. We renumber ours to 003.create_post.sql
+      6. check() → PENDING (both 002 and 003 need applying to working DB)
+      7. Apply both → CURRENT
+    """
+    import apsw
+
+    # 1. Shared baseline: 001 applied, ref saved
+    migrate.generate()  # 001.create_user.sql
+    migrate.apply(migrate.check().pending[0])
+    assert migrate.check().state == State.CURRENT
+    migrate.save_ref()
+
+    # 2. We add a model and generate our local migration
+    class Post(TableRow):
+        title: str
+        body: str
+
+    migrate.models = [migrate.models[0], Post]
+    migrate.generate()  # 002.create_post.sql
+
+    result = migrate.check()
+    assert result.state == State.PENDING
+    assert "002.create_post.sql" in result.pending
+
+    # 3a. Ref DB refreshed from prod — other dev's migration 002 now recorded
+    #     (this happens before git pull, so we don't have their script file yet)
+    their_script = "CREATE INDEX idx_user_email ON User(email);\n"
+    ref_conn = apsw.Connection(str(migrate.ref_path))
+    ref_conn.execute(
+        "INSERT INTO _migrations (id, filename, script, started_at, finished_at) VALUES (2, '002.add_index.sql', ?, '2026-02-07T00:00:00', '2026-02-07T00:00:01')",
+        (their_script,),
+    )
+    ref_conn.close()
+
+    # Our 002 file doesn't match ref's 002 → CONFLICTED
+    result = migrate.check()
+    assert result.state == State.CONFLICTED
+    assert "002.create_post.sql" in result.conflicted
+
+    # 3b. Git pull arrives — other dev's script file lands on disk
+    (migrate.migrations_dir / "002.add_index.sql").write_text(their_script)
+
+    # 4. Now we have TWO 002.*.sql files — number collision
+    files_002 = list(migrate.migrations_dir.glob("002.*.sql"))
+    assert len(files_002) == 2
+
+    # State after pull but before fixing — duplicate number, still conflicted
+    result = migrate.check()
+    # Our 002.create_post.sql still conflicts with ref's 002
+    # Their 002.add_index.sql matches ref's 002
+    assert "002.create_post.sql" in result.conflicted
+    assert "002.add_index.sql" not in result.conflicted
+    assert result.state == State.CONFLICTED  # TODO: ideally duplicate migration numbers should be an ERROR state
+
+    # 5. Renumber our script: 002 → 003
+    (migrate.migrations_dir / "002.create_post.sql").rename(migrate.migrations_dir / "003.create_post.sql")
+
+    # 6. check() → PENDING (002 and 003 both need applying to working DB)
+    result = migrate.check()
+    assert result.state == State.PENDING
+    assert "002.add_index.sql" in result.pending
+    assert "003.create_post.sql" in result.pending
+    # 002 is not ref_pending (it's in ref), but 003 is
+    assert "002.add_index.sql" not in result.ref_pending
+    assert "003.create_post.sql" in result.ref_pending
+
+    # 7. Apply both in order → CURRENT
+    migrate.apply("002.add_index.sql")
+    migrate.apply("003.create_post.sql")
+
+    result = migrate.check()
+    assert result.state == State.CURRENT
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__ref_pending__no_ref_reports_all(migrate: Migrate):
+    """With no .ref, every script on disk is ref_pending."""
+    assert not migrate.ref_path.exists()
+
+    migrate.generate()
+    result = migrate.check()
+    assert result.ref_pending == ["001.create_user.sql"]
+
+    migrate.apply(result.pending[0])
+
+    # Still ref_pending even after applied to working DB
+    result = migrate.check()
+    assert result.ref_pending == ["001.create_user.sql"]
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__ref_pending__with_ref_tracks_unapplied(migrate: Migrate):
+    """With .ref, only scripts not recorded in ref are ref_pending."""
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+    migrate.save_ref()  # ref now has 001
+
+    # 001 is in ref → not ref_pending
+    result = migrate.check()
+    assert result.ref_pending == []
+
+    # Add second model and generate
+    class Post(TableRow):
+        title: str
+        body: str
+
+    migrate.models = [migrate.models[0], Post]
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+
+    # 002 not in ref → ref_pending
+    result = migrate.check()
+    assert result.ref_pending == ["002.create_post.sql"]
+    assert "001.create_user.sql" not in result.ref_pending
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__restore_scripts__preserves_unrelated_files(migrate: Migrate):
+    """restore_scripts() only touches conflicted files, leaving WIP scripts alone.
+
+    Workflow:
+      1. Generate + apply 001 → CURRENT, save_ref
+      2. Add Post model, generate 002 (our WIP, not in ref)
+      3. Edit 001 on disk → CONFLICTED
+      4. restore_scripts() restores 001 but leaves 002 untouched
+    """
+    migrate.generate()  # 001.create_user.sql
+    migrate.apply(migrate.check().pending[0])
+    migrate.save_ref()
+
+    # Generate a second WIP migration (ref doesn't know about it)
+    class Post(TableRow):
+        title: str
+        body: str
+
+    migrate.models = [migrate.models[0], Post]
+    migrate.generate()  # 002.create_post.sql
+
+    wip_path = migrate.migrations_dir / "002.create_post.sql"
+    wip_content = wip_path.read_text()
+    assert wip_path.exists()
+
+    # Edit 001 to cause CONFLICTED
+    script_path = migrate.migrations_dir / "001.create_user.sql"
+    script_path.write_text(script_path.read_text() + "\n-- conflict\n")
+
+    assert migrate.check().state == State.CONFLICTED
+
+    migrate.restore_scripts()
+
+    # 002 WIP file is completely untouched
+    assert wip_path.exists()
+    assert wip_path.read_text() == wip_content
+    assert migrate.check().state == State.PENDING
+
+    # Only two files in migrations dir — nothing added or removed
+    all_files = sorted(f.name for f in migrate.migrations_dir.glob("*.sql"))
+    assert all_files == ["001.create_user.sql", "002.create_post.sql"]

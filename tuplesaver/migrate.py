@@ -33,7 +33,8 @@ class Migration(TableRow):
 
 class State(Enum):
     ERROR = "error"  # Blocking issues (duplicate numbers, gaps)
-    DIVERGED = "diverged"  # Script on disk differs from what was applied
+    CONFLICTED = "conflicted"  # Script on disk differs from ref DB (production)
+    DIVERGED = "diverged"  # Script on disk differs from working DB (not ref)
     PENDING = "pending"  # Scripts ready to apply
     DRIFT = "drift"  # DB doesn't match models, need to generate
     CURRENT = "current"  # Fully in sync
@@ -60,8 +61,11 @@ class TableSchema:
 class CheckResult:
     pending: list[str] = field(default_factory=list)  # scripts on disk not yet applied
     applied: list[str] = field(default_factory=list)  # scripts recorded in _migrations table
-    divergent: list[str] = field(default_factory=list)  # disk content != recorded content
-    divergent_missing: list[str] = field(default_factory=list)  # applied but file missing
+    divergent: list[str] = field(default_factory=list)  # disk content != working DB recorded content
+    divergent_missing: list[str] = field(default_factory=list)  # applied in working DB but file missing
+    ref_pending: list[str] = field(default_factory=list)  # scripts on disk not yet applied to ref DB
+    conflicted: list[str] = field(default_factory=list)  # disk content != ref DB recorded content
+    conflicted_missing: list[str] = field(default_factory=list)  # applied in ref DB but file missing
     errors: list[str] = field(default_factory=list)  # blockers
     schema: dict[str, TableSchema] = field(default_factory=dict)  # table_name -> schema comparison
 
@@ -74,6 +78,8 @@ class CheckResult:
         """Primary state for decision-making (first match wins)."""
         if self.errors:
             return State.ERROR
+        if self.conflicted or self.conflicted_missing:
+            return State.CONFLICTED
         if self.divergent or self.divergent_missing:
             return State.DIVERGED
         if self.pending:
@@ -87,12 +93,18 @@ class CheckResult:
         lines = []
         if self.errors:
             lines.append("Errors:\n" + "\n".join(f"  {e}" for e in self.errors))
+        if self.conflicted:
+            lines.append("Conflicted (changed from ref):\n" + "\n".join(f"  {d}" for d in self.conflicted))
+        if self.conflicted_missing:
+            lines.append("Conflicted (missing from ref):\n" + "\n".join(f"  {d}" for d in self.conflicted_missing))
         if self.divergent:
             lines.append("Diverged (changed):\n" + "\n".join(f"  {d}" for d in self.divergent))
         if self.divergent_missing:
             lines.append("Diverged (missing):\n" + "\n".join(f"  {d}" for d in self.divergent_missing))
         if self.pending:
             lines.append("Pending:\n" + "\n".join(f"  {p}" for p in self.pending))
+        if self.ref_pending:
+            lines.append("Pending (not yet in ref/production):\n" + "\n".join(f"  {p}" for p in self.ref_pending))
         if self.has_schema_drift:
             missing = [name for name, s in self.schema.items() if not s.exists]
             changed = [name for name, s in self.schema.items() if s.exists and not s.is_current]
@@ -137,6 +149,21 @@ class Migrate:
         cur = self.engine.select(Migration)
         return {row.id: (row.filename, row.script) for row in cur.fetchall()}  # type: ignore[dict-item-type]
 
+    def _get_ref_applied_migrations(self) -> dict[int, tuple[str, str]]:
+        """Get applied migrations from the .ref DB as {id: (filename, script)}.
+
+        Returns empty dict if .ref doesn't exist or has no _migrations table.
+        """
+        if not self.ref_path.exists():
+            return {}
+
+        ref_engine = Engine(str(self.ref_path))
+        if not ref_engine.find_by(SqliteMaster, type="table", name="_migrations"):
+            return {}
+
+        cur = ref_engine.select(Migration)
+        return {row.id: (row.filename, row.script) for row in cur.fetchall()}  # type: ignore[dict-item-type]
+
     def check(self) -> CheckResult:
         """Read-only checks. No side effects."""
         schema = {m.meta.table_name: self._compute_table_schema(m) for m in self.models}
@@ -144,29 +171,59 @@ class Migrate:
         # Get migration files and applied migrations
         files = self._get_migration_files()
         applied = self._get_applied_migrations()
+        ref_applied = self._get_ref_applied_migrations()
+        ref_pending = []
 
         # Build set of file numbers for quick lookup
         file_numbers = {number for number, _name, _path in files}
 
+        # scripts on disk that are not yet applied in working DB
         pending = []
+        # migration scripts differing from the working DB
         divergent = []
         divergent_missing = []
+        # migration scripts differing from the ref DB (i.e. production)
+        conflicted = []
+        conflicted_missing = []
+
         for number, _name, path in files:
+            current_script = path.read_text().replace("\r\n", "\n")
+
             if number not in applied:
                 pending.append(path.name)
             else:
-                # Check if file content matches what was applied
+                # Check if file content matches what was applied in working DB
                 _recorded_filename, recorded_script = applied[number]
-                current_script = path.read_text().replace("\r\n", "\n")
                 if current_script != recorded_script:
                     divergent.append(path.name)
 
-        # Check for applied migrations with missing files
+            # Check against ref DB (independent of working DB comparison)
+            if number not in ref_applied:
+                ref_pending.append(path.name)
+            else:
+                _ref_filename, ref_script = ref_applied[number]
+                if current_script != ref_script:
+                    conflicted.append(path.name)
+
+        # Check for applied migrations with missing files (working DB)
         for number, (recorded_filename, _recorded_script) in applied.items():
             if number not in file_numbers:
                 divergent_missing.append(recorded_filename)
 
-        return CheckResult(schema=schema, pending=pending, divergent=divergent, divergent_missing=divergent_missing)
+        # Check for applied migrations with missing files (ref DB)
+        for number, (ref_filename, _ref_script) in ref_applied.items():
+            if number not in file_numbers:
+                conflicted_missing.append(ref_filename)
+
+        return CheckResult(
+            schema=schema,
+            pending=pending,
+            ref_pending=ref_pending,
+            divergent=divergent,
+            divergent_missing=divergent_missing,
+            conflicted=conflicted,
+            conflicted_missing=conflicted_missing,
+        )
 
     @property
     def migrations_dir(self) -> Path:
@@ -299,11 +356,14 @@ class Migrate:
             backup.step(-1)  # copy all pages in one step
         dest.close()
 
-    def restore(self) -> None:
+    def restore_db(self) -> None:
         """Restore working DB from .ref using SQLite backup API.
 
         If .ref exists, copies it over the working DB via backup.
         If .ref is missing, restore to greenfield (empty DB).
+
+        This fixes DIVERGED state (scripts differ from working DB but match ref).
+        After restore_db, scripts that were applied in working DB become pending again.
         """
         import apsw
 
@@ -318,3 +378,26 @@ class Migrate:
 
         source.close()
         self.engine.connection.execute("PRAGMA journal_mode=WAL")
+
+    def restore_scripts(self) -> None:
+        """Restore migration script files from the .ref DB's _migrations table.
+
+        Only allowed in CONFLICTED state. Overwrites files on disk with the
+        script content recorded in the ref DB, and recreates missing files.
+
+        This fixes CONFLICTED state (scripts differ from ref / production).
+        """
+        result = self.check()
+        if result.state != State.CONFLICTED:
+            raise RuntimeError(f"restore_scripts() only allowed in CONFLICTED state, current state is {result.state.value}")
+
+        ref_applied = self._get_ref_applied_migrations()
+
+        # Ensure migrations directory exists
+        self.migrations_dir.mkdir(exist_ok=True)
+
+        # Restore scripts from ref DB, overwriting or creating files as needed
+        for _n, (ref_filename, ref_script) in ref_applied.items():
+            if ref_filename in result.conflicted + result.conflicted_missing:
+                filepath = self.migrations_dir / ref_filename
+                filepath.write_text(ref_script)

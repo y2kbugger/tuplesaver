@@ -33,7 +33,8 @@ State transitions are a combo of api calls and migration script changes.
 | State | Allowed Actions | Result |
 |-------|-----------------|--------|
 | `ERROR` | manual fix (renumber files, etc.) | → check() |
-| `DIVERGED` | restore() | → check() → `PENDING` |
+| `CONFLICTED` | restore_scripts() | → check() → `CURRENT` or `DIVERGED` |
+| `DIVERGED` | restore_db() | → check() → `PENDING` |
 | `DRIFT` | generate() | → check() → `PENDING` |
 | `PENDING` | apply() | → check() → `DRIFT` or `CURRENT` |
 | `CURRENT` | — | stay `CURRENT` |
@@ -57,12 +58,19 @@ Run one migration script.
 1. Executes script SQL
 2. Records in `_migrations` table with script content and timestamps
 
-### `restore() -> None`
+### `restore_db() -> None`
 Restore working DB from `.ref`, this allows iterating on your scripts, continually re-applying them to a production-like baseline.
 
 The reference DB (`mydb.sqlite.ref`) should be refreshed regularly from production somehow.
 
 This is meant to be a standard action to resolve `DIVERGED` states while developing migration scripts, e.g. you thought the model needed two columns, but then you noticed another.
+
+### `restore_scripts() -> None`
+Restore migration script files from the `.ref` DB's `_migrations` table.
+
+**Only allowed in `CONFLICTED` state**
+
+Overwrites files on disk with the script content recorded in the ref DB, and recreates missing files. This resolves `CONFLICTED` states where your local scripts have diverged from what's recorded in production/shared reference.
 
 ---
 
@@ -79,7 +87,6 @@ match result.state:
     case State.PENDING:
         for script in result.pending:
             migrate.apply(script)
-        sys.exit(0)  # reload to recheck
     case State.DRIFT:
         print(result.status())
         print("Generating migration script...")
@@ -87,13 +94,23 @@ match result.state:
         print(f"Generated migration script at {migration_path}")
     case State.DIVERGED:
         print(result.status())
-        print("Restoring to an un-diverged state...")
-        migrate.restore()
-        print("Restored. Rechecking...")
-        sys.exit(1)  # reload to recheck
+        r = input("Restore DB from ref DB? This will overwrite your local DB. (y/n) ")
+        if r.lower() != "y":
+            print("Aborting. Fix the divergence and try again.")
+        else:
+            migrate.restore_db()
+            print("Restored. Rechecking...")
+    case State.CONFLICTED:
+        print(result.status())
+        print("Scripts conflict with ref DB...")
+        r = input("Restore scripts from ref DB? This will overwrite your local migration scripts. (y/n) ")
+        if r.lower() != "y":
+            print("Aborting. Fix the conflict and try again.")
+        else:
+            migrate.restore_scripts()
+            print("Scripts restored. Rechecking...")
     case State.ERROR:
         print(result.status())
-        sys.exit(1)  # reload to recheck
     case _:
         raise RuntimeError(f"Unexpected migration state: {result.state}")
 ```
@@ -105,15 +122,11 @@ result = migrate.check()
 
 match result.state:
     case State.CURRENT:
-        print("Nothing to migrate")
+        print("DB is up-to-date, nothing to migrate")
     case State.PENDING:
-        push_to_s3(db_path)  # offsite backup
+        migrate.backup()  # optional backup before applying
         for script in result.pending:
             migrate.apply(script)
-    case State.DRIFT:
-        print("Model drift — generate migration first")
-        print(result.status())
-        exit(1)
     case _:
         print(result.status())
         exit(1)
@@ -126,19 +139,20 @@ match result.state:
 - [X] Make status prettier, put data on thier own lines and indent
 - [X] dont require engine, just db path, we will manage connections internally, setting walmode etc.
 - [X] Detect and triage conflicting migration scripts from other devs
-- [ ] the other side of restore: ability to restore a migration scripts from the _migrations table.
-    - e.g. handle diverged scripts really sanely.
-    - one idea: restore ALWAYS restores from .ref and restores missing/mutated scripts from _migrations table.
-    - DO we need another state, diverged from ref vs diverged from working db?
-- [ ] Add a cli api will near parity with the python api, so that it can be used in bash scripts and make it easier to run from vscode tasks. It should also include the example integration scenarios such as "dev auto migrate" and "production ci migrate". Restore should be interactive with listing about "diverged" and contents of each with option to either restore db from .ref or restore scripts from ref._migrations table.
+    - Split DIVERGED into DIVERGED (weak: file ≠ working DB) and CONFLICTED (strong: file ≠ ref DB)
+    - restore_db() fixes DIVERGED, restore_scripts() fixes CONFLICTED
+    - CONFLICTED impossible when no .ref exists — falls through to DIVERGED
+- [X] the other side of restore: ability to restore migration scripts from the _migrations table.
+    - restore_scripts() reads ref DB's _migrations table and overwrites/recreates files on disk
+- [ ] Add a cli api will near parity with the python api, so that it can be used in bash scripts and make it easier to run from vscode tasks. It should also include the example integration scenarios such as "dev auto migrate" and "production ci migrate". Restore should be interactive with listing about "conflicted"/"diverged" and contents of each with option to either restore db from .ref or restore scripts from ref._migrations table.
 - [ ] backup method to optionally backup when applying in prod. name based on timestamp and maybe highest migration #, e.g. `mydb.sqlite.bak/2026-11-31T11:11:11.002.mydb.sqlite.bak`
+- Check for Error states e.g. Migration numbers must be sequential, gapless and unique
 - review that all status make sense and are nice
 - [ ] generate alters instead of drop-create
 - [ ] generate select-into general alters
 
 
 ## testing edges to not miss, but will do later:
-- Migration numbers must be sequential, gapless and unique
 - Pending migrations are always applied in order
 - filename change IS a divergence
 - test that the "dev migrate" workflow never trys to restore more than once (e.g. looping)
