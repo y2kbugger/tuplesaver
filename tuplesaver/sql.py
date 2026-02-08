@@ -19,7 +19,6 @@ class SelectDual[R: TableRow](tuple[type[R], str]):
     def __new__(cls, Model: type[R]) -> SelectDual[R]:
         # Create a tuple (Model, select_sql)
         select_sql = generate_select_sql(Model)
-        assert select_sql is not None, "Model must have a select statement defined."
         return super().__new__(cls, (Model, select_sql))
 
     def __call__[**P](self, func: Callable[P, Any]) -> Callable[P, tuple[type[R], str, dict[str, Any]]]:
@@ -125,7 +124,6 @@ def render_query_def_func(Model: type[TableRow], func: Callable) -> str:
         raise QueryError(f"Unused parameter(s): {', '.join(unused_parameters)}")
 
     select = generate_select_sql(Model)
-    assert select is not None, "Model must have a select statement defined."
 
     query_predicate = dedent("".join(query_parts)).strip()
     query_parts = [query_predicate]
@@ -151,7 +149,7 @@ def generate_create_table_ddl(Model: type[TableRow]) -> str:
 
 
 @cache
-def generate_select_sql(Model: type[TableRow]) -> str | None:
+def generate_select_sql(Model: type[TableRow]) -> str:
     meta = Model.meta
     assert meta.table_name is not None, "Table name must be defined for the model"
     return f"SELECT {', '.join(meta.table_name + '.' + f.name for f in meta.fields)} FROM {meta.table_name}"
