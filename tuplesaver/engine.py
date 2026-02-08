@@ -198,8 +198,12 @@ class Engine:
         return TypedCursorProxy.proxy_cursor_lazy(Model, cursor, self)
 
     #### Writing
-    def save[R: TableRow](self, row: R) -> R:
-        """insert or update records, based on the presence of an id"""
+    def save[R: TableRow](self, row: R, *, force_insert: bool = False) -> R:
+        """insert or update records, based on the presence of an id.
+
+        If force_insert=True, always INSERT even when id is already set.
+        This is useful for seeding data or restoring rows with known ids.
+        """
 
         # Don't allow saving if a related row is not persisted
         for f in fields(row)[1:]:  # skip id field
@@ -207,10 +211,12 @@ class Engine:
             if is_row_model(related_row.__class__) and related_row.id is None:
                 raise UnpersistedRelationshipError(type(row).__name__, f.name, row)
 
-        if row.id is None:
+        if row.id is None or force_insert:
             insert = generate_insert_sql(type(row))
             self.connection.execute(insert, vars(row))
-            return replace(row, id=self.connection.last_insert_rowid())
+            if row.id is None:
+                return replace(row, id=self.connection.last_insert_rowid())
+            return row
         else:
             update = generate_update_sql(type(row))
             self.connection.execute(update, vars(row))

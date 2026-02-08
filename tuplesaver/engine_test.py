@@ -264,6 +264,44 @@ def test_save__updates_row(engine: Engine) -> None:
     assert retrieved_row == Team("Alice", 30, id=row.id)
 
 
+def test_save__force_insert__with_explicit_id(engine: Engine) -> None:
+    """force_insert=True inserts a row even when id is set."""
+    engine.ensure_table_created(Team)
+    row = engine.save(Team("Lions", 30, id=42), force_insert=True)
+
+    assert row.id == 42
+    retrieved = engine.find(Team, 42)
+    assert retrieved == Team("Lions", 30, id=42)
+
+
+def test_save__force_insert__without_id(engine: Engine) -> None:
+    """force_insert=True with id=None still auto-assigns an id."""
+    engine.ensure_table_created(Team)
+    row = engine.save(Team("Lions", 30), force_insert=True)
+
+    assert row.id is not None
+    assert row.id == 1
+
+
+def test_save__force_insert__duplicate_id_raises(engine: Engine) -> None:
+    """force_insert=True with a duplicate id raises a constraint error."""
+    engine.ensure_table_created(Team)
+    engine.save(Team("Lions", 30, id=1), force_insert=True)
+
+    with pytest.raises(apsw.ConstraintError):
+        engine.save(Team("Tigers", 50, id=1), force_insert=True)
+
+
+def test_save__force_insert__multiple_explicit_ids(engine: Engine) -> None:
+    """force_insert=True allows seeding multiple rows with known ids."""
+    engine.ensure_table_created(Team)
+    engine.save(Team("Lions", 30, id=10), force_insert=True)
+    engine.save(Team("Tigers", 50, id=20), force_insert=True)
+
+    assert engine.find(Team, 10) == Team("Lions", 30, id=10)
+    assert engine.find(Team, 20) == Team("Tigers", 50, id=20)
+
+
 def test_delete__by_id(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     row = engine.save(Team("Lions", 30))
