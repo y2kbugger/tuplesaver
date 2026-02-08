@@ -72,6 +72,7 @@ Delete idempot? no raise?
 
 # Next
 - migrate.md combine with scratch.md
+- backfill __tablename__ when it is missing, e.g. just use the class name, test this
 - More standard adaptconverters Enum, set, tuple, time, frozenset, Path, UUID, Decimal, bytes
   - tests?, examples?
 - I want to fall back to pickles for any type that is not configured, and just raise if pickle fails
