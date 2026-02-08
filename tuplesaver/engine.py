@@ -169,7 +169,7 @@ class Engine:
 
         return row
 
-    def find_by[R: TableRow](self, Model: type[R], **kwargs: Any) -> R | None:
+    def find_by[R: Row | TableRow](self, Model: type[R], **kwargs: Any) -> R | None:
         """Find a row by its fields, e.g. `find_by(Model, name="Alice")`"""
 
         if not kwargs:
@@ -181,7 +181,7 @@ class Engine:
 
         return row
 
-    def select[R: TableRow](self, Model: type[R], **kwargs: Any) -> TypedCursorProxy[R]:
+    def select[R: Row | TableRow](self, Model: type[R], **kwargs: Any) -> TypedCursorProxy[R]:
         """Select rows by fields, returning a cursor proxy.
 
         With no kwargs, selects all rows. With kwargs, adds a WHERE clause.
