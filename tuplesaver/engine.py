@@ -109,7 +109,6 @@ class Engine:
         else:
             self.db_path = db_path
             self.connection: apsw.Connection = apsw.Connection(str(db_path))
-            self.connection.execute("PRAGMA journal_mode=WAL")
 
         self.adapt_convert_registry = AdaptConvertRegistry()
         self.connection.cursor_factory = self.adapt_convert_registry
