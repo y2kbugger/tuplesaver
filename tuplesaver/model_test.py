@@ -169,6 +169,29 @@ def test_meta__valid_table_model() -> None:
     )
 
 
+def test_meta__custom_tablename() -> None:
+    """__tablename__ overrides the default table_name (which is the class name)."""
+
+    class MyModel(TableRow):
+        __tablename__ = "custom_table"
+        name: str
+
+    assert MyModel.meta.model_name == "MyModel"
+    assert MyModel.meta.table_name == "custom_table"
+
+
+def test_meta__custom_tablename__not_a_field() -> None:
+    """__tablename__ does not appear as a dataclass field."""
+
+    class MyModel(TableRow):
+        __tablename__ = "custom_table"
+        name: str
+
+    field_names = [f.name for f in MyModel.meta.fields]
+    assert "__tablename__" not in field_names
+    assert field_names == ["id", "name"]
+
+
 def test_meta__model_malformed_id_raises() -> None:
     """Overriding id with wrong type causes TypeError at class definition time"""
     with pytest.raises(TypeError, match="non-default argument"):

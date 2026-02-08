@@ -121,10 +121,12 @@ def make_model_meta(Model: type[TableRow]) -> Meta:
         for fieldname, (nullable, FieldType) in zip(fieldnames, unwrapped_types, strict=False)
     )
 
+    table_name = getattr(Model, '__tablename__', None) or Model.__name__
+
     meta = Meta(
         Model=Model,
         model_name=Model.__name__,
-        table_name=Model.__name__,  # for now, table name is same as model name
+        table_name=table_name,
         fields=fields,
     )
 
@@ -174,7 +176,8 @@ def _sql_columndef(field_name: str, nullable: bool, FieldType: type) -> str:
 
     # Add FK constraint for related models
     if is_row_model(FieldType):
-        fk_clause = f" REFERENCES {FieldType.__name__}(id)"
+        fk_table = getattr(FieldType, '__tablename__', None) or FieldType.__name__
+        fk_clause = f" REFERENCES {fk_table}(id)"
     else:
         fk_clause = ""
 
