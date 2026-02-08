@@ -135,18 +135,16 @@ def make_model_meta(Model: type[TableRow]) -> Meta:
     if "_" in meta.model_name:
         raise InvalidTableName(meta.model_name)
 
-    # Note: id field validation removed - it's now inherited from Roww base class
-
     # monkey-patch Model so any Lazy field is transparently unwrapped
     from .cursorproxy import Lazy
 
-    def _unwrap_lazyproxy_getattr(self: NamedTuple, attr: str):
-        value = object.__getattribute__(self, attr)
+    def _unwrap_lazyproxy_getattr(self: Row, name: str, /) -> Any:
+        value = object.__getattribute__(self, name)
         if isinstance(value, Lazy):
             return value._obj()  # materialise & return real row  # noqa: SLF001
         return value
 
-    Model.__getattribute__ = _unwrap_lazyproxy_getattr
+    Model.__getattribute__ = _unwrap_lazyproxy_getattr  # ty:ignore[invalid-assignment]
 
     return meta
 
