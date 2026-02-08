@@ -23,6 +23,7 @@ from .sql import (
     generate_delete_sql,
     generate_insert_sql,
     generate_select_by_field_sql,
+    generate_select_sql,
     generate_update_sql,
 )
 
@@ -174,23 +175,33 @@ class Engine:
         if not kwargs:
             raise NoKwargFieldSpecifiedError()
 
+        cur = self.select(Model, **kwargs)
+        row = cur.fetchone()
+        cur.close()
+
+        return row
+
+    def select[R: TableRow](self, Model: type[R], **kwargs: Any) -> TypedCursorProxy[R]:
+        """Select rows by fields, returning a cursor proxy.
+
+        With no kwargs, selects all rows. With kwargs, adds a WHERE clause.
+        Like find_by, but returns a TypedCursorProxy[R] instead of a single row.
+        """
+
         if not is_row_model(Model):
             raise LookupByAdHocModelImpossible(Model.__name__)
 
         meta = Model.meta
 
-        field_names = [f.name for f in meta.fields]
-        if not all(k in field_names for k in kwargs):
-            raise InvalidKwargFieldSpecifiedError(Model, kwargs)
+        if kwargs:
+            field_names = [f.name for f in meta.fields]
+            if not all(k in field_names for k in kwargs):
+                raise InvalidKwargFieldSpecifiedError(Model, kwargs)
+            sql: str = generate_select_by_field_sql(Model, frozenset(kwargs.keys()))  # typing see https://github.com/astral-sh/ty/issues/1179
+        else:
+            sql = generate_select_sql(Model)
 
-        # Use cached query generation
-        sql = generate_select_by_field_sql(Model, frozenset(kwargs.keys()))
-
-        cur = self.query(Model, sql, kwargs)
-        row = cur.fetchone()
-        cur.close()
-
-        return row
+        return self.query(Model, sql, kwargs)
 
     def query[R: Row | TableRow](self, Model: type[R], sql: str, parameters: Sequence | dict = tuple()) -> TypedCursorProxy[R]:
         cursor = self.connection.execute(sql, parameters)

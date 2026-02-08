@@ -133,6 +133,54 @@ def test_find_by__adhoc_model(engine: Engine) -> None:
         engine.find_by(AdHoc, total=7.7)  # ty:ignore[invalid-argument-type]
 
 
+def test_select__returns_all_rows(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.save(Team("Lions", 30))
+    engine.save(Team("Tigers", 33))
+    engine.save(Team("Bears", 25))
+
+    rows = engine.select(Team).fetchall()
+
+    assert len(rows) == 3
+    assert all(isinstance(r, Team) for r in rows)
+    assert rows[0] == Team("Lions", 30, id=1)
+    assert rows[1] == Team("Tigers", 33, id=2)
+    assert rows[2] == Team("Bears", 25, id=3)
+
+
+def test_select__with_kwargs_filters(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.save(Team("Lions", 30))
+    engine.save(Team("Tigers", 33))
+    engine.save(Team("Lions", 25))
+
+    rows = engine.select(Team, name="Lions").fetchall()
+
+    assert len(rows) == 2
+    assert rows[0] == Team("Lions", 30, id=1)
+    assert rows[1] == Team("Lions", 25, id=3)
+
+
+def test_select__with_kwargs_no_match(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.save(Team("Lions", 30))
+
+    rows = engine.select(Team, name="Nobody").fetchall()
+
+    assert rows == []
+
+
+def test_select__invalid_kwargs(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    with pytest.raises(InvalidKwargFieldSpecifiedError):
+        engine.select(Team, doesnt_exist="test")
+
+
+def test_select__adhoc_model(engine: Engine) -> None:
+    with pytest.raises(LookupByAdHocModelImpossible, match="Cannot lookup via adhoc model: `AdHoc`"):
+        engine.select(AdHoc, total=7.7)  # ty:ignore[invalid-argument-type]
+
+
 def test_query__table_model__succeeds_with_returns_cursor_proxy(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     engine.save(Team("Lions", 30))
