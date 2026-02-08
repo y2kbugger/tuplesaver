@@ -9,8 +9,26 @@ from enum import Enum
 from pathlib import Path
 
 from .engine import Engine
-from .model import TableRow
+from .model import Row, TableRow
 from .sql import generate_create_table_ddl
+
+
+class SqliteMaster(Row):
+    __tablename__ = "sqlite_master"
+    sql: str
+    type: str
+    name: str
+
+
+class Migration(TableRow):
+    """History of applied Migration scripts, PK id is the migration number."""
+
+    __tablename__ = "_migrations"
+
+    filename: str
+    script: str
+    started_at: str
+    finished_at: str
 
 
 class State(Enum):
@@ -88,21 +106,15 @@ class CheckResult:
 
 
 class Migrate:
-    def __init__(self, engine: Engine, models: list[type[TableRow]]) -> None:
-        self.engine = engine
+    def __init__(self, db_path: str | Path, models: list[type[TableRow]]) -> None:
+        self.db_path = Path(db_path)
+        self.engine = Engine(str(self.db_path))
         self.models = models
-        assert engine.db_path is not None, "Engine must have a db_path"
-        self.db_path = Path(engine.db_path)
 
     def _get_table_sql(self, table_name: str) -> str | None:
         """Get CREATE TABLE sql from sqlite_master, or None if not exists."""
-        cursor = self.engine.connection.execute(
-            "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
-            (table_name,),
-        )
-        row = cursor.fetchone()
-        cursor.close()
-        return row[0] if row else None
+        sm = self.engine.find_by(SqliteMaster, type="table", name=table_name)
+        return sm.sql if sm else None
 
     def _compute_table_schema(self, model: type[TableRow]) -> TableSchema:
         """Compute schema comparison for a single model."""
@@ -116,25 +128,14 @@ class Migrate:
         )
 
     def _ensure_migrations_table(self) -> None:
-        """Create _migrations table if it doesn't exist."""
-        self.engine.connection.execute("""
-            CREATE TABLE IF NOT EXISTS _migrations (
-                number INTEGER PRIMARY KEY,
-                filename TEXT NOT NULL,
-                script TEXT NOT NULL,
-                started_at TEXT NOT NULL,
-                finished_at TEXT NOT NULL
-            )
-        """)
+        """Create _migrations table if it doesn't exist (dogfoods ensure_table_created)."""
+        self.engine.ensure_table_created(Migration)
 
     def _get_applied_migrations(self) -> dict[int, tuple[str, str]]:
-        """Get applied migrations as {number: (filename, script)} from _migrations table."""
+        """Get applied migrations as {id: (filename, script)} from _migrations table."""
         self._ensure_migrations_table()
-        cursor = self.engine.connection.execute("SELECT number, filename, script FROM _migrations ORDER BY number")
-        result: dict[int, tuple[str, str]] = {}
-        for row in cursor.fetchall():
-            result[row[0]] = (row[1], row[2])  # type: ignore[index]
-        return result
+        cur = self.engine.select(Migration)
+        return {row.id: (row.filename, row.script) for row in cur.fetchall()}  # type: ignore[dict-item-type]
 
     def check(self) -> CheckResult:
         """Read-only checks. No side effects."""
@@ -279,15 +280,10 @@ class Migrate:
 
         finished_at = datetime.now(UTC).isoformat()
 
-        # Record in _migrations table
+        # Record in _migrations table (dogfoods engine.save with force_insert)
         self._ensure_migrations_table()
-        self.engine.connection.execute(
-            """
-            INSERT INTO _migrations (number, filename, script, started_at, finished_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (number, filename, script, started_at, finished_at),
-        )
+        migration = Migration(filename=filename, script=script, started_at=started_at, finished_at=finished_at, id=number)
+        self.engine.save(migration, force_insert=True)
 
     @property
     def ref_path(self) -> Path:

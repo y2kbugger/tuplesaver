@@ -19,7 +19,6 @@ from pathlib import Path
 
 import pytest
 
-from .engine import Engine
 from .migrate import Migrate, State
 from .model import TableRow
 
@@ -62,8 +61,8 @@ def migrate(request: pytest.FixtureRequest, tmp_path: Path) -> Migrate:
     m_path = dst / "m.py"
     models = load_models_from_file(m_path) if m_path.exists() else []
 
-    engine = Engine(str(dst / "db.sqlite"))
-    return Migrate(engine, models=models)
+    db_path = dst / "db.sqlite"
+    return Migrate(db_path, models=models)
 
 
 @pytest.mark.scenario("empty_db")
@@ -161,7 +160,7 @@ def test_migrate__apply__records_in_migrations_table(migrate: Migrate):
     migrate.apply(result.pending[0])
 
     # Check _migrations table
-    cursor = migrate.engine.connection.execute("SELECT number, filename, script FROM _migrations WHERE number = 1")
+    cursor = migrate.engine.connection.execute("SELECT id, filename, script FROM _migrations WHERE id = 1")
     row = cursor.fetchone()
     assert row is not None
     assert row[0] == 1
