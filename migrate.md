@@ -18,8 +18,9 @@ mydb.sqlite.migrations/
     002.add_email_column.sql
 
 mydb.sqlite.bak/
-    pre_001.mydb.sqlite.bak
-    pre_002.mydb.sqlite.bak
+    2026-11-19T11:11:11.000.mydb.sqlite
+    2026-11-20T11:11:11.001.mydb.sqlite
+    2026-11-21T11:11:11.002.mydb.sqlite
 ```
 ## API
 `Migrate(engine: Engine, models: list[TableRow])`
@@ -118,84 +119,26 @@ match result.state:
         exit(1)
 ```
 
-## What This Replaces
-`engine.ensure_table_created()` goes away. Models define structure; migrations create/alter schema. The schema-diff logic moves to `generate()`. Tests still need a way to create initial tables so maybe ensure_table_created becomes a dev-only helper that just creates tables directly from models without migrations.
-
 # TODO
-## Milestones
 - [X] Successfully run a check against No models.
 - [X] Be able to generate a migration script from schema check.
 - [X] Enable the "iterate on uncommitted migration" workflow.
 - [X] Make status prettier, put data on thier own lines and indent
-- [ ] dont require engine, just db path, we will manage connections internally, setting walmode etc.
-- [ ] Add a cli api will near parity with the python api, so that it can be used in bash scripts and make it easier to run from vscode tasks. It should also include the example integration scenarios such as "dev auto migrate" and "production ci migrate". Restore should be interactive with listing about "diverged" and contents of each with option to either restore db from .ref or restore scripts from ref._migrations table.
-- [ ] Detect and triage conflicting migration scripts from other devs
+- [X] dont require engine, just db path, we will manage connections internally, setting walmode etc.
+- [X] Detect and triage conflicting migration scripts from other devs
+- [ ] the other side of restore: ability to restore a migration scripts from the _migrations table.
     - e.g. handle diverged scripts really sanely.
     - one idea: restore ALWAYS restores from .ref and restores missing/mutated scripts from _migrations table.
     - DO we need another state, diverged from ref vs diverged from working db?
-- [ ] the other side of restore: ability to restore a migration scripts from the _migrations table.
+- [ ] Add a cli api will near parity with the python api, so that it can be used in bash scripts and make it easier to run from vscode tasks. It should also include the example integration scenarios such as "dev auto migrate" and "production ci migrate". Restore should be interactive with listing about "diverged" and contents of each with option to either restore db from .ref or restore scripts from ref._migrations table.
+- [ ] backup method to optionally backup when applying in prod. name based on timestamp and maybe highest migration #, e.g. `mydb.sqlite.bak/2026-11-31T11:11:11.002.mydb.sqlite.bak`
+- review that all status make sense and are nice
 - [ ] generate alters instead of drop-create
 - [ ] generate select-into general alters
 
 
-## Questions
-- should apply be in charge of backups? or should that be caller's responsibility?
-    - can all the scripts be applied in a single transaction? if so, then backup is caller's responsibility.
-
-## Testing Scenarios
-
-### Migration script has diverged from mydb.sqlite but not the mydb.sqlite.ref
-```python
-result = migrate.check()
-# state=DIVERGED, divergent=['003.add_profile.sql']
-
-# Restore DB to .ref, then re-apply pending (including edited script)
-migrate.restore()
-result = migrate.check()
-# state=PENDING
-
-for script in result.pending:
-    migrate.apply(script)
-```
-
-### Migration script has diverged from mydb.sqlite.ref
-```python
-result = migrate.check()
-# state=DIVERGED, divergent=['002.add_email.sql']
-
-result = migrate.restore()
-# still state=DIVERGED, divergent=['002.add_email.sql']
-
-# Either restore file to undiverged or delete file to restore it from the _migrations table
-# $ rm 002.add_email.sql
-result = migrate.check()
-# state=DIVERGED, divergent=['002.add_email.sql']
-result = migrate.restore() # but now restored from _migrations table
-result = migrate.check()
-# state=CURRENT
-```
-
-### Conflicting migration numbers
-```python
-result = migrate.check()
-# errors=["Duplicate number 003"], can_apply=False
-print(result.status())  # "Error: duplicate migration number 003"
-# Developer must manually resolve by renumbering
-```
-
-
 ## testing edges to not miss, but will do later:
-- All main scenarios from migrate.md
-- Happy path and all possible migration id problems (gaps, duplicates)
-- Renamed and edited (diverged) last script
-- Renamed and not edited last script
-- Renamed and edited (diverged) past (e.g., 2nd of 3) script
-- Diverged script with .ref available
-- Diverged script without .ref
-- Auto generated model changes: add table, add column, drop column, rename column
 - Migration numbers must be sequential, gapless and unique
 - Pending migrations are always applied in order
-- test that all status make sense
-- backup api for pre-migrate hooks
 - filename change IS a divergence
 - test that the "dev migrate" workflow never trys to restore more than once (e.g. looping)
