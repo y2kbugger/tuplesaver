@@ -90,6 +90,7 @@ def render_query_def_func(Model: type[TableRow], func: Callable) -> str:
                             for field in meta.fields:
                                 if field.name == attrlevel.attr:
                                     found_intermediatte_field = field
+                                    assert isinstance(field.type, type) and issubclass(field.type, TableRow)
                                     meta = field.type.meta
                                     jalias = "_".join(join_alias_parts)
                                     joins[jalias] = f"JOIN {meta.table_name} {jalias} ON {last_jalias}.{field.name} = {jalias}.id"
