@@ -25,5 +25,7 @@
   "ruff.nativeServer": "on",
   "python.REPL.sendToNativeREPL": true,
   "jupyter.interactiveWindow.textEditor.executeSelection": true,
+  "ty.inlayHints.callArgumentNames": false,
+  "ty.inlayHints.variableTypes": false,
   //### Yet unsorted (from settings GUI)
 }
