@@ -1051,3 +1051,70 @@ def test_migrate__error__mixed_valid_and_invalid_filenames(migrate: Migrate):
     # The valid file and the .txt should not appear in errors
     assert not any("001.create_user.sql" in e for e in result.errors)
     assert not any("notes.txt" in e for e in result.errors)
+
+
+# ── backup tests ──────────────────────────────────────────────────────
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__backup__creates_backup_file(migrate: Migrate):
+    """backup() creates a timestamped copy in .bak/ directory."""
+    # Setup: generate and apply migration so DB has state
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+    assert migrate.check().state == State.CURRENT
+
+    backup_path = migrate.backup()
+
+    assert backup_path.exists()
+    assert backup_path.parent == migrate.backup_dir
+    # Filename pattern: YYYY-MM-DDThh-mm-ss.NNN.dbname
+    assert backup_path.name.endswith(".db.sqlite")
+    assert ".001." in backup_path.name
+    # No colons (Windows-safe)
+    assert ":" not in backup_path.name
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__backup__no_migrations_applied(migrate: Migrate):
+    """backup() with no applied migrations uses 000 as migration number."""
+    backup_path = migrate.backup()
+
+    assert backup_path.exists()
+    assert ".000." in backup_path.name
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__backup__is_valid_sqlite(migrate: Migrate):
+    """The backup file is a usable SQLite database with the same data."""
+    import apsw
+
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+
+    backup_path = migrate.backup()
+
+    # Open backup and verify it has the User table with _migrations
+    conn = apsw.Connection(str(backup_path), flags=apsw.SQLITE_OPEN_READONLY)
+    tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+    assert "User" in tables
+    assert "_migrations" in tables
+    rows = list(conn.execute("SELECT id, filename FROM _migrations"))
+    assert len(rows) == 1
+    assert rows[0][0] == 1
+    conn.close()
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__backup__multiple_sort_lexically(migrate: Migrate):
+    """Multiple backups sort lexically by filename (timestamp prefix)."""
+    import time
+
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+
+    p1 = migrate.backup()
+    time.sleep(1.1)  # ensure different second
+    p2 = migrate.backup()
+
+    assert p1.name < p2.name

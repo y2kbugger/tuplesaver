@@ -436,6 +436,43 @@ class Migrate:
         source.close()
         self.engine.connection.execute("PRAGMA journal_mode=WAL")
 
+    @property
+    def backup_dir(self) -> Path:
+        """Return the backup directory path (e.g., mydb.sqlite.bak/)."""
+        return self.db_path.parent / f"{self.db_path.name}.bak"
+
+    def backup(self) -> Path:
+        """Create a timestamped backup of the working DB using SQLite backup API.
+
+        Backup is stored in ``<db>.bak/<timestamp>.<highest_migration_num>.<db_name>``
+        e.g.  ``mydb.sqlite.bak/2026-02-10T14-30-05.003.mydb.sqlite``
+
+        The filename sorts lexically by time, encodes the highest applied
+        migration number for quick identification, and avoids characters
+        (like ``:``) that are illegal on Windows.
+
+        Returns the path to the created backup file.
+        """
+        import apsw
+
+        self.backup_dir.mkdir(exist_ok=True)
+
+        # Determine highest applied migration number
+        applied = self._get_applied_migrations()
+        highest = max(applied.keys()) if applied else 0
+
+        # Build filename: timestamp.NNN.dbname
+        ts = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
+        filename = f"{ts}.{highest:03d}.{self.db_path.name}"
+        dest_path = self.backup_dir / filename
+
+        dest = apsw.Connection(str(dest_path))
+        with dest.backup("main", self.engine.connection, "main") as b:
+            b.step(-1)
+        dest.close()
+
+        return dest_path
+
     def restore_scripts(self) -> None:
         """Restore migration script files from the .ref DB's _migrations table.
 
