@@ -144,9 +144,9 @@ match result.state:
     - CONFLICTED impossible when no .ref exists — falls through to DIVERGED
 - [X] the other side of restore: ability to restore migration scripts from the _migrations table.
     - restore_scripts() reads ref DB's _migrations table and overwrites/recreates files on disk
-- [ ] Add a cli api will near parity with the python api, so that it can be used in bash scripts and make it easier to run from vscode tasks. It should also include the example integration scenarios such as "dev auto migrate" and "production ci migrate". Restore should be interactive with listing about "conflicted"/"diverged" and contents of each with option to either restore db from .ref or restore scripts from ref._migrations table.
+- [X] Check for Error states e.g. Migration numbers must be sequential, gapless and unique
 - [ ] backup method to optionally backup when applying in prod. name based on timestamp and maybe highest migration #, e.g. `mydb.sqlite.bak/2026-11-31T11:11:11.002.mydb.sqlite.bak`
-- Check for Error states e.g. Migration numbers must be sequential, gapless and unique
+- [ ] Add a cli api will near parity with the python api, so that it can be used in bash scripts and make it easier to run from vscode tasks. It should also include the example integration scenarios such as "dev auto migrate" and "production ci migrate". Restore should be interactive with listing about "conflicted"/"diverged" and contents of each with option to either restore db from .ref or restore scripts from ref._migrations table.
 - review that all status make sense and are nice
 - [ ] generate alters instead of drop-create
 - [ ] generate select-into general alters

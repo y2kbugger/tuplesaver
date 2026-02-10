@@ -92,7 +92,7 @@ class CheckResult:
         """Human-readable summary, like `git status`."""
         lines = []
         if self.errors:
-            lines.append("Errors:\n" + "\n".join(f"  {e}" for e in self.errors))
+            lines.append("Errors (fix manually before proceeding):\n" + "\n".join(f"  - {e}" for e in self.errors))
         if self.conflicted:
             lines.append("Conflicted (changed from ref):\n" + "\n".join(f"  {d}" for d in self.conflicted))
         if self.conflicted_missing:
@@ -164,6 +164,59 @@ class Migrate:
         cur = ref_engine.select(Migration)
         return {row.id: (row.filename, row.script) for row in cur.fetchall()}  # type: ignore[dict-item-type]
 
+    def _validate_migration_files(self, files: list[tuple[int, str, Path]]) -> list[str]:
+        """Validate migration files in the migrations directory.
+
+        Checks:
+        - Non-.sql files are silently ignored
+        - .sql files must have exactly two periods (NNN.name.sql)
+        - The prefix before the first period must be an integer
+        - No duplicate migration numbers
+        - No gaps in migration sequence
+
+        Returns a list of error strings (empty if all valid).
+        """
+        errors: list[str] = []
+        migrations_dir = self.migrations_dir
+
+        if migrations_dir.exists():
+            for f in migrations_dir.iterdir():
+                if not f.is_file():
+                    continue
+                # Ignore non-.sql files silently
+                if not f.name.endswith(".sql"):
+                    continue
+                # .sql files must have exactly two periods
+                parts = f.name.split(".")
+                if len(parts) != 3:
+                    errors.append(f"Invalid migration filename '{f.name}' — expected format NNN.name.sql (exactly two periods)")
+                    continue
+                # The prefix must be an integer
+                try:
+                    int(parts[0])
+                except ValueError:
+                    errors.append(f"Invalid migration filename '{f.name}' — prefix '{parts[0]}' is not an integer")
+
+        if files:
+            # Check for duplicate numbers
+            number_to_files: dict[int, list[str]] = {}
+            for number, _name, path in files:
+                number_to_files.setdefault(number, []).append(path.name)
+            for number, filenames in sorted(number_to_files.items()):
+                if len(filenames) > 1:
+                    errors.append(f"Duplicate migration number {number}: {', '.join(sorted(filenames))} — rename or remove files so each number is unique")
+
+            # Check for gaps (numbers must be 1..max with no gaps)
+            unique_numbers = sorted(number_to_files.keys())
+            expected = list(range(1, unique_numbers[-1] + 1))
+            missing_numbers = sorted(set(expected) - set(unique_numbers))
+            if missing_numbers:
+                have = ', '.join(str(n) for n in unique_numbers)
+                need = ', '.join(str(n) for n in missing_numbers)
+                errors.append(f"Gap in migration sequence: have [{have}], missing [{need}] — renumber files to be sequential starting from 1 with no gaps")
+
+        return errors
+
     def check(self) -> CheckResult:
         """Read-only checks. No side effects."""
         schema = {m.meta.table_name: self._compute_table_schema(m) for m in self.models}
@@ -173,6 +226,9 @@ class Migrate:
         applied = self._get_applied_migrations()
         ref_applied = self._get_ref_applied_migrations()
         ref_pending = []
+
+        # Validate migration files
+        errors = self._validate_migration_files(files)
 
         # Build set of file numbers for quick lookup
         file_numbers = {number for number, _name, _path in files}
@@ -223,6 +279,7 @@ class Migrate:
             divergent_missing=divergent_missing,
             conflicted=conflicted,
             conflicted_missing=conflicted_missing,
+            errors=errors,
         )
 
     @property

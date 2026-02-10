@@ -743,13 +743,14 @@ def test_migrate__conflicting_migration_from_other_dev(migrate: Migrate):
     files_002 = list(migrate.migrations_dir.glob("002.*.sql"))
     assert len(files_002) == 2
 
-    # State after pull but before fixing — duplicate number, still conflicted
+    # State after pull but before fixing — duplicate number is an ERROR
     result = migrate.check()
     # Our 002.create_post.sql still conflicts with ref's 002
     # Their 002.add_index.sql matches ref's 002
     assert "002.create_post.sql" in result.conflicted
     assert "002.add_index.sql" not in result.conflicted
-    assert result.state == State.CONFLICTED  # TODO: ideally duplicate migration numbers should be an ERROR state
+    assert result.state == State.ERROR  # duplicate migration numbers block all other states
+    assert any("Duplicate migration number 2" in e for e in result.errors)
 
     # 5. Renumber our script: 002 → 003
     (migrate.migrations_dir / "002.create_post.sql").rename(migrate.migrations_dir / "003.create_post.sql")
@@ -855,3 +856,198 @@ def test_migrate__restore_scripts__preserves_unrelated_files(migrate: Migrate):
     # Only two files in migrations dir — nothing added or removed
     all_files = sorted(f.name for f in migrate.migrations_dir.glob("*.sql"))
     assert all_files == ["001.create_user.sql", "002.create_post.sql"]
+
+
+# --- ERROR state tests ---
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__error__duplicate_migration_numbers(migrate: Migrate):
+    """Two files with the same migration number → ERROR state."""
+    migrate.migrations_dir.mkdir(exist_ok=True)
+    (migrate.migrations_dir / "001.create_user.sql").write_text("CREATE TABLE User (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL);\n")
+    (migrate.migrations_dir / "001.create_post.sql").write_text("CREATE TABLE Post (id INTEGER PRIMARY KEY, title TEXT NOT NULL);\n")
+
+    result = migrate.check()
+    assert result.state == State.ERROR
+    assert len(result.errors) == 1
+    assert "Duplicate migration number 1" in result.errors[0]
+    assert "001.create_post.sql" in result.errors[0]
+    assert "001.create_user.sql" in result.errors[0]
+    assert "rename or remove" in result.errors[0]
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__error__gap_in_migration_numbers(migrate: Migrate):
+    """Files with a gap in numbering → ERROR state."""
+    migrate.migrations_dir.mkdir(exist_ok=True)
+    (migrate.migrations_dir / "001.create_user.sql").write_text("CREATE TABLE User (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL);\n")
+    (migrate.migrations_dir / "003.create_post.sql").write_text("CREATE TABLE Post (id INTEGER PRIMARY KEY, title TEXT NOT NULL);\n")
+
+    result = migrate.check()
+    assert result.state == State.ERROR
+    assert any("missing [2]" in e for e in result.errors)
+    assert any("renumber" in e for e in result.errors)
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__error__migration_not_starting_at_one(migrate: Migrate):
+    """Single file not starting at 1 → ERROR state (gap: missing 1)."""
+    migrate.migrations_dir.mkdir(exist_ok=True)
+    (migrate.migrations_dir / "002.create_user.sql").write_text("CREATE TABLE User (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL);\n")
+
+    result = migrate.check()
+    assert result.state == State.ERROR
+    assert any("missing [1]" in e for e in result.errors)
+    assert any("renumber" in e for e in result.errors)
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__error__multiple_gaps(migrate: Migrate):
+    """Files with multiple gaps report all missing numbers."""
+    migrate.migrations_dir.mkdir(exist_ok=True)
+    (migrate.migrations_dir / "001.first.sql").write_text("SELECT 1;\n")
+    (migrate.migrations_dir / "004.fourth.sql").write_text("SELECT 4;\n")
+
+    result = migrate.check()
+    assert result.state == State.ERROR
+    assert any("missing [2, 3]" in e for e in result.errors)
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__error__duplicate_and_gap(migrate: Migrate):
+    """Duplicate numbers AND gaps both reported."""
+    migrate.migrations_dir.mkdir(exist_ok=True)
+    (migrate.migrations_dir / "001.a.sql").write_text("SELECT 1;\n")
+    (migrate.migrations_dir / "001.b.sql").write_text("SELECT 1;\n")
+    (migrate.migrations_dir / "003.c.sql").write_text("SELECT 3;\n")
+
+    result = migrate.check()
+    assert result.state == State.ERROR
+    assert any("Duplicate migration number 1" in e for e in result.errors)
+    assert any("missing [2]" in e for e in result.errors)
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__error__generate_raises_when_error(migrate: Migrate):
+    """generate() raises when in ERROR state."""
+    migrate.migrations_dir.mkdir(exist_ok=True)
+    (migrate.migrations_dir / "001.a.sql").write_text("SELECT 1;\n")
+    (migrate.migrations_dir / "001.b.sql").write_text("SELECT 1;\n")
+
+    assert migrate.check().state == State.ERROR
+
+    with pytest.raises(RuntimeError, match="DRIFT"):
+        migrate.generate()
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__error__apply_raises_when_error(migrate: Migrate):
+    """apply() raises when in ERROR state."""
+    migrate.migrations_dir.mkdir(exist_ok=True)
+    (migrate.migrations_dir / "001.a.sql").write_text("SELECT 1;\n")
+    (migrate.migrations_dir / "001.b.sql").write_text("SELECT 1;\n")
+
+    assert migrate.check().state == State.ERROR
+
+    with pytest.raises(RuntimeError, match="PENDING"):
+        migrate.apply("001.a.sql")
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__error__status_shows_errors(migrate: Migrate):
+    """status() includes error messages."""
+    migrate.migrations_dir.mkdir(exist_ok=True)
+    (migrate.migrations_dir / "001.a.sql").write_text("SELECT 1;\n")
+    (migrate.migrations_dir / "001.b.sql").write_text("SELECT 1;\n")
+
+    result = migrate.check()
+    status = result.status()
+    assert "Errors (fix manually before proceeding):" in status
+    assert "Duplicate migration number 1" in status
+    assert "rename or remove" in status
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__error__no_files_no_error(migrate: Migrate):
+    """No migration files at all → no error (DRIFT because model has no table)."""
+    result = migrate.check()
+    assert result.state == State.DRIFT
+    assert not result.errors
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__error__sequential_files_no_error(migrate: Migrate):
+    """Files numbered 1, 2, 3 sequentially → no error."""
+    migrate.migrations_dir.mkdir(exist_ok=True)
+    (migrate.migrations_dir / "001.first.sql").write_text("SELECT 1;\n")
+    (migrate.migrations_dir / "002.second.sql").write_text("SELECT 2;\n")
+    (migrate.migrations_dir / "003.third.sql").write_text("SELECT 3;\n")
+
+    result = migrate.check()
+    assert not result.errors
+    assert result.state != State.ERROR
+
+
+# --- Filename validation tests ---
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__error__sql_file_with_one_period(migrate: Migrate):
+    """A .sql file with only one period (e.g., 'create_user.sql') → ERROR."""
+    migrate.migrations_dir.mkdir(exist_ok=True)
+    (migrate.migrations_dir / "create_user.sql").write_text("SELECT 1;\n")
+
+    result = migrate.check()
+    assert result.state == State.ERROR
+    assert any("create_user.sql" in e and "exactly two periods" in e for e in result.errors)
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__error__sql_file_with_three_periods(migrate: Migrate):
+    """A .sql file with three periods (e.g., '001.create.user.sql') → ERROR."""
+    migrate.migrations_dir.mkdir(exist_ok=True)
+    (migrate.migrations_dir / "001.create.user.sql").write_text("SELECT 1;\n")
+
+    result = migrate.check()
+    assert result.state == State.ERROR
+    assert any("001.create.user.sql" in e and "exactly two periods" in e for e in result.errors)
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__error__sql_file_non_integer_prefix(migrate: Migrate):
+    """A .sql file with non-integer prefix (e.g., 'abc.name.sql') → ERROR."""
+    migrate.migrations_dir.mkdir(exist_ok=True)
+    (migrate.migrations_dir / "abc.create_user.sql").write_text("SELECT 1;\n")
+
+    result = migrate.check()
+    assert result.state == State.ERROR
+    assert any("abc.create_user.sql" in e and "not an integer" in e for e in result.errors)
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__error__non_sql_files_ignored(migrate: Migrate):
+    """Non-.sql files (e.g., README.md, .gitkeep) are silently ignored."""
+    migrate.migrations_dir.mkdir(exist_ok=True)
+    (migrate.migrations_dir / "README.md").write_text("Migration notes\n")
+    (migrate.migrations_dir / ".gitkeep").write_text("")
+    (migrate.migrations_dir / "001.create_user.sql").write_text("SELECT 1;\n")
+
+    result = migrate.check()
+    assert not result.errors
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__error__mixed_valid_and_invalid_filenames(migrate: Migrate):
+    """Valid .sql files alongside invalid ones: only invalid ones produce errors."""
+    migrate.migrations_dir.mkdir(exist_ok=True)
+    (migrate.migrations_dir / "001.create_user.sql").write_text("SELECT 1;\n")
+    (migrate.migrations_dir / "bad.sql").write_text("SELECT 2;\n")
+    (migrate.migrations_dir / "notes.txt").write_text("ignore me\n")
+
+    result = migrate.check()
+    assert result.state == State.ERROR
+    assert any("bad.sql" in e and "exactly two periods" in e for e in result.errors)
+    # The valid file and the .txt should not appear in errors
+    assert not any("001.create_user.sql" in e for e in result.errors)
+    assert not any("notes.txt" in e for e in result.errors)
