@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
@@ -115,6 +116,25 @@ class CheckResult:
         if not lines:
             lines.append("Current: schema is up to date")
         return "\n".join(lines)
+
+
+def _backup_with_retry(backup: object, *, retries: int = 8, delay: float = 0.1) -> None:
+    """Drive a single apsw backup to completion, retrying on BusyError.
+
+    Calls ``step(-1)`` to copy all pages in one shot.  If the source DB
+    is momentarily locked (e.g. WAL checkpoint in progress), we sleep
+    briefly and retry up to *retries* times before re-raising.
+    """
+    import apsw
+
+    for attempt in range(retries):
+        try:
+            backup.step(-1)  # type: ignore[union-attr]
+            return
+        except apsw.BusyError:
+            if attempt + 1 == retries:
+                raise
+            time.sleep(delay * (attempt + 1))
 
 
 class Migrate:
@@ -410,7 +430,7 @@ class Migrate:
 
         dest = apsw.Connection(str(self.ref_path))
         with dest.backup("main", self.engine.connection, "main") as backup:
-            backup.step(-1)  # copy all pages in one step
+            _backup_with_retry(backup)
         dest.close()
 
     def restore_db(self) -> None:
@@ -431,10 +451,9 @@ class Migrate:
             source = apsw.Connection(":memory:")
 
         with self.engine.connection.backup("main", source, "main") as backup:
-            backup.step(-1)  # copy all pages in one step
+            _backup_with_retry(backup)
 
         source.close()
-        self.engine.connection.execute("PRAGMA journal_mode=WAL")
 
     @property
     def backup_dir(self) -> Path:
@@ -445,7 +464,7 @@ class Migrate:
         """Create a timestamped backup of the working DB using SQLite backup API.
 
         Backup is stored in ``<db>.bak/<timestamp>.<highest_migration_num>.<db_name>``
-        e.g.  ``mydb.sqlite.bak/2026-02-10T14-30-05.003.mydb.sqlite``
+        e.g.  ``mydb.sqlite.bak/2026-02-10T14-30-05.123456.003.mydb.sqlite``
 
         The filename sorts lexically by time, encodes the highest applied
         migration number for quick identification, and avoids characters
@@ -462,16 +481,25 @@ class Migrate:
         highest = max(applied.keys()) if applied else 0
 
         # Build filename: timestamp.NNN.dbname
-        ts = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
+        ts = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S.%f")  # µs precision
         filename = f"{ts}.{highest:03d}.{self.db_path.name}"
         dest_path = self.backup_dir / filename
 
+        if dest_path.exists():
+            raise FileExistsError(f"Backup already exists: {dest_path}")
+
         dest = apsw.Connection(str(dest_path))
         with dest.backup("main", self.engine.connection, "main") as b:
-            b.step(-1)
+            _backup_with_retry(b)
         dest.close()
 
         return dest_path
+
+    def list_backups(self) -> list[Path]:
+        """List available backup files, sorted by name (oldest first)."""
+        if not self.backup_dir.exists():
+            return []
+        return sorted(f for f in self.backup_dir.iterdir() if f.is_file())
 
     def restore_scripts(self) -> None:
         """Restore migration script files from the .ref DB's _migrations table.

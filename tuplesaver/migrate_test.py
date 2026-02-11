@@ -1108,13 +1108,10 @@ def test_migrate__backup__is_valid_sqlite(migrate: Migrate):
 @pytest.mark.scenario("fresh_db_with_model")
 def test_migrate__backup__multiple_sort_lexically(migrate: Migrate):
     """Multiple backups sort lexically by filename (timestamp prefix)."""
-    import time
-
     migrate.generate()
     migrate.apply(migrate.check().pending[0])
 
     p1 = migrate.backup()
-    time.sleep(1.1)  # ensure different second
     p2 = migrate.backup()
 
     assert p1.name < p2.name
