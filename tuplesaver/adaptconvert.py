@@ -55,7 +55,11 @@ class AdaptConvertRegistry:
         converter = self._converters.get(schematype)
         if not converter:
             return value
-        return converter(value)
+        try:
+            return converter(value)
+        except Exception as e:
+            logger.error(f"Error converting value {value} with converter for type {schematype}: {e}")
+            return value  # onus on developer to put in the right types if there is not converter, why punish convertable values specifically?
 
     def _convert_binding(self, _: apsw.Cursor, __: int, value: Any) -> apsw.SQLiteValue:
         # TODO: I think we could make this smarter by storing the adapters for a specific Model as a tuple and indexing into it, instead of calling adapt_value each time
