@@ -52,6 +52,9 @@ class AdaptConvertRegistry:
 
     def convert_value(self, schematype: str, value: apsw.SQLiteValue) -> Any:
         "Returns Python object from schema type and SQLite value"
+        if value is None:
+            return None
+
         converter = self._converters.get(schematype)
         if not converter:
             return value
