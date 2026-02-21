@@ -164,6 +164,8 @@ def format_status(result: CheckResult, *, color: bool = False) -> str:
 
     parts: list[str] = []
 
+    parts.append(f"State: {result.state.value.upper()}")
+
     if result.errors:
         for e in result.errors:
             parts.append(f"{red('E')} {e}")

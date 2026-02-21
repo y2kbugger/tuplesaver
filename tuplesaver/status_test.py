@@ -233,7 +233,7 @@ def test_format_status__pending_no_color():
         ref_pending=["001.create_user.sql"],
         all_filenames=["001.create_user.sql"],
     )
-    assert format_status(result, color=False) == "PP  001.create_user.sql"
+    assert format_status(result, color=False) == 'State: PENDING\nPP  001.create_user.sql'
 
 
 def test_format_status__drift_no_color():
@@ -241,7 +241,7 @@ def test_format_status__drift_no_color():
     result = CheckResult(
         schema={"User": _ts("User", "CREATE TABLE User (id INTEGER PRIMARY KEY)", None)},
     )
-    assert format_status(result, color=False) == "  U User"
+    assert format_status(result, color=False) == "State: DRIFT\n  U User"
 
 
 def test_format_status__errors_shown_first():
@@ -253,7 +253,7 @@ def test_format_status__errors_shown_first():
     )
     out = format_status(result, color=False)
     lines = out.split("\n")
-    assert lines[0] == "E Duplicate migration number 1: 001.a.sql, 001.b.sql"
+    assert lines[1] == "E Duplicate migration number 1: 001.a.sql, 001.b.sql"
 
 
 def test_format_status__with_color():

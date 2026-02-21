@@ -191,8 +191,8 @@ def _dev_step(migrate: Migrate, *, prev_state: State | None = None) -> int:
     """Recursive dev auto-resolve state machine."""
     result = migrate.check()
     if prev_state is not None:
-        print("----------------------")
-    print(format_status(result, color=sys.stdout.isatty()))
+        print("----------------------", flush=True)
+    print(format_status(result, color=sys.stdout.isatty()), flush=True)
 
     if result.state == prev_state:
         print(f"Still {result.state.value} after fix attempt. Manual intervention needed.")
