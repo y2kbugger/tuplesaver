@@ -122,3 +122,16 @@ Recursive with loop breaker: if state unchanged after a fix attempt, exit 1.
 - [ ] Generate SELECT-INTO for general alters
 - [ ] Delete-and-regenerate (remove scripts not in ref with same prefix)
 - [ ] Schema/application version pragma
+
+2026-02-11
+- status pending local vs pending ref/prod is a little confusing
+- call setting model_modules
+- put pyrpoject.toml config docs in --help text
+- Auto-resolve to CURRENT !! bad wording
+- option summary for subcommands from --help
+- restore specific db backup
+- apply hit lock
+- needs txn/retry on apply and to avoid partial application on failure
+
+2026-02-18
+- apply fails if not pending. lol current should be allowed....

@@ -24,6 +24,7 @@ Delete idempot? no raise?
     - Also allow an fstring for the where clause, e.g. `engine.find(MyModel, f"{MyModel.name} = 'Bart'")`
     - maybe we can rely on our getattribute hack to make fstrings work without AST hacking.
 - think about mutable immediate vs immutable explicit and ergonomics in example.
+- convert readme and docs and package name away from tuplesaver now that we don't save tuples
 
 # Bugs
 
@@ -72,6 +73,7 @@ Delete idempot? no raise?
 
 # Next
 - migrate.md combine with scratch.md
+- insert many?
 - backfill __tablename__ when it is missing, e.g. just use the class name, test this
 - More standard adaptconverters Enum, set, tuple, time, frozenset, Path, UUID, Decimal, bytes
   - tests?, examples?
