@@ -298,7 +298,7 @@ def test_cli_dev_stuck_state(migrate: Migrate, capsys: pytest.CaptureFixture[str
     code = cmd_dev(migrate, _ns())
     assert code == 1
     out = capsys.readouterr().out
-    assert "Error" in out or "error" in out
+    assert "E " in out  # Error indicator in compact status
 
 
 # ── integration: main() ──────────────────────────────────────────────

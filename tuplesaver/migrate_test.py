@@ -963,7 +963,7 @@ def test_migrate__error__status_shows_errors(migrate: Migrate):
 
     result = migrate.check()
     status = result.status()
-    assert "Errors (fix manually before proceeding):" in status
+    assert "E " in status
     assert "Duplicate migration number 1" in status
     assert "rename or remove" in status
 
@@ -1115,3 +1115,45 @@ def test_migrate__backup__multiple_sort_lexically(migrate: Migrate):
     p2 = migrate.backup()
 
     assert p1.name < p2.name
+
+
+# ── canonical name priority (integration) ────────────────────────────
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__canonical_name__ref_wins_over_disk(migrate: Migrate):
+    """When ref and disk have different names for same number, ref name is shown."""
+    # Generate and apply migration #1 as 001.create_user.sql
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+    migrate.save_ref()
+
+    # Rename the on-disk file
+    old_path = migrate.migrations_dir / "001.create_user.sql"
+    new_path = migrate.migrations_dir / "001.setup.sql"
+    old_path.rename(new_path)
+
+    result = migrate.check()
+    # ref has "001.create_user.sql", disk has "001.setup.sql"
+    # Canonical name should be the ref name
+    assert "001.create_user.sql" in result.all_filenames
+    assert "001.setup.sql" not in result.all_filenames
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__canonical_name__disk_wins_over_local(migrate: Migrate):
+    """When disk and local DB have different names (no ref), disk name is shown."""
+    # Generate and apply
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+
+    # Rename on-disk file
+    old_path = migrate.migrations_dir / "001.create_user.sql"
+    new_path = migrate.migrations_dir / "001.setup.sql"
+    old_path.rename(new_path)
+
+    result = migrate.check()
+    # local DB has "001.create_user.sql", disk has "001.setup.sql"
+    # Canonical name should be the disk name (no ref)
+    assert "001.setup.sql" in result.all_filenames
+    assert "001.create_user.sql" not in result.all_filenames

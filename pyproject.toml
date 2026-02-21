@@ -6,6 +6,7 @@ authors = [{ name = "y2k", email = "git@y2kbugger.com" }]
 requires-python = ">=3.13,<3.14"
 readme = "README.md"
 dependencies = [
+    "ansicolors>=1.1.8",
     "apsw>=3.51.1.0",
 ]
 

@@ -14,6 +14,12 @@ from .model import Row, TableRow
 from .sql import generate_create_table_ddl
 
 
+def _parse_migration_number(filename: str) -> int | None:
+    """Extract migration number from filename like '001.name.sql'."""
+    match = re.match(r"^(\d+)\.", filename)
+    return int(match.group(1)) if match else None
+
+
 class SqliteMaster(Row):
     __tablename__ = "sqlite_master"
     sql: str
@@ -46,6 +52,7 @@ class TableSchema:
     """Schema comparison for a single model/table."""
 
     table_name: str
+    model_name: str
     expected_sql: str  # DDL from model
     actual_sql: str | None  # DDL from DB, None if table doesn't exist
 
@@ -69,6 +76,7 @@ class CheckResult:
     conflicted_missing: list[str] = field(default_factory=list)  # applied in ref DB but file missing
     errors: list[str] = field(default_factory=list)  # blockers
     schema: dict[str, TableSchema] = field(default_factory=dict)  # table_name -> schema comparison
+    all_filenames: list[str] = field(default_factory=list)  # all known migration filenames
 
     @property
     def has_schema_drift(self) -> bool:
@@ -89,33 +97,88 @@ class CheckResult:
             return State.DRIFT
         return State.CURRENT
 
+    def status_lines(self) -> list[tuple[bool, str, str, str, str]]:
+        """Compute compact status lines.
+
+        Returns list of ``(show, ref, local, model, name)`` tuples.
+
+        * **show** - ``True`` when any indicator is set (row visible in output).
+        * **ref** - ``"P"`` pending, ``"C"`` conflicted, ``" "`` up-to-date.
+        * **local** - ``"P"`` pending, ``"D"`` diverged, ``" "`` up-to-date.
+        * **model** - ``"M"`` modified, ``"U"`` untracked, ``" "`` up-to-date.
+        * **name** - migration filename *or* model name (never mixed).
+
+        Migrations come first (sorted by filename), then models (sorted by name).
+        """
+        lines: list[tuple[bool, str, str, str, str]] = []
+
+        pending_nums = {_parse_migration_number(f) for f in self.pending}
+        divergent_nums = {_parse_migration_number(f) for f in self.divergent} | {_parse_migration_number(f) for f in self.divergent_missing}
+        ref_pending_nums = {_parse_migration_number(f) for f in self.ref_pending}
+        conflicted_nums = {_parse_migration_number(f) for f in self.conflicted} | {_parse_migration_number(f) for f in self.conflicted_missing}
+
+        for filename in sorted(set(self.all_filenames)):
+            num = _parse_migration_number(filename)
+            ref = "C" if num in conflicted_nums else ("P" if num in ref_pending_nums else " ")
+            local = "D" if num in divergent_nums else ("P" if num in pending_nums else " ")
+            model = " "
+            show = ref != " " or local != " "
+            lines.append((show, ref, local, model, filename))
+
+        for table_name in sorted(self.schema):
+            ts = self.schema[table_name]
+            if not ts.exists:
+                model = "U"
+            elif not ts.is_current:
+                model = "M"
+            else:
+                model = " "
+            show = model != " "
+            lines.append((show, " ", " ", model, ts.model_name))
+
+        return lines
+
     def status(self) -> str:
-        """Human-readable summary, like `git status`."""
-        lines = []
-        if self.errors:
-            lines.append("Errors (fix manually before proceeding):\n" + "\n".join(f"  - {e}" for e in self.errors))
-        if self.conflicted:
-            lines.append("Conflicted (changed from ref):\n" + "\n".join(f"  {d}" for d in self.conflicted))
-        if self.conflicted_missing:
-            lines.append("Conflicted (missing from ref):\n" + "\n".join(f"  {d}" for d in self.conflicted_missing))
-        if self.divergent:
-            lines.append("Diverged (changed):\n" + "\n".join(f"  {d}" for d in self.divergent))
-        if self.divergent_missing:
-            lines.append("Diverged (missing):\n" + "\n".join(f"  {d}" for d in self.divergent_missing))
-        if self.pending:
-            lines.append("Pending:\n" + "\n".join(f"  {p}" for p in self.pending))
-        if self.ref_pending:
-            lines.append("Pending (not yet in ref/production):\n" + "\n".join(f"  {p}" for p in self.ref_pending))
-        if self.has_schema_drift:
-            missing = [name for name, s in self.schema.items() if not s.exists]
-            changed = [name for name, s in self.schema.items() if s.exists and not s.is_current]
-            if missing:
-                lines.append("Tables to create:\n" + "\n".join(f"  {t}" for t in missing))
-            if changed:
-                lines.append("Tables with schema changes:\n" + "\n".join(f"  {t}" for t in changed))
-        if not lines:
-            lines.append("Current: schema is up to date")
-        return "\n".join(lines)
+        """Human-readable compact status (no colours)."""
+        return format_status(self, color=False)
+
+
+def format_status(result: CheckResult, *, color: bool = False) -> str:
+    """Render *result* as a compact, ``git status``-style string.
+
+    Columns: ``Ref  Local  Model | Name``
+
+    When *color* is ``True``, uses ``ansicolors``:  green (ref),
+    yellow (local), red (model).
+    """
+    if color:
+        import colors as clr
+
+        green = clr.green
+        yellow = clr.yellow
+        red = clr.red
+    else:
+        green = yellow = red = lambda x: x
+
+    parts: list[str] = []
+
+    if result.errors:
+        for e in result.errors:
+            parts.append(f"{red('E')} {e}")
+
+    lines = result.status_lines()
+    visible = [(ref, local, model, name) for show, ref, local, model, name in lines if show]
+
+    if not visible and not result.errors:
+        return "Current: schema is up to date"
+
+    for ref, local, model, name in visible:
+        ref_s = green(ref) if ref != " " else ref
+        local_s = yellow(local) if local != " " else local
+        model_s = red(model) if model != " " else model
+        parts.append(f"{ref_s}{local_s}{model_s} {name}")
+
+    return "\n".join(parts)
 
 
 def _backup_with_retry(backup: object, *, retries: int = 8, delay: float = 0.1) -> None:
@@ -151,10 +214,12 @@ class Migrate:
     def _compute_table_schema(self, model: type[TableRow]) -> TableSchema:
         """Compute schema comparison for a single model."""
         table_name = model.meta.table_name
+        model_name = model.meta.model_name
         expected_sql = generate_create_table_ddl(model)
         actual_sql = self._get_table_sql(table_name)
         return TableSchema(
             table_name=table_name,
+            model_name=model_name,
             expected_sql=expected_sql,
             actual_sql=actual_sql,
         )
@@ -291,6 +356,17 @@ class Migrate:
             if number not in file_numbers:
                 conflicted_missing.append(ref_filename)
 
+        # Build canonical filename per migration number.
+        # Priority (highest wins): refdb > on-disk file > localdb.
+        canonical: dict[int, str] = {}
+        for number, (recorded_filename, _) in applied.items():
+            canonical[number] = recorded_filename
+        for number, _name, path in files:
+            canonical[number] = path.name
+        for number, (ref_filename, _) in ref_applied.items():
+            canonical[number] = ref_filename
+        all_filenames_set = set(canonical.values())
+
         return CheckResult(
             schema=schema,
             pending=pending,
@@ -300,6 +376,7 @@ class Migrate:
             conflicted=conflicted,
             conflicted_missing=conflicted_missing,
             errors=errors,
+            all_filenames=sorted(all_filenames_set),
         )
 
     @property

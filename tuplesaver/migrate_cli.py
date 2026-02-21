@@ -8,7 +8,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from .migrate import Migrate, State
+from .migrate import Migrate, State, format_status
 from .model import TableRow
 
 
@@ -64,7 +64,7 @@ def make_migrate(args: argparse.Namespace) -> Migrate:
 def cmd_status(migrate: Migrate, args: argparse.Namespace) -> int:
     """Show migration state."""
     result = migrate.check()
-    print(result.status())
+    print(format_status(result, color=sys.stdout.isatty()))
     return 0 if result.state == State.CURRENT else 1
 
 
@@ -153,26 +153,24 @@ def cmd_restore(migrate: Migrate, args: argparse.Namespace) -> int:
 def _dev_step(migrate: Migrate, *, prev_state: State | None = None) -> int:
     """Recursive dev auto-resolve state machine."""
     result = migrate.check()
+    if prev_state is not None:
+        print("----------------------")
+    print(format_status(result, color=sys.stdout.isatty()))
 
     if result.state == prev_state:
         print(f"Still {result.state.value} after fix attempt. Manual intervention needed.")
-        print(result.status())
         return 1
 
     match result.state:
         case State.CURRENT:
-            print(result.status())
             return 0
         case State.ERROR:
-            print(result.status())
             return 1
         case State.CONFLICTED:
-            print(result.status())
             migrate.restore_scripts()
             print("Restored scripts from ref DB.")
             return _dev_step(migrate, prev_state=result.state)
         case State.DIVERGED:
-            print(result.status())
             migrate.backup()
             migrate.restore_db()
             print("Restored DB from ref.")
