@@ -9,6 +9,8 @@ from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 
+import apsw
+
 from .engine import Engine
 from .model import Row, TableRow
 from .sql import generate_create_table_ddl
@@ -459,11 +461,15 @@ class Migrate:
 
         return filepath
 
-    def apply(self, filename: str) -> None:
-        """Run one migration script.
+    def apply(self, filename: str, *, retries: int = 8, retry_delay: float = 0.1) -> None:
+        """Run one migration script inside an IMMEDIATE transaction.
 
         Only allowed in PENDING state. Executes the script SQL and records
-        it in the _migrations table.
+        it in the _migrations table atomically — if anything fails, the
+        transaction is rolled back so no partial application is left behind.
+
+        Retries on ``apsw.BusyError`` (DB locked) up to *retries* times
+        with exponential backoff starting at *retry_delay* seconds.
         """
         result = self.check()
         if result.state != State.PENDING:
@@ -484,17 +490,38 @@ class Migrate:
         # Normalize newlines
         script = script.replace("\r\n", "\n")
 
-        started_at = datetime.now(UTC).isoformat()
-
-        # Execute the migration script (APSW handles multiple statements)
-        self.engine.connection.execute(script)
-
-        finished_at = datetime.now(UTC).isoformat()
-
-        # Record in _migrations table (dogfoods engine.save with force_insert)
         self._ensure_migrations_table()
-        migration = Migration(filename=filename, script=script, started_at=started_at, finished_at=finished_at, id=number)
-        self.engine.save(migration, force_insert=True)
+
+        conn = self.engine.connection
+        prev_mode = conn.transaction_mode
+        conn.transaction_mode = "IMMEDIATE"
+        try:
+            for attempt in range(retries):
+                try:
+                    started_at = datetime.now(UTC).isoformat()
+
+                    with conn:
+                        # Execute the migration script (APSW handles multiple statements)
+                        conn.execute(script)
+
+                        finished_at = datetime.now(UTC).isoformat()
+
+                        # Record in _migrations table (dogfoods engine.save with force_insert)
+                        migration = Migration(
+                            filename=filename,
+                            script=script,
+                            started_at=started_at,
+                            finished_at=finished_at,
+                            id=number,
+                        )
+                        self.engine.save(migration, force_insert=True)
+                    return  # committed
+                except apsw.BusyError:
+                    if attempt + 1 == retries:
+                        raise
+                    time.sleep(retry_delay * (attempt + 1))
+        finally:
+            conn.transaction_mode = prev_mode
 
     @property
     def ref_path(self) -> Path:

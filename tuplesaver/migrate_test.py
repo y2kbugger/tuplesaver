@@ -193,6 +193,47 @@ def test_migrate__apply__raises_when_not_pending(migrate: Migrate):
 
 
 @pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__apply__rolls_back_on_bad_script(migrate: Migrate):
+    """apply() rolls back entirely when the migration script contains an error."""
+    import apsw
+
+    migrate.generate()
+    result = migrate.check()
+    filename = result.pending[0]
+
+    # Append an invalid statement to the generated migration script
+    filepath = migrate.migrations_dir / filename
+    original = filepath.read_text()
+    filepath.write_text(original + "\nINSERT INTO nonexistent_table VALUES (1);\n")
+
+    # Re-check so the script content is fresh
+    result = migrate.check()
+    assert result.state == State.PENDING
+
+    with pytest.raises(apsw.SQLError):
+        migrate.apply(filename)
+
+    # Table should NOT exist — the CREATE TABLE was rolled back
+    cursor = migrate.engine.connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='User'")
+    assert cursor.fetchone() is None
+
+    # _migrations should have no record
+    cursor = migrate.engine.connection.execute("SELECT count(*) FROM _migrations")
+    assert cursor.fetchone()[0] == 0
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__apply__restores_transaction_mode(migrate: Migrate):
+    """apply() restores the original transaction_mode after execution."""
+    migrate.generate()
+    result = migrate.check()
+
+    original_mode = migrate.engine.connection.transaction_mode
+    migrate.apply(result.pending[0])
+    assert migrate.engine.connection.transaction_mode == original_mode
+
+
+@pytest.mark.scenario("fresh_db_with_model")
 def test_migrate__diverged__edit_after_apply(migrate: Migrate):
     """Editing a migration file after apply causes DIVERGED state."""
     # Setup: generate and apply migration
