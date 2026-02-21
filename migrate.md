@@ -123,8 +123,15 @@ Recursive with loop breaker: if state unchanged after a fix attempt, exit 1.
 - [ ] Delete-and-regenerate (remove scripts not in ref with same prefix)
 - [ ] Schema/application version pragma
 
-2026-02-11
+# WIP
 - Auto-resolve to CURRENT !! bad wording, need to jbe clearerer
 - option summary for subcommands from --help
 - rename DRIFT to MISMATCH
 - better message for for cant generate where there are unapplied/changed migrations
+- interactive restore should list most recent first
+- Add to status state summary line:
+  - error??
+  - For conflicted, give quick summary of what that means e.g. '1 local script conflicts with production, please restore scripts from the production reference to resolve'
+  - diverged: '1 undeployed migration script differs from what was applied to the working db, please rollback the working DB to the production reference to resolve'
+  - drift/mismatch: '1 model missing, 2 models differ from the working DB, generate migrations to resolve'
+  - when in pending or current e.g. 2 migrations pending on local, and 6 pending production deployment
