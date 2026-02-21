@@ -17,7 +17,6 @@ from .migrate_cli import (
     cmd_backup,
     cmd_dev,
     cmd_generate,
-    cmd_list_backups,
     cmd_restore,
     cmd_status,
     load_models_from_module,
@@ -145,30 +144,6 @@ def test_cli_backup_ref(migrate: Migrate, capsys: pytest.CaptureFixture[str]) ->
     assert migrate.ref_path.exists()
 
 
-# ── list-backups ──────────────────────────────────────────────────────
-
-
-@pytest.mark.scenario("fresh_db_with_model")
-def test_cli_list_backups(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
-    """list-backups after backup → files listed sorted."""
-    migrate.backup()
-    args = _ns()
-    code = cmd_list_backups(migrate, args)
-    assert code == 0
-    out = capsys.readouterr().out
-    assert "db.sqlite" in out
-
-
-@pytest.mark.scenario("fresh_db_with_model")
-def test_cli_list_backups_empty(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
-    """list-backups with no backups → 'No backups found'."""
-    args = _ns()
-    code = cmd_list_backups(migrate, args)
-    assert code == 0
-    out = capsys.readouterr().out
-    assert "No snapshots" in out
-
-
 # ── restore ───────────────────────────────────────────────────────────
 
 
@@ -185,7 +160,7 @@ def test_cli_restore_db(migrate: Migrate, capsys: pytest.CaptureFixture[str]) ->
     script_path.write_text(script_path.read_text() + "\n-- edited\n")
     assert migrate.check().state == State.CONFLICTED  # has ref so conflicted
 
-    args = _ns(scripts=False)
+    args = _ns(scripts=False, interactive=False, backup=None)
     code = cmd_restore(migrate, args)
     assert code == 0
     out = capsys.readouterr().out
@@ -206,13 +181,75 @@ def test_cli_restore_scripts(migrate: Migrate, capsys: pytest.CaptureFixture[str
     script_path.write_text(script_path.read_text() + "\n-- conflict\n")
     assert migrate.check().state == State.CONFLICTED
 
-    args = _ns(scripts=True)
+    args = _ns(scripts=True, interactive=False, backup=None)
     code = cmd_restore(migrate, args)
     assert code == 0
     out = capsys.readouterr().out
     assert "Restored scripts" in out
     # No backup was created for scripts restore
     assert not migrate.backup_dir.exists()
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_cli_restore_specific_backup(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
+    """restore <backup> → restores from named backup file."""
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+    bak = migrate.backup()
+
+    args = _ns(scripts=False, interactive=False, backup=bak.name)
+    code = cmd_restore(migrate, args)
+    assert code == 0
+    out = capsys.readouterr().out
+    assert f"Restored DB from backup: {bak.name}" in out
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_cli_restore_specific_backup_not_found(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
+    """restore <missing> → error + list available backups."""
+    args = _ns(scripts=False, interactive=False, backup="nonexistent.sqlite")
+    code = cmd_restore(migrate, args)
+    assert code == 1
+    out = capsys.readouterr().out
+    assert "Backup not found" in out
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_cli_restore_interactive(migrate: Migrate, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """restore -i → lists backups, prompts, restores selected."""
+    migrate.generate()
+    migrate.apply(migrate.check().pending[0])
+    bak = migrate.backup()
+
+    monkeypatch.setattr("builtins.input", lambda _: "1")
+    args = _ns(scripts=False, interactive=True, backup=None)
+    code = cmd_restore(migrate, args)
+    assert code == 0
+    out = capsys.readouterr().out
+    assert bak.name in out
+    assert "Restored DB from backup" in out
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_cli_restore_interactive_cancel(migrate: Migrate, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """restore -i then 'q' → cancelled."""
+    migrate.backup()
+    monkeypatch.setattr("builtins.input", lambda _: "q")
+    args = _ns(scripts=False, interactive=True, backup=None)
+    code = cmd_restore(migrate, args)
+    assert code == 1
+    out = capsys.readouterr().out
+    assert "Cancelled" in out
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_cli_restore_interactive_no_backups(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
+    """restore -i with no backups → error."""
+    args = _ns(scripts=False, interactive=True, backup=None)
+    code = cmd_restore(migrate, args)
+    assert code == 1
+    out = capsys.readouterr().out
+    assert "No snapshots" in out
 
 
 # ── dev ───────────────────────────────────────────────────────────────

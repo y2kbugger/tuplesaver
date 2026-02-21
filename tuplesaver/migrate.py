@@ -537,18 +537,23 @@ class Migrate:
             _backup_with_retry(backup)
         dest.close()
 
-    def restore_db(self) -> None:
-        """Restore working DB from .ref using SQLite backup API.
+    def restore_db(self, path: Path | None = None) -> None:
+        """Restore working DB using SQLite backup API.
 
-        If .ref exists, copies it over the working DB via backup.
-        If .ref is missing, restore to greenfield (empty DB).
+        If *path* is given, restore from that specific file (e.g. a backup).
+        Otherwise fall back to .ref; if .ref is also missing, restore to
+        greenfield (empty DB).
 
         This fixes DIVERGED state (scripts differ from working DB but match ref).
         After restore_db, scripts that were applied in working DB become pending again.
         """
         import apsw
 
-        if self.ref_path.exists():
+        if path is not None:
+            if not path.exists():
+                raise FileNotFoundError(f"Backup not found: {path}")
+            source = apsw.Connection(str(path), flags=apsw.SQLITE_OPEN_READONLY)
+        elif self.ref_path.exists():
             source = apsw.Connection(str(self.ref_path), flags=apsw.SQLITE_OPEN_READONLY)
         else:
             # No ref → empty in-memory DB as source (greenfield)

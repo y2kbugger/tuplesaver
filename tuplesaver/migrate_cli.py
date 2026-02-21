@@ -116,20 +116,16 @@ def cmd_backup(migrate: Migrate, args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_list_backups(migrate: Migrate, args: argparse.Namespace) -> int:
-    """List available backups."""
+def _list_backups(migrate: Migrate) -> None:
+    """Print available backups to stdout."""
     backups = migrate.list_backups()
     if not backups:
         print("No snapshots found")
     else:
-        for b in backups:
-            print(b.name)
-
-    # Include ref if it exists
+        for i, b in enumerate(backups, 1):
+            print(f"  {i}. {b.name}")
     if migrate.ref_path.exists():
-        print(f"ref: {migrate.ref_path.name}")
-
-    return 0
+        print(f"  ref: {migrate.ref_path.name}")
 
 
 def cmd_restore(migrate: Migrate, args: argparse.Namespace) -> int:
@@ -143,7 +139,48 @@ def cmd_restore(migrate: Migrate, args: argparse.Namespace) -> int:
         print("Restored scripts from ref DB.")
         return 0
 
-    # DB restore
+    # Interactive mode: list backups and prompt for selection
+    if args.interactive:
+        backups = migrate.list_backups()
+        if not backups:
+            print("No snapshots available to restore.")
+            return 1
+        _list_backups(migrate)
+        try:
+            choice = input("Select backup number (or 'q' to cancel): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nCancelled.")
+            return 1
+        if choice.lower() == "q":
+            print("Cancelled.")
+            return 1
+        try:
+            idx = int(choice)
+        except ValueError:
+            print(f"Invalid selection: {choice}")
+            return 1
+        if idx < 1 or idx > len(backups):
+            print(f"Selection out of range: {idx}")
+            return 1
+        selected = backups[idx - 1]
+        migrate.backup()
+        migrate.restore_db(selected)
+        print(f"Restored DB from backup: {selected.name}")
+        return 0
+
+    # Restore specific backup by name
+    if args.backup:
+        backup_path = migrate.backup_dir / args.backup
+        if not backup_path.exists():
+            print(f"Backup not found: {args.backup}")
+            _list_backups(migrate)
+            return 1
+        migrate.backup()
+        migrate.restore_db(backup_path)
+        print(f"Restored DB from backup: {args.backup}")
+        return 0
+
+    # Default: DB restore from ref
     migrate.backup()
     migrate.restore_db()
     print("Restored DB from ref.")
@@ -223,10 +260,11 @@ def build_parser() -> argparse.ArgumentParser:
     backup_p = sub.add_parser("backup", help="Create backup")
     backup_p.add_argument("--ref", action="store_true", help="Also save ref snapshot")
 
-    sub.add_parser("list-backups", help="List available backups")
-
-    restore_p = sub.add_parser("restore", help="Restore DB or scripts from ref")
-    restore_p.add_argument("--scripts", action="store_true", help="Restore scripts instead of DB")
+    restore_p = sub.add_parser("restore", help="Restore DB or scripts from ref/backup")
+    restore_mode = restore_p.add_mutually_exclusive_group()
+    restore_mode.add_argument("--scripts", action="store_true", help="Restore scripts instead of DB")
+    restore_mode.add_argument("-i", "--interactive", action="store_true", help="Interactively select a backup to restore")
+    restore_mode.add_argument("-b", "--backup", default=None, help="Specific backup filename to restore")
 
     sub.add_parser("dev", help="Auto-resolve to CURRENT")
 
@@ -238,7 +276,6 @@ COMMANDS = {
     "generate": cmd_generate,
     "apply": cmd_apply,
     "backup": cmd_backup,
-    "list-backups": cmd_list_backups,
     "restore": cmd_restore,
     "dev": cmd_dev,
 }
