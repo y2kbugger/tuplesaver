@@ -125,7 +125,6 @@ Recursive with loop breaker: if state unchanged after a fix attempt, exit 1.
 
 2026-02-11
 - status pending local vs pending ref/prod is a little confusing
-- put pyrpoject.toml config docs in --help text
 - Auto-resolve to CURRENT !! bad wording
 - option summary for subcommands from --help
 - restore specific db backup

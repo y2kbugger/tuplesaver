@@ -196,7 +196,21 @@ def cmd_dev(migrate: Migrate, args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
-    parser = argparse.ArgumentParser(prog="tuplesaver-migrate", description="TupleSaver migration CLI")
+    parser = argparse.ArgumentParser(
+        prog="tuplesaver-migrate",
+        description="TupleSaver migration CLI",
+        epilog=(
+            "pyproject.toml config:\n"
+            "  Options can also be set in [tool.tuplesaver]:\n"
+            "\n"
+            "    [tool.tuplesaver]\n"
+            '    db_path = "path/to/db.sqlite"\n'
+            '    models_module = "myapp.models"\n'
+            "\n"
+            "  CLI flags take precedence over pyproject.toml values."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--db-path", dest="db_path", help="Path to working SQLite DB")
     parser.add_argument("--models-module", dest="models_module", help="Dotted module path containing TableRow models")
 
