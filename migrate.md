@@ -60,14 +60,14 @@ Entry point: `tuplesaver-migrate` (or `python -m tuplesaver.migrate_cli`)
 
 ```
 --db-path PATH      Path to working DB
---models MODULE     Dotted module path, e.g. myapp.models
+--models-module MODULE   Dotted module path, e.g. myapp.models
 ```
 
 Fallback: `[tool.tuplesaver]` in `./pyproject.toml`:
 ```toml
 [tool.tuplesaver]
 db_path = "data/mydb.sqlite"
-models = "myapp.models"
+models_module = "myapp.models"
 ```
 
 ### Commands
@@ -125,7 +125,6 @@ Recursive with loop breaker: if state unchanged after a fix attempt, exit 1.
 
 2026-02-11
 - status pending local vs pending ref/prod is a little confusing
-- call setting model_modules
 - put pyrpoject.toml config docs in --help text
 - Auto-resolve to CURRENT !! bad wording
 - option summary for subcommands from --help

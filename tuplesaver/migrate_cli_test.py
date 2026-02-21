@@ -308,7 +308,7 @@ def test_cli_dev_stuck_state(migrate: Migrate, capsys: pytest.CaptureFixture[str
 def test_cli_main_status(migrate: Migrate) -> None:
     """main() with full argv → SystemExit with correct code."""
     with pytest.raises(SystemExit) as exc_info, patch("tuplesaver.migrate_cli.make_migrate", return_value=migrate):
-        main(["--db-path", "x.db", "--models", "m", "status"])
+        main(["--db-path", "x.db", "--models-module", "m", "status"])
     assert exc_info.value.code == 0
 
 
@@ -316,7 +316,7 @@ def test_cli_main_status(migrate: Migrate) -> None:
 def test_cli_main_generate(migrate: Migrate) -> None:
     """main() generate → SystemExit(0)."""
     with pytest.raises(SystemExit) as exc_info, patch("tuplesaver.migrate_cli.make_migrate", return_value=migrate):
-        main(["--db-path", "x.db", "--models", "m", "generate"])
+        main(["--db-path", "x.db", "--models-module", "m", "generate"])
     assert exc_info.value.code == 0
 
 
@@ -324,7 +324,7 @@ def test_cli_main_generate(migrate: Migrate) -> None:
 def test_cli_main_dev(migrate: Migrate) -> None:
     """main() dev from DRIFT → SystemExit(0)."""
     with pytest.raises(SystemExit) as exc_info, patch("tuplesaver.migrate_cli.make_migrate", return_value=migrate):
-        main(["--db-path", "x.db", "--models", "m", "dev"])
+        main(["--db-path", "x.db", "--models-module", "m", "dev"])
     assert exc_info.value.code == 0
 
 
@@ -366,15 +366,15 @@ def _run_cli(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_e2e_passes_db_path_and_models(tmp_path: Path) -> None:
-    """CLI works when --db-path and --models are provided."""
+def test_e2e_passes_db_path_and_models_module(tmp_path: Path) -> None:
+    """CLI works when --db-path and --models-module are provided."""
     shutil.copytree(SCENARIOS_DIR / "fresh_db_with_model", tmp_path / "s")
-    r = _run_cli("--db-path", str(tmp_path / "s/db.sqlite"), "--models", "m", "status", cwd=tmp_path / "s")
+    r = _run_cli("--db-path", str(tmp_path / "s/db.sqlite"), "--models-module", "m", "status", cwd=tmp_path / "s")
     assert r.returncode in (0, 1)  # ran successfully (exit 1 = DRIFT, still valid)
     assert r.stderr == ""
 
 
-def test_e2e_fails_without_db_path_and_models(tmp_path: Path) -> None:
-    """CLI errors when --db-path and --models are missing."""
+def test_e2e_fails_without_db_path_and_models_module(tmp_path: Path) -> None:
+    """CLI errors when --db-path and --models-module are missing."""
     r = _run_cli("status", cwd=tmp_path)
     assert r.returncode != 0

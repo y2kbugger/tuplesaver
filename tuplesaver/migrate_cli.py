@@ -41,13 +41,13 @@ def resolve_args(args: argparse.Namespace) -> tuple[str, str]:
     config = load_config()
 
     db_path = args.db_path or config.get("db_path")
-    models = args.models or config.get("models")
+    models = args.models_module or config.get("models_module")
 
     if not db_path:
         print("Error: --db-path is required (or set db_path in [tool.tuplesaver])")
         sys.exit(1)
     if not models:
-        print("Error: --models is required (or set models in [tool.tuplesaver])")
+        print("Error: --models-module is required (or set models_module in [tool.tuplesaver])")
         sys.exit(1)
 
     assert isinstance(db_path, str) and isinstance(models, str)
@@ -198,7 +198,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(prog="tuplesaver-migrate", description="TupleSaver migration CLI")
     parser.add_argument("--db-path", dest="db_path", help="Path to working SQLite DB")
-    parser.add_argument("--models", help="Dotted module path containing TableRow models")
+    parser.add_argument("--models-module", dest="models_module", help="Dotted module path containing TableRow models")
 
     sub = parser.add_subparsers(dest="command", required=True)
 
