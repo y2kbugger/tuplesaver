@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import colors as clr
+
 from .migrate import CheckResult, TableSchema, format_status
 
 
@@ -37,7 +39,7 @@ def test_status_lines__current_with_applied():
     ]
 
 
-def test_status_lines__drift_untracked_model():
+def test_status_lines__mismatch_untracked_model():
     """Fresh DB with model, no migrations → model shows U (untracked)."""
     result = CheckResult(
         schema={"User": _ts("User", "CREATE TABLE User (id INTEGER PRIMARY KEY, name TEXT NOT NULL)", None)},
@@ -214,7 +216,7 @@ def test_status_lines__name_priority_local_only():
 def test_format_status__current():
     """All up-to-date → simple message."""
     result = CheckResult()
-    assert format_status(result) == "Current: schema is up to date"
+    assert clr.strip_color(format_status(result)) == "CURRENT: schema is up to date"
 
 
 def test_format_status__current_with_hidden():
@@ -223,25 +225,27 @@ def test_format_status__current_with_hidden():
         all_filenames=["001.create_user.sql"],
         schema={"User": _ts("User", "CREATE TABLE User (id INTEGER PRIMARY KEY)", "CREATE TABLE User (id INTEGER PRIMARY KEY)")},
     )
-    assert format_status(result) == "Current: schema is up to date"
+    assert clr.strip_color(format_status(result)) == "CURRENT: schema is up to date"
 
 
-def test_format_status__pending_no_color():
-    """Pending migration, no color → plain indicators."""
+def test_format_status__pending():
+    """Pending migration → summary + indicators."""
     result = CheckResult(
         pending=["001.create_user.sql"],
         ref_pending=["001.create_user.sql"],
         all_filenames=["001.create_user.sql"],
     )
-    assert format_status(result, color=False) == 'State: PENDING\nPP  001.create_user.sql'
+    out = clr.strip_color(format_status(result))
+    assert out == ("PENDING: 1 migration Pending on devlocal DB, 1 Pending production deployment\nPP  001.create_user.sql")
 
 
-def test_format_status__drift_no_color():
-    """Untracked model, no color → plain U indicator."""
+def test_format_status__mismatch():
+    """Untracked model → summary + U indicator."""
     result = CheckResult(
         schema={"User": _ts("User", "CREATE TABLE User (id INTEGER PRIMARY KEY)", None)},
     )
-    assert format_status(result, color=False) == "State: DRIFT\n  U User"
+    out = clr.strip_color(format_status(result))
+    assert out == ("MISMATCH: 1 model Untracked, generate migrations to resolve\n  U User")
 
 
 def test_format_status__errors_shown_first():
@@ -251,23 +255,19 @@ def test_format_status__errors_shown_first():
         pending=["001.a.sql"],
         all_filenames=["001.a.sql"],
     )
-    out = format_status(result, color=False)
+    out = clr.strip_color(format_status(result))
     lines = out.split("\n")
     assert lines[1] == "E Duplicate migration number 1: 001.a.sql, 001.b.sql"
 
 
-def test_format_status__with_color():
-    """Colored output uses ANSI escape sequences."""
-    import colors as clr
-
+def test_format_status__has_ansi_color():
+    """Output always contains ANSI escape sequences."""
     result = CheckResult(
         pending=["001.create_user.sql"],
         all_filenames=["001.create_user.sql"],
         schema={"User": _ts("User", "CREATE TABLE User (id INTEGER PRIMARY KEY)", None)},
     )
-    out = format_status(result, color=True)
-    # Should contain ANSI escape sequences
+    out = format_status(result)
     assert "\x1b[" in out
-    # The indicators should be colored
     assert clr.yellow("P") in out
     assert clr.red("U") in out

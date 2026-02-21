@@ -10,6 +10,7 @@ from enum import Enum
 from pathlib import Path
 
 import apsw
+import colors as clr
 
 from .engine import Engine
 from .model import Row, TableRow
@@ -45,7 +46,7 @@ class State(Enum):
     CONFLICTED = "conflicted"  # Script on disk differs from ref DB (production)
     DIVERGED = "diverged"  # Script on disk differs from working DB (not ref)
     PENDING = "pending"  # Scripts ready to apply
-    DRIFT = "drift"  # DB doesn't match models, need to generate
+    MISMATCH = "mismatch"  # DB doesn't match models, need to generate
     CURRENT = "current"  # Fully in sync
 
 
@@ -81,7 +82,7 @@ class CheckResult:
     all_filenames: list[str] = field(default_factory=list)  # all known migration filenames
 
     @property
-    def has_schema_drift(self) -> bool:
+    def has_schema_mismatch(self) -> bool:
         return any(not s.is_current for s in self.schema.values())
 
     @property
@@ -95,8 +96,8 @@ class CheckResult:
             return State.DIVERGED
         if self.pending:
             return State.PENDING
-        if self.has_schema_drift:
-            return State.DRIFT
+        if self.has_schema_mismatch:
+            return State.MISMATCH
         return State.CURRENT
 
     def status_lines(self) -> list[tuple[bool, str, str, str, str]]:
@@ -141,48 +142,86 @@ class CheckResult:
         return lines
 
     def status(self) -> str:
-        """Human-readable compact status (no colours)."""
-        return format_status(self, color=False)
+        """Human-readable compact status."""
+        return format_status(self)
 
 
-def format_status(result: CheckResult, *, color: bool = False) -> str:
+def format_status(result: CheckResult) -> str:
     """Render *result* as a compact, ``git status``-style string.
 
     Columns: ``Ref  Local  Model | Name``
 
-    When *color* is ``True``, uses ``ansicolors``:  green (ref),
+    Uses ``ansicolors`` for coloured indicators: green (ref),
     yellow (local), red (model).
     """
-    if color:
-        import colors as clr
-
-        green = clr.green
-        yellow = clr.yellow
-        red = clr.red
-    else:
-        green = yellow = red = lambda x: x
-
-    parts: list[str] = []
-
-    parts.append(f"State: {result.state.value.upper()}")
-
-    if result.errors:
-        for e in result.errors:
-            parts.append(f"{red('E')} {e}")
-
     lines = result.status_lines()
     visible = [(ref, local, model, name) for show, ref, local, model, name in lines if show]
 
     if not visible and not result.errors:
-        return "Current: schema is up to date"
+        return make_status_summary(result)
+
+    parts: list[str] = []
+
+    parts.append(make_status_summary(result))
+
+    if result.errors:
+        for e in result.errors:
+            parts.append(f"{clr.red('E')} {e}")
 
     for ref, local, model, name in visible:
-        ref_s = green(ref) if ref != " " else ref
-        local_s = yellow(local) if local != " " else local
-        model_s = red(model) if model != " " else model
+        ref_s = clr.green(ref) if ref != " " else ref
+        local_s = clr.yellow(local) if local != " " else local
+        model_s = clr.red(model) if model != " " else model
         parts.append(f"{ref_s}{local_s}{model_s} {name}")
 
     return "\n".join(parts)
+
+
+def make_status_summary(result: CheckResult) -> str:
+    """Build the single-line state summary header (e.g. ``PENDING: 1 migration Pending …``)."""
+
+    def _pl(n: int, word: str) -> str:
+        return f"{n} {word}{'s' if n != 1 else ''}"
+
+    state = result.state
+    label = state.value.upper()
+
+    if state == State.ERROR:
+        detail = _pl(len(result.errors), "error")
+    elif state == State.CONFLICTED:
+        n = len(result.conflicted) + len(result.conflicted_missing)
+        detail = f"{_pl(n, 'script')} {clr.green('Conflicted')} with production reference, restore scripts from prod to resolve"
+    elif state == State.DIVERGED:
+        n = len(result.divergent) + len(result.divergent_missing)
+        detail = f"{_pl(n, 'script')} {clr.yellow('Diverged')} from devlocal DB, rollback devlocal to the production reference to resolve"
+    elif state == State.MISMATCH:
+        untracked = sum(1 for s in result.schema.values() if not s.exists)
+        mismatched = sum(1 for s in result.schema.values() if s.exists and not s.is_current)
+        summary_parts: list[str] = []
+        if untracked:
+            summary_parts.append(f"{_pl(untracked, 'model')} {clr.red('Untracked')}")
+        if mismatched:
+            summary_parts.append(f"{_pl(mismatched, 'model')} {clr.red('Mismatched')}")
+        detail = ", ".join(summary_parts) + ", generate migrations to resolve"
+    elif state == State.PENDING:
+        summary_parts = []
+        local_n = len(result.pending)
+        ref_n = len(result.ref_pending)
+        if local_n:
+            summary_parts.append(f"{_pl(local_n, 'migration')} {clr.yellow('Pending')} on devlocal DB")
+        if ref_n:
+            summary_parts.append(f"{ref_n} {clr.green('Pending')} production deployment")
+        detail = ", ".join(summary_parts)
+    elif state == State.CURRENT:
+        ref_n = len(result.ref_pending)
+        if ref_n:
+            detail = f"{ref_n} {clr.green('Pending')} production deployment"
+        else:
+            detail = "schema is up to date"
+    else:
+        detail = ""
+
+    return f"{label}: {detail}"
 
 
 def _backup_with_retry(backup: object, *, retries: int = 8, delay: float = 0.1) -> None:
@@ -423,14 +462,14 @@ class Migrate:
         return "_".join(parts) if parts else "migration"
 
     def generate(self) -> Path | None:
-        """Auto-generate a migration script based on schema drift.
+        """Auto-generate a migration script based on schema mismatch.
 
-        Only allowed in DRIFT state. Returns the path to the generated file,
+        Only allowed in MISMATCH state. Returns the path to the generated file,
         or None if nothing to generate.
         """
         result = self.check()
-        if result.state != State.DRIFT:
-            raise RuntimeError(f"generate() only allowed in DRIFT state, current state is {result.state.value}")
+        if result.state != State.MISMATCH:
+            raise RuntimeError(f"generate() only allowed in MISMATCH state, current state is {result.state.value}")
 
         # Build migration SQL
         sql_parts = []

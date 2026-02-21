@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import colors as clr
 import pytest
 
 from .migrate import Migrate, State
@@ -40,12 +41,12 @@ def test_cli_status_current(migrate: Migrate, capsys: pytest.CaptureFixture[str]
     code = cmd_status(migrate, args)
     assert code == 0
     out = capsys.readouterr().out
-    assert "Current" in out
+    assert "CURRENT" in out
 
 
 @pytest.mark.scenario("fresh_db_with_model")
-def test_cli_status_drift(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
-    """status with drift → non-CURRENT info, exit 1."""
+def test_cli_status_mismatch(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
+    """status with mismatch → non-CURRENT info, exit 1."""
     args = _ns()
     code = cmd_status(migrate, args)
     assert code == 1
@@ -58,7 +59,7 @@ def test_cli_status_drift(migrate: Migrate, capsys: pytest.CaptureFixture[str]) 
 
 @pytest.mark.scenario("fresh_db_with_model")
 def test_cli_generate_ok(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
-    """generate in DRIFT state → prints path, file exists, exit 0."""
+    """generate in MISMATCH state → prints path, file exists, exit 0."""
     args = _ns()
     code = cmd_generate(migrate, args)
     assert code == 0
@@ -256,8 +257,8 @@ def test_cli_restore_interactive_no_backups(migrate: Migrate, capsys: pytest.Cap
 
 
 @pytest.mark.scenario("fresh_db_with_model")
-def test_cli_dev_drift(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
-    """dev from DRIFT → generates + applies, exit 0."""
+def test_cli_dev_mismatch(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
+    """dev from MISMATCH → generates + applies, exit 0."""
     code = cmd_dev(migrate, _ns())
     assert code == 0
     out = capsys.readouterr().out
@@ -302,7 +303,7 @@ def test_cli_dev_current(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -
     code = cmd_dev(migrate, _ns())
     assert code == 0
     out = capsys.readouterr().out
-    assert "Current" in out
+    assert "CURRENT" in out
 
 
 @pytest.mark.scenario("fresh_db_with_model")
@@ -334,7 +335,7 @@ def test_cli_dev_stuck_state(migrate: Migrate, capsys: pytest.CaptureFixture[str
 
     code = cmd_dev(migrate, _ns())
     assert code == 1
-    out = capsys.readouterr().out
+    out = clr.strip_color(capsys.readouterr().out)
     assert "E " in out  # Error indicator in compact status
 
 
@@ -359,7 +360,7 @@ def test_cli_main_generate(migrate: Migrate) -> None:
 
 @pytest.mark.scenario("fresh_db_with_model")
 def test_cli_main_dev(migrate: Migrate) -> None:
-    """main() dev from DRIFT → SystemExit(0)."""
+    """main() dev from MISMATCH → SystemExit(0)."""
     with pytest.raises(SystemExit) as exc_info, patch("tuplesaver.migrate_cli.make_migrate", return_value=migrate):
         main(["--db-path", "x.db", "--models-module", "m", "dev"])
     assert exc_info.value.code == 0
@@ -407,7 +408,7 @@ def test_e2e_passes_db_path_and_models_module(tmp_path: Path) -> None:
     """CLI works when --db-path and --models-module are provided."""
     shutil.copytree(SCENARIOS_DIR / "fresh_db_with_model", tmp_path / "s")
     r = _run_cli("--db-path", str(tmp_path / "s/db.sqlite"), "--models-module", "m", "status", cwd=tmp_path / "s")
-    assert r.returncode in (0, 1)  # ran successfully (exit 1 = DRIFT, still valid)
+    assert r.returncode in (0, 1)  # ran successfully (exit 1 = MISMATCH, still valid)
     assert r.stderr == ""
 
 

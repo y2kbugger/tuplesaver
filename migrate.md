@@ -22,13 +22,13 @@ mydb.sqlite.bak/
 
 ## States
 
-Priority: ERROR > CONFLICTED > DIVERGED > PENDING > DRIFT > CURRENT.
+Priority: ERROR > CONFLICTED > DIVERGED > PENDING > MISMATCH > CURRENT.
 
 | State | Meaning | Fix |
 |-------|---------|-----|
 | `CURRENT` | Schema, scripts, and DB all agree | — |
-| `DRIFT` | Models differ from DB, no script yet | `generate()` → PENDING |
-| `PENDING` | Unapplied migration scripts exist | `apply()` → DRIFT or CURRENT |
+| `MISMATCH` | Models differ from DB, no script yet | `generate()` → PENDING |
+| `PENDING` | Unapplied migration scripts exist | `apply()` → MISMATCH or CURRENT |
 | `DIVERGED` | Scripts differ from working DB (no ref) | `restore_db()` → PENDING |
 | `CONFLICTED` | Scripts differ from ref DB | `restore_scripts()` → CURRENT or DIVERGED |
 | `ERROR` | Bad migration files (gaps, dupes) | Manual fix |
@@ -40,7 +40,7 @@ Priority: ERROR > CONFLICTED > DIVERGED > PENDING > DRIFT > CURRENT.
 | Method | State Gate | Effect |
 |--------|-----------|--------|
 | `check() → CheckResult` | any | Read-only state assessment |
-| `generate() → Path` | DRIFT | Write migration SQL from model diff |
+| `generate() → Path` | MISMATCH | Write migration SQL from model diff |
 | `apply(filename)` | PENDING | Execute script, record in `_migrations` |
 | `backup() → Path` | any | Timestamped copy via SQLite backup API |
 | `save_ref()` | any | Snapshot working DB → `.ref` |
@@ -97,7 +97,7 @@ Recursive with loop breaker: if state unchanged after a fix attempt, exit 1.
               │                    state changed?
    ┌──────┬──┴───┬─────────┬──────────┬──────────┐
    ▼      ▼      ▼         ▼          ▼          ▼
- ERROR  CONFL  DIVERG    PENDING     DRIFT     CURRENT
+ ERROR  CONFL  DIVERG    PENDING    MISMATCH   CURRENT
    │      │      │         │           │          │
  exit 1  restore restore  backup &  generate   exit 0
          scripts  db      apply all
@@ -126,12 +126,12 @@ Recursive with loop breaker: if state unchanged after a fix attempt, exit 1.
 # WIP
 - Auto-resolve to CURRENT !! bad wording, need to jbe clearerer
 - option summary for subcommands from --help
-- rename DRIFT to MISMATCH
 - better message for for cant generate where there are unapplied/changed migrations
 - interactive restore should list most recent first
-- Add to status state summary line:
-  - error??
-  - For conflicted, give quick summary of what that means e.g. '1 local script conflicts with production, please restore scripts from the production reference to resolve'
-  - diverged: '1 undeployed migration script differs from what was applied to the working db, please rollback the working DB to the production reference to resolve'
-  - drift/mismatch: '1 model missing, 2 models differ from the working DB, generate migrations to resolve'
-  - when in pending or current e.g. 2 migrations pending on local, and 6 pending production deployment
+- [x] rename DRIFT to MISMATCH
+- [x] Add to status state summary line:
+  - ERROR: '2 errors'
+  - CONFLICTED: '1 local script Conflicts with production, please restore scripts from the production reference to resolve'
+  - DIVERGED: '1 undeployed migration script differs from what was applied to the devlocal DB, please rollback the devlocal DB to the production reference to resolve'
+  - DRIFT/MISMATCH: '1 model Untracked, 2 models Mismatched from the devlocal DB, generate migrations to resolve'
+  - PENDING/CURRENT: '2 migrations Pending on devlocal DB, and 6 pending production deployment'

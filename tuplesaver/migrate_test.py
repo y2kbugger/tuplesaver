@@ -17,6 +17,7 @@ import shutil
 import sys
 from pathlib import Path
 
+import colors as clr
 import pytest
 
 from .migrate import Migrate, State
@@ -85,10 +86,10 @@ def test_migrate__empty_db_no_models__is_current(migrate: Migrate):
 
 
 @pytest.mark.scenario("fresh_db_with_model")
-def test_migrate__fresh_db_with_model__is_drift(migrate: Migrate):
-    """Fresh db + models = DRIFT, schema shows table needs to be created."""
+def test_migrate__fresh_db_with_model__is_mismatch(migrate: Migrate):
+    """Fresh db + models = MISMATCH, schema shows table needs to be created."""
     result = migrate.check()
-    assert result.state == State.DRIFT
+    assert result.state == State.MISMATCH
     assert "User" in result.schema
     user_schema = result.schema["User"]
     assert not user_schema.exists
@@ -100,7 +101,7 @@ def test_migrate__fresh_db_with_model__is_drift(migrate: Migrate):
 def test_migrate__generate__creates_migration_file(migrate: Migrate):
     """generate() creates a migration script in the migrations folder."""
     result = migrate.check()
-    assert result.state == State.DRIFT
+    assert result.state == State.MISMATCH
 
     # Generate migration
     filepath = migrate.generate()
@@ -118,12 +119,12 @@ def test_migrate__generate__creates_migration_file(migrate: Migrate):
 
 
 @pytest.mark.scenario("empty_db")
-def test_migrate__generate__raises_when_not_drift(migrate: Migrate):
-    """generate() raises error when not in DRIFT state."""
+def test_migrate__generate__raises_when_not_mismatch(migrate: Migrate):
+    """generate() raises error when not in MISMATCH state."""
     result = migrate.check()
     assert result.state == State.CURRENT
 
-    with pytest.raises(RuntimeError, match="DRIFT"):
+    with pytest.raises(RuntimeError, match="MISMATCH"):
         migrate.generate()
 
 
@@ -184,9 +185,9 @@ def test_migrate__apply__then_check_is_current(migrate: Migrate):
 @pytest.mark.scenario("fresh_db_with_model")
 def test_migrate__apply__raises_when_not_pending(migrate: Migrate):
     """apply() raises error when not in PENDING state."""
-    # Still in DRIFT state, no migration generated
+    # Still in MISMATCH state, no migration generated
     result = migrate.check()
-    assert result.state == State.DRIFT
+    assert result.state == State.MISMATCH
 
     with pytest.raises(RuntimeError, match="PENDING"):
         migrate.apply("001.create_user.sql")
@@ -290,7 +291,7 @@ def test_migrate__generate__raises_when_diverged(migrate: Migrate):
     result = migrate.check()
     assert result.state == State.DIVERGED
 
-    with pytest.raises(RuntimeError, match="DRIFT"):
+    with pytest.raises(RuntimeError, match="MISMATCH"):
         migrate.generate()
 
 
@@ -315,9 +316,9 @@ def test_migrate__apply__raises_when_diverged(migrate: Migrate):
 @pytest.mark.scenario("fresh_db_with_model")
 def test_migrate__model_changed_need_new_migration(migrate: Migrate):
     """Full workflow: model change → generate → apply, then change model again."""
-    # 1. Initial state: DRIFT (model exists but table doesn't)
+    # 1. Initial state: MISMATCH (model exists but table doesn't)
     result = migrate.check()
-    assert result.state == State.DRIFT
+    assert result.state == State.MISMATCH
 
     # 2. Generate first migration
     migrate.generate()
@@ -339,9 +340,9 @@ def test_migrate__model_changed_need_new_migration(migrate: Migrate):
 
     migrate.models = [User]
 
-    # 5. Check detects schema drift
+    # 5. Check detects schema mismatch
     result = migrate.check()
-    assert result.state == State.DRIFT
+    assert result.state == State.MISMATCH
     assert "User" in result.schema
     assert not result.schema["User"].is_current
 
@@ -419,7 +420,7 @@ def test_migrate__iterate_then_consolidate(migrate: Migrate):
 
     # 6. Regenerate single migration with all changes
     result = migrate.check()
-    assert result.state == State.DRIFT
+    assert result.state == State.MISMATCH
 
     filepath = migrate.generate()
     assert filepath is not None
@@ -978,7 +979,7 @@ def test_migrate__error__generate_raises_when_error(migrate: Migrate):
 
     assert migrate.check().state == State.ERROR
 
-    with pytest.raises(RuntimeError, match="DRIFT"):
+    with pytest.raises(RuntimeError, match="MISMATCH"):
         migrate.generate()
 
 
@@ -1003,7 +1004,7 @@ def test_migrate__error__status_shows_errors(migrate: Migrate):
     (migrate.migrations_dir / "001.b.sql").write_text("SELECT 1;\n")
 
     result = migrate.check()
-    status = result.status()
+    status = clr.strip_color(result.status())
     assert "E " in status
     assert "Duplicate migration number 1" in status
     assert "rename or remove" in status
@@ -1011,9 +1012,9 @@ def test_migrate__error__status_shows_errors(migrate: Migrate):
 
 @pytest.mark.scenario("fresh_db_with_model")
 def test_migrate__error__no_files_no_error(migrate: Migrate):
-    """No migration files at all → no error (DRIFT because model has no table)."""
+    """No migration files at all → no error (MISMATCH because model has no table)."""
     result = migrate.check()
-    assert result.state == State.DRIFT
+    assert result.state == State.MISMATCH
     assert not result.errors
 
 

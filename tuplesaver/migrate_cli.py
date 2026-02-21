@@ -64,15 +64,15 @@ def make_migrate(args: argparse.Namespace) -> Migrate:
 def cmd_status(migrate: Migrate, args: argparse.Namespace) -> int:
     """Show migration state."""
     result = migrate.check()
-    print(format_status(result, color=sys.stdout.isatty()))
+    print(format_status(result))
     return 0 if result.state == State.CURRENT else 1
 
 
 def cmd_generate(migrate: Migrate, args: argparse.Namespace) -> int:
-    """Generate migration script from schema drift."""
+    """Generate migration script from schema mismatch."""
     result = migrate.check()
-    if result.state != State.DRIFT:
-        print(f"Cannot generate: state is {result.state.value}, expected drift")
+    if result.state != State.MISMATCH:
+        print(f"Cannot generate: state is {result.state.value}, expected mismatch")
         return 1
     path = migrate.generate()
     print(f"Generated {path}")
@@ -192,7 +192,7 @@ def _dev_step(migrate: Migrate, *, prev_state: State | None = None) -> int:
     result = migrate.check()
     if prev_state is not None:
         print("----------------------", flush=True)
-    print(format_status(result, color=sys.stdout.isatty()), flush=True)
+    print(format_status(result), flush=True)
 
     if result.state == prev_state:
         print(f"Still {result.state.value} after fix attempt. Manual intervention needed.")
@@ -218,7 +218,7 @@ def _dev_step(migrate: Migrate, *, prev_state: State | None = None) -> int:
                 migrate.apply(script)
                 print(f"Applied {script}")
             return _dev_step(migrate, prev_state=result.state)
-        case State.DRIFT:
+        case State.MISMATCH:
             path = migrate.generate()
             print(f"Generated {path}")
             return _dev_step(migrate, prev_state=result.state)
@@ -252,7 +252,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("status", help="Show migration state")
-    sub.add_parser("generate", help="Generate migration script from schema drift")
+    sub.add_parser("generate", help="Generate migration script from schema mismatch")
 
     apply_p = sub.add_parser("apply", help="Apply pending migrations")
     apply_p.add_argument("filename", nargs="?", default=None, help="Specific migration file to apply")
