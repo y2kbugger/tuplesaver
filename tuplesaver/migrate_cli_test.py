@@ -81,6 +81,16 @@ def test_cli_generate_wrong_state(migrate: Migrate, capsys: pytest.CaptureFixtur
 # ── apply ─────────────────────────────────────────────────────────────
 
 
+@pytest.mark.scenario("empty_db")
+def test_cli_apply_current(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
+    """apply on CURRENT DB → nothing to do, exit 0."""
+    args = _ns(filename=None)
+    code = cmd_apply(migrate, args)
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "up to date" in out
+
+
 @pytest.mark.scenario("fresh_db_with_model")
 def test_cli_apply_all_pending(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
     """apply all pending → backup created, applies all, exit 0."""

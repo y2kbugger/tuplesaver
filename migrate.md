@@ -132,6 +132,3 @@ Recursive with loop breaker: if state unchanged after a fix attempt, exit 1.
 - restore specific db backup
 - apply hit lock
 - needs txn/retry on apply and to avoid partial application on failure
-
-2026-02-18
-- apply fails if not pending. lol current should be allowed....

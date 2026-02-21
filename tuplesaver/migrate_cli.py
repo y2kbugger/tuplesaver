@@ -82,6 +82,9 @@ def cmd_generate(migrate: Migrate, args: argparse.Namespace) -> int:
 def cmd_apply(migrate: Migrate, args: argparse.Namespace) -> int:
     """Apply pending migrations."""
     result = migrate.check()
+    if result.state == State.CURRENT:
+        print("Nothing to apply: already up to date")
+        return 0
     if result.state != State.PENDING:
         print(f"Cannot apply: state is {result.state.value}, expected pending")
         return 1
