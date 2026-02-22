@@ -71,8 +71,14 @@ def cmd_status(migrate: Migrate, args: argparse.Namespace) -> int:
 def cmd_generate(migrate: Migrate, args: argparse.Namespace) -> int:
     """Generate migration script from schema mismatch."""
     result = migrate.check()
+    if result.state == State.CURRENT:
+        print("Nothing to generate — schema already matches the DB")
+        return 0
     if result.state != State.MISMATCH:
-        print(f"Cannot generate: state is {result.state.value}, expected mismatch")
+        print(
+            f"Can't generate: DB is out of sync with migration scripts ({result.state.value}).\n"
+            "Resolve or apply existing migrations first so that script generation has a clean baseline to compare against."
+        )
         return 1
     path = migrate.generate()
     print(f"Generated {path}")
@@ -83,10 +89,10 @@ def cmd_apply(migrate: Migrate, args: argparse.Namespace) -> int:
     """Apply pending migrations."""
     result = migrate.check()
     if result.state == State.CURRENT:
-        print("Nothing to apply: already up to date")
+        print("Nothing to apply — already up to date")
         return 0
     if result.state != State.PENDING:
-        print(f"Cannot apply: state is {result.state.value}, expected pending")
+        print(f"Can't apply: migrations aren't in a clean state ({result.state.value}).\nResolve conflicts or sync the DB with existing scripts before applying.")
         return 1
 
     filename = args.filename
@@ -131,10 +137,6 @@ def _list_backups(migrate: Migrate) -> None:
 def cmd_restore(migrate: Migrate, args: argparse.Namespace) -> int:
     """Restore DB or scripts."""
     if args.scripts:
-        result = migrate.check()
-        if result.state != State.CONFLICTED:
-            print(f"Cannot restore scripts: state is {result.state.value}, expected conflicted")
-            return 1
         migrate.restore_scripts()
         print("Restored scripts from ref DB.")
         return 0

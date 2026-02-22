@@ -126,4 +126,3 @@ Recursive with loop breaker: if state unchanged after a fix attempt, exit 1.
 # WIP
 - Auto-resolve to CURRENT !! bad wording, need to jbe clearerer
 - option summary for subcommands from --help
-- better message for for cant generate where there are unapplied/changed migrations

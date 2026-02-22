@@ -69,13 +69,13 @@ def test_cli_generate_ok(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -
 
 
 @pytest.mark.scenario("empty_db")
-def test_cli_generate_wrong_state(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
-    """generate in CURRENT state → error message, exit 1."""
+def test_cli_generate_already_current(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
+    """generate in CURRENT state → nothing to do, exit 0."""
     args = _ns()
     code = cmd_generate(migrate, args)
-    assert code == 1
+    assert code == 0
     out = capsys.readouterr().out
-    assert "current" in out
+    assert "Nothing to generate" in out
 
 
 # ── apply ─────────────────────────────────────────────────────────────

@@ -654,8 +654,9 @@ class Migrate:
     def restore_scripts(self) -> None:
         """Restore migration script files from the .ref DB's _migrations table.
 
-        Only allowed in CONFLICTED state. Overwrites files on disk with the
-        script content recorded in the ref DB, and recreates missing files.
+        Overwrites files on disk with the script content recorded in the ref DB,
+        and recreates missing files. Does not delete any files that are not in
+        the ref DB.
 
         This fixes CONFLICTED state (scripts differ from ref / production).
         """
