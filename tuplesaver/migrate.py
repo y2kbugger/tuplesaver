@@ -646,10 +646,10 @@ class Migrate:
         return dest_path
 
     def list_backups(self) -> list[Path]:
-        """List available backup files, sorted by name (oldest first)."""
+        """List available backup files, sorted by name (most recent first)."""
         if not self.backup_dir.exists():
             return []
-        return sorted(f for f in self.backup_dir.iterdir() if f.is_file())
+        return sorted((f for f in self.backup_dir.iterdir() if f.is_file()), reverse=True)
 
     def restore_scripts(self) -> None:
         """Restore migration script files from the .ref DB's _migrations table.
