@@ -62,7 +62,7 @@ def make_migrate(args: argparse.Namespace) -> Migrate:
 
 
 def cmd_status(migrate: Migrate, args: argparse.Namespace) -> int:
-    """Show migration state."""
+    """Show summary of migrations in progress."""
     result = migrate.check()
     print(format_status(result))
     return 0 if result.state == State.CURRENT else 1
@@ -253,14 +253,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("status", help="Show migration state")
+    sub.add_parser("status", help="Show summary of migration in progress")
     sub.add_parser("generate", help="Generate migration script from schema mismatch")
 
     apply_p = sub.add_parser("apply", help="Apply pending migrations")
     apply_p.add_argument("filename", nargs="?", default=None, help="Specific migration file to apply")
 
     backup_p = sub.add_parser("backup", help="Create backup")
-    backup_p.add_argument("--ref", action="store_true", help="Also save ref snapshot")
+    backup_p.add_argument("--ref", action="store_true", help="Set reference db to the current devlocal db.")
 
     restore_p = sub.add_parser("restore", help="Restore DB or scripts from ref/backup")
     restore_mode = restore_p.add_mutually_exclusive_group()
@@ -268,7 +268,7 @@ def build_parser() -> argparse.ArgumentParser:
     restore_mode.add_argument("-i", "--interactive", action="store_true", help="Interactively select a backup to restore")
     restore_mode.add_argument("-b", "--backup", default=None, help="Specific backup filename to restore")
 
-    sub.add_parser("dev", help="Auto-resolve to CURRENT")
+    sub.add_parser("dev", help="Automatically run migration commands to get devlocal DB up-to-date.")
 
     return parser
 

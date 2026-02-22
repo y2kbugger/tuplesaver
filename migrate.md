@@ -124,5 +124,3 @@ Recursive with loop breaker: if state unchanged after a fix attempt, exit 1.
 - [ ] Schema/application version pragma
 
 # WIP
-- Auto-resolve to CURRENT !! bad wording, need to jbe clearerer
-- option summary for subcommands from --help
