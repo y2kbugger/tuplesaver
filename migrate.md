@@ -120,7 +120,6 @@ Recursive with loop breaker: if state unchanged after a fix attempt, exit 1.
 - [x] CLI with near-parity to Python API
 - [ ] Generate ALTER instead of DROP/CREATE
 - [ ] Generate SELECT-INTO for general alters
-- [ ] Delete-and-regenerate (remove scripts not in ref with same prefix)
 - [ ] Schema/application version pragma
 
 # WIP
