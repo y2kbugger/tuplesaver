@@ -1,11 +1,16 @@
 # WIP
-Delete idempot? no raise?
+- prioritize e.update
+- add db schema dump to migrations
+- State bs
+- make convertions depend on model not on db type affinity ( view aggs fail herez)
+
 ## TableRow Model
 - disambiguate Row vs TableRow in relation to `is_row_model` and `get_meta`
 - Move lazy proxy descriptors to the metaclass
 - Find a remove unused exceptions
 - fix all ty and ruff errors in all files
 - test that you can add extra defs to a model without things blowing up (or add eager enforcement that you can't do this)
+- move stuff out of meta and into the model class itself, and then use that directly. e.g. `Model._meta.table_name` -> `Model.__tablename__` and `Model._meta.fields` -> `Model.__fields__`.
 
 ## APSW Integration
 - Document how any type that implements buffer is auto adapted and you only need to add converter for it (might me annonying if trying to just pickle a numpy array)
@@ -18,6 +23,7 @@ Delete idempot? no raise?
   - what about fetch one only?
 
 ## Other
+  Delete idempot? no raise?
 - how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?
     - then we can use that exact where clause in select, update, and delete
     - attempt to overload these in a way feels natural, e.g. find returns one, select returns many, update and delete can work either by id or by where clause.
