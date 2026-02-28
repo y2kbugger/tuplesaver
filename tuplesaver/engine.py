@@ -4,7 +4,7 @@ import logging
 import os
 import re
 from collections.abc import Sequence
-from dataclasses import fields, replace
+from dataclasses import fields
 from typing import Any, overload
 
 import apsw
@@ -24,6 +24,7 @@ from .sql import (
     generate_insert_sql,
     generate_select_by_field_sql,
     generate_select_sql,
+    generate_update_set_fields_sql,
     generate_update_sql,
 )
 
@@ -224,18 +225,58 @@ class Engine:
             if is_row_model(related_row.__class__) and related_row.id is None:
                 raise UnpersistedRelationshipError(type(row).__name__, f.name, row)
 
+        Model = type(row)
+
         if row.id is None or force_insert:
-            insert = generate_insert_sql(type(row))
-            self.connection.execute(insert, vars(row))
-            if row.id is None:
-                return replace(row, id=self.connection.last_insert_rowid())
-            return row
+            insert = generate_insert_sql(Model)
+            cur = self.query(Model, insert, vars(row))
+            result = cur.fetchone()
+            cur.close()
+            assert result is not None  # INSERT always returns a row on success
+            return result
         else:
-            update = generate_update_sql(type(row))
-            self.connection.execute(update, vars(row))
-            if self.connection.changes() == 0:
-                raise NoRecordToUpdateError(f"Cannot UPDATE, no row with id={row.id} in table `{row.__class__.__name__}`")
-            return row
+            update = generate_update_sql(Model)
+            cur = self.query(Model, update, vars(row))
+            result = cur.fetchone()
+            cur.close()
+            if result is None:
+                raise NoRecordToUpdateError(f"Cannot UPDATE, no row with id={row.id} in table `{Model.__name__}`")
+            return result
+
+    @overload
+    def update[R: TableRow](self, Model: type[R], row_id: int | None, **kwargs: Any) -> R: ...
+
+    @overload
+    def update[R: TableRow](self, row: R, **kwargs: Any) -> R: ...
+
+    def update[R: TableRow](self, Model_or_row: type[R] | R, row_id: int | None = None, **kwargs: Any) -> R:  # pyright: ignore [reportInconsistentOverload] allow overloads with different parameter names
+        if not isinstance(Model_or_row, type):
+            row = Model_or_row
+            Model = type(row)
+            assert row_id is None, "Do not provide row_id when passing a row instance."
+            row_id = row.id
+        else:
+            Model = Model_or_row
+            row = None
+
+        if row_id is None:
+            raise IdNoneError("Cannot UPDATE, id=None")
+
+        if not kwargs:
+            raise NoKwargFieldSpecifiedError()
+
+        field_names = {f.name for f in Model.meta.fields}
+        invalid_kwargs = {k: v for k, v in kwargs.items() if k not in field_names}
+        if invalid_kwargs:
+            raise InvalidKwargFieldSpecifiedError(Model, invalid_kwargs)
+
+        sql = generate_update_set_fields_sql(Model, frozenset(kwargs.keys()))
+        cur = self.query(Model, sql, {**kwargs, 'id': row_id})
+        result = cur.fetchone()
+        cur.close()
+        if result is None:
+            raise NoRecordToUpdateError(f"Cannot UPDATE, no row with id={row_id} in table `{Model.__name__}`")
+        return result
 
     @overload
     def delete(self, Model: type[TableRow], row_id: int | None) -> None: ...

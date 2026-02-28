@@ -140,11 +140,11 @@ Note: `engine.find_by()` returns `None` instead of raising, giving you the choic
 |   | Raw SQL                                | `engine.query(Model, sql)`                                          | `Model.find_by_sql(sql)`                                         |
 |   | Aggregations                           | raw SQL with `Row` models, encourage using view migrations          | `Model.group(...).sum(...)`                                      |
 |   | **Write**                              |                                                                     |                                                                  |
-|   | Save (Insert or Update)                | `engine.save(post)`                                                 | `post.save`                                                      |
-|   | Save (one-liner)                       | `engine.save(Post(None, "Hi", dt.now()))`                           | `Post.create(name: "Hi")`                                        |
-| * | Update by Id                           | `engine.update(Post, id, name="Apple")`                             | `Post.update(id, name: "Apple")`                                 |
-| * | Update by instance                     | `engine.update(post, name="Apple")`                                 | `post.update(name: "Apple")`                                     |
-|   | Delete by Id                           | `engine.delete(Post, id)`                                            | `Post.delete(id)`                                                 |
+|   | Save (Insert or Update)                | `post = engine.save(post)`                                          | `post.save`                                                      |
+|   | Save (one-liner)                       | `post = engine.save(Post(None, "Hi", dt.now()))`                    | `Post.create(name: "Hi")`                                        |
+|   | Update by Id                           | `post = engine.update(Post, id, name="Apple")`                      | `Post.update(id, name: "Apple")`                                 |
+|   | Update by instance                     | `post = engine.update(post, name="Apple")`                          | `post.update(name: "Apple")`                                     |
+|   | Delete by Id                           | `engine.delete(Post, id)`                                           | `Post.delete(id)`                                                |
 |   | Delete by instance                     | `engine.delete(post)`                                               | `post.destroy`                                                   |
 |   | _many_                                 |                                                                     |                                                                  |
 | * | Insert many                            | `engine.insert_all(Post, [Post(1,2), Post(3,4)])`                   | `Post.insert_all([{a: 1, b: 2}, {a: 3, b: 4}])`                  |

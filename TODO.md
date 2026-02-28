@@ -1,5 +1,4 @@
 # WIP
-- prioritize e.update
 - add db schema dump to migrations
 - State bs
 - make convertions depend on model not on db type affinity ( view aggs fail herez)
@@ -24,6 +23,7 @@
 
 ## Other
   Delete idempot? no raise?
+  update(instance, colum="value) api creates  an abiguity (if records are mutable) basically right now it ignores mutations to the instance and only updates the fields in the kwargs. Lazy Immuatable Records would fix this.
 - how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?
     - then we can use that exact where clause in select, update, and delete
     - attempt to overload these in a way feels natural, e.g. find returns one, select returns many, update and delete can work either by id or by where clause.
@@ -37,6 +37,7 @@
 
 # Testing
 - Test delete by id (no match) and update (via save) id (no match)?
+- Test that basic engine crud operation emit only the expected statements, e.g. no select before update, etc. DO FOR ALL Engine OPERATIONS
 - test `Any` type on TableRow models. Ban? Allow?
 - relax eager enforcement of FK Models being registered
     - Test case for this
@@ -322,6 +323,7 @@ https://docs.datomic.com/datomic-overview.html
 - mutable id object as id which can mutate when saved.
 - Consider dropping the injected Engine, and goto a fluent RoR AR style interface
   - e.g. `row.save()` ipo `engine.save(row)`
+- use return on updates to enable single statement updates with return value?
 
 
 

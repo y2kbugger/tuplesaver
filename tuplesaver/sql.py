@@ -175,7 +175,9 @@ def generate_insert_sql(Model: type[TableRow]) -> str:
             {', '.join(f.name for f in meta.fields)}
         ) VALUES (
             {', '.join(f":{f.name}" for f in meta.fields)}
-        )""").strip()
+        )
+        RETURNING {', '.join(f.name for f in meta.fields)}
+        """).strip()
 
 
 @cache
@@ -186,6 +188,19 @@ def generate_update_sql(Model: type[TableRow]) -> str:
         UPDATE {meta.table_name}
         SET {', '.join(f"{f.name} = :{f.name}" for f in meta.fields)}
         WHERE id = :id
+        RETURNING {', '.join(f.name for f in meta.fields)}
+        """).strip()
+
+
+@lru_cache(maxsize=256)
+def generate_update_set_fields_sql(Model: type[TableRow], field_names: frozenset[str]) -> str:
+    meta = Model.meta
+    assert meta.table_name is not None, "Table name must be defined for the model to modify it."
+    return dedent(f"""
+        UPDATE {meta.table_name}
+        SET {', '.join(f"{name} = :{name}" for name in field_names)}
+        WHERE id = :id
+        RETURNING {', '.join(f.name for f in meta.fields)}
         """).strip()
 
 

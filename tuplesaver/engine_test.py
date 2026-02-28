@@ -12,6 +12,8 @@ from .engine import (
     InvalidKwargFieldSpecifiedError,
     LookupByAdHocModelImpossible,
     NoKwargFieldSpecifiedError,
+    NoRecordToDeleteError,
+    NoRecordToUpdateError,
     RecordNotFoundError,
     UnpersistedRelationshipError,
 )
@@ -250,7 +252,7 @@ def test_save__benchmark(engine: Engine, benchmark: BenchmarkFixture) -> None:
 
 def test_save__nonexistent_id(engine: Engine) -> None:
     engine.ensure_table_created(Team)
-    with pytest.raises(ValueError, match="Cannot UPDATE, no row with id="):
+    with pytest.raises(NoRecordToUpdateError, match="Cannot UPDATE, no row with id="):
         engine.save(Team("Lions", 30, id=78787))
 
 
@@ -400,11 +402,75 @@ def test_delete__by_row(engine: Engine) -> None:
 
 def test_delete__nonexistent_id(engine: Engine) -> None:
     engine.ensure_table_created(Team)
-    with pytest.raises(ValueError, match="Cannot DELETE, no row with id="):
+    with pytest.raises(NoRecordToDeleteError, match="Cannot DELETE, no row with id="):
         engine.delete(Team, 78787)
 
 
 def test_delete__id_none(engine: Engine) -> None:
     engine.ensure_table_created(Team)
-    with pytest.raises(ValueError, match="Cannot DELETE, id=None"):
+    with pytest.raises(IdNoneError, match="Cannot DELETE, id=None"):
         engine.delete(Team, None)
+
+
+# ---- update ----
+
+
+def test_update__by_model_and_id(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    row = engine.save(Team("Lions", 30))
+
+    updated = engine.update(Team, row.id, name="Tigers")
+
+    assert updated == Team("Tigers", 30, id=row.id)
+    assert engine.find(Team, row.id) == Team("Tigers", 30, id=row.id)
+
+
+def test_update__by_instance(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    row = engine.save(Team("Lions", 30))
+
+    updated = engine.update(row, name="Tigers")
+
+    assert updated == Team("Tigers", 30, id=row.id)
+    assert engine.find(Team, row.id) == Team("Tigers", 30, id=row.id)
+
+
+def test_update__multiple_fields(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    row = engine.save(Team("Lions", 30))
+
+    updated = engine.update(row, name="Tigers", size=50)
+
+    assert updated == Team("Tigers", 50, id=row.id)
+
+
+def test_update__id_none(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    with pytest.raises(IdNoneError, match="Cannot UPDATE, id=None"):
+        engine.update(Team, None, name="Tigers")
+
+
+def test_update__id_none_instance(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    with pytest.raises(IdNoneError, match="Cannot UPDATE, id=None"):
+        engine.update(Team("Lions", 30), name="Tigers")
+
+
+def test_update__nonexistent_id(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    with pytest.raises(NoRecordToUpdateError, match="Cannot UPDATE, no row with id="):
+        engine.update(Team, 78787, name="Tigers")
+
+
+def test_update__no_kwargs(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    row = engine.save(Team("Lions", 30))
+    with pytest.raises(NoKwargFieldSpecifiedError, match="At least one field must be specified"):
+        engine.update(row)
+
+
+def test_update__invalid_kwargs(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    row = engine.save(Team("Lions", 30))
+    with pytest.raises(InvalidKwargFieldSpecifiedError):
+        engine.update(row, doesnt_exist="test")
