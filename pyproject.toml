@@ -1,6 +1,6 @@
 [project]
 name = "tuplesaver"
-version = "0.1.0"
+version = "0.2.0"
 description = "A simple, opinionated, NamedTuple persister for SQLite."
 authors = [{ name = "y2k", email = "git@y2kbugger.com" }]
 requires-python = ">=3.13,<3.14"
