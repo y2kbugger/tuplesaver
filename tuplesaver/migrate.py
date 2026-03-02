@@ -115,6 +115,11 @@ class CheckResult:
         """
         lines: list[tuple[bool, str, str, str, str]] = []
 
+        pending_names = set(self.pending)
+        divergent_names = set(self.divergent) | set(self.divergent_missing)
+        ref_pending_names = set(self.ref_pending)
+        conflicted_names = set(self.conflicted) | set(self.conflicted_missing)
+
         pending_nums = {_parse_migration_number(f) for f in self.pending}
         divergent_nums = {_parse_migration_number(f) for f in self.divergent} | {_parse_migration_number(f) for f in self.divergent_missing}
         ref_pending_nums = {_parse_migration_number(f) for f in self.ref_pending}
@@ -122,8 +127,12 @@ class CheckResult:
 
         for filename in sorted(set(self.all_filenames)):
             num = _parse_migration_number(filename)
-            ref = "C" if num in conflicted_nums else ("P" if num in ref_pending_nums else " ")
-            local = "D" if num in divergent_nums else ("P" if num in pending_nums else " ")
+            if num is None:
+                ref = "C" if filename in conflicted_names else ("P" if filename in ref_pending_names else " ")
+                local = "D" if filename in divergent_names else ("P" if filename in pending_names else " ")
+            else:
+                ref = "C" if num in conflicted_nums else ("P" if num in ref_pending_nums else " ")
+                local = "D" if num in divergent_nums else ("P" if num in pending_nums else " ")
             model = " "
             show = ref != " " or local != " "
             lines.append((show, ref, local, model, filename))
@@ -248,6 +257,23 @@ class Migrate:
         self.db_path = Path(db_path)
         self.engine = Engine(str(self.db_path))
         self.models = models
+        self._ensure_declarative_dir()
+
+    def _ensure_declarative_dir(self) -> None:
+        """Ensure declarative SQL folder exists with a starter guidance file."""
+        declarative_dir = self.declarative_dir
+        declarative_dir.mkdir(parents=True, exist_ok=True)
+
+        starter = declarative_dir / "view.sql"
+        if not starter.exists():
+            starter.write_text(
+                "-- Declarative SQL files in this folder are applied in lexical filename order.\n"
+                "-- Create your own files (for example: 010.user_view.sql, 020.user_trigger.sql).\n"
+                "-- Use naming to control dependency order between views, indexes, and triggers.\n"
+                "-- Write scripts idempotently (use DROP IF EXISTS / CREATE IF NOT EXISTS patterns where possible).\n"
+                "-- Avoid placing view/trigger/index definitions in numbered procedural migrations.\n"
+                "-- This file is documentation only and is ignored by migration checks.\n"
+            )
 
     def _get_table_sql(self, table_name: str) -> str | None:
         """Get CREATE TABLE sql from sqlite_master, or None if not exists."""
@@ -347,13 +373,43 @@ class Migrate:
 
     def check(self) -> CheckResult:
         """Read-only checks. No side effects."""
+        self._ensure_declarative_dir()
+
         schema = {m.meta.table_name: self._compute_table_schema(m) for m in self.models}
 
         # Get migration files and applied migrations
         files = self._get_migration_files()
-        applied = self._get_applied_migrations()
-        ref_applied = self._get_ref_applied_migrations()
+        applied_all = self._get_applied_migrations()
+        ref_applied_all = self._get_ref_applied_migrations()
+        applied = {n: v for n, v in applied_all.items() if n > 0}
+        ref_applied = {n: v for n, v in ref_applied_all.items() if n > 0}
         ref_pending = []
+
+        declarative_files = self._get_declarative_files()
+
+        # For declarative scripts, keep the latest recorded script per filename.
+        # Negative ids are append-only and get more negative over time.
+        declarative_applied_latest: dict[str, str] = {}
+        if applied_all:
+            by_filename: dict[str, tuple[int, str]] = {}
+            for migration_id, (recorded_filename, recorded_script) in applied_all.items():
+                if migration_id >= 0:
+                    continue
+                prev = by_filename.get(recorded_filename)
+                if prev is None or migration_id < prev[0]:
+                    by_filename[recorded_filename] = (migration_id, recorded_script)
+            declarative_applied_latest = {name: script for name, (_id, script) in by_filename.items()}
+
+        declarative_ref_latest: dict[str, str] = {}
+        if ref_applied_all:
+            by_filename_ref: dict[str, tuple[int, str]] = {}
+            for migration_id, (recorded_filename, recorded_script) in ref_applied_all.items():
+                if migration_id >= 0:
+                    continue
+                prev = by_filename_ref.get(recorded_filename)
+                if prev is None or migration_id < prev[0]:
+                    by_filename_ref[recorded_filename] = (migration_id, recorded_script)
+            declarative_ref_latest = {name: script for name, (_id, script) in by_filename_ref.items()}
 
         # Validate migration files
         errors = self._validate_migration_files(files)
@@ -389,6 +445,16 @@ class Migrate:
                 if current_script != ref_script:
                     conflicted.append(path.name)
 
+        for path in declarative_files:
+            rel_name = f"{self.declarative_dir.name}/{path.name}"
+            current_script = path.read_text().replace("\r\n", "\n")
+
+            if declarative_applied_latest.get(rel_name) != current_script:
+                pending.append(rel_name)
+
+            if declarative_ref_latest.get(rel_name) != current_script:
+                ref_pending.append(rel_name)
+
         # Check for applied migrations with missing files (working DB)
         for number, (recorded_filename, _recorded_script) in applied.items():
             if number not in file_numbers:
@@ -409,6 +475,11 @@ class Migrate:
         for number, (ref_filename, _) in ref_applied.items():
             canonical[number] = ref_filename
         all_filenames_set = set(canonical.values())
+        for path in declarative_files:
+            all_filenames_set.add(f"{self.declarative_dir.name}/{path.name}")
+
+        pending.sort()
+        ref_pending.sort()
 
         return CheckResult(
             schema=schema,
@@ -426,6 +497,16 @@ class Migrate:
     def migrations_dir(self) -> Path:
         """Return the migrations directory path (e.g., mydb.sqlite.migrations/)."""
         return self.db_path.parent / f"{self.db_path.name}.migrations"
+
+    @property
+    def declarative_dir(self) -> Path:
+        """Return declarative SQL directory under migrations."""
+        return self.migrations_dir / "views_indexes_triggers"
+
+    def _get_declarative_files(self) -> list[Path]:
+        """Return declarative SQL files sorted lexically (excluding starter doc file)."""
+        self._ensure_declarative_dir()
+        return sorted(p for p in self.declarative_dir.glob("*.sql") if p.is_file() and p.name != "view.sql")
 
     def _get_migration_files(self) -> list[tuple[int, str, Path]]:
         """Get all migration files as (number, name, path) tuples, sorted by number."""
@@ -519,13 +600,18 @@ class Migrate:
         if filename not in result.pending:
             raise ValueError(f"Migration '{filename}' is not pending")
 
-        # Parse filename to get number
-        match = re.match(r"^(\d+)\.(.+)\.sql$", filename)
-        if not match:
-            raise ValueError(f"Invalid migration filename format: {filename}")
+        # Parse filename to get record id and path.
+        declarative_prefix = f"{self.declarative_dir.name}/"
+        if filename.startswith(declarative_prefix):
+            number = self._next_declarative_migration_id()
+            filepath = self.declarative_dir / filename[len(declarative_prefix) :]
+        else:
+            match = re.match(r"^(\d+)\.(.+)\.sql$", filename)
+            if not match:
+                raise ValueError(f"Invalid migration filename format: {filename}")
+            number = int(match.group(1))
+            filepath = self.migrations_dir / filename
 
-        number = int(match.group(1))
-        filepath = self.migrations_dir / filename
         script = filepath.read_text()
 
         # Normalize newlines
@@ -563,6 +649,14 @@ class Migrate:
                     time.sleep(retry_delay * (attempt + 1))
         finally:
             conn.transaction_mode = prev_mode
+
+    def _next_declarative_migration_id(self) -> int:
+        """Allocate the next negative migration id for declarative script application."""
+        applied = self._get_applied_migrations()
+        negatives = [migration_id for migration_id in applied if migration_id < 0]
+        if not negatives:
+            return -1
+        return min(negatives) - 1
 
     @property
     def ref_path(self) -> Path:

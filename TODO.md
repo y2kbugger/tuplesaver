@@ -1,6 +1,6 @@
 # WIP
+- Improved status detail for declarative migrations, e.g. show diff between file and db object
 - add db schema dump to migrations
-- State bs
 - make convertions depend on model not on db type affinity ( view aggs fail herez)
 
 ## TableRow Model
@@ -16,14 +16,19 @@
 - combine rowtrace for type converting types and lazy maker all together
     pragma user_version and pragma application_id for versioning and migrations
     https://rogerbinns.github.io/apsw/tips.html#query-patterns
+    and maybe don't make it use rowtrace??
 - Think about asymmetry between getting a cursor proxy from query vs getting collection from foreign key relationships
   - how often do we need to control fetchall vs fetchmany.
   - what about leveraging get?
   - what about fetch one only?
+  - Also consider the error of leaving cursor unfinalized.
 
 ## Other
   Delete idempot? no raise?
-  update(instance, colum="value) api creates  an abiguity (if records are mutable) basically right now it ignores mutations to the instance and only updates the fields in the kwargs. Lazy Immuatable Records would fix this.
+  update(instance, colum="value) api creates  an abiguity (if records are mutable) basically right now it ignores mutations to the instance and only updates the fields in the kwargs.
+    - Lazy Immuatable Records would fix this.
+    - Also consider typed ID's again. This would fix up the api nicely, especially if tied into FastAPI path params to deliver the correct type to the endpoint, and then just pass that to the delete/update method.
+        - This would also let us eliminate the overloaded delete and update methods completed and just require an explicit model_instance.id to be passed.
 - how to make query.select more integrated to Engine so its more like find?, and also update_all/delete_all?
     - then we can use that exact where clause in select, update, and delete
     - attempt to overload these in a way feels natural, e.g. find returns one, select returns many, update and delete can work either by id or by where clause.

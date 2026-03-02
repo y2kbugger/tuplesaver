@@ -1199,3 +1199,82 @@ def test_migrate__canonical_name__disk_wins_over_local(migrate: Migrate):
     # Canonical name should be the disk name (no ref)
     assert "001.setup.sql" in result.all_filenames
     assert "001.create_user.sql" not in result.all_filenames
+
+
+# --- Declarative views/indexes/triggers tests ---
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__declarative__scaffold_created_and_ignored(migrate: Migrate):
+    """Migrate auto-creates declarative dir with starter file, which is ignored."""
+    assert migrate.declarative_dir.exists()
+    starter = migrate.declarative_dir / "view.sql"
+    assert starter.exists()
+    assert "documentation only" in starter.read_text().lower()
+
+    result = migrate.check()
+    assert result.state == State.MISMATCH
+    assert f"{migrate.declarative_dir.name}/view.sql" not in result.pending
+
+
+@pytest.mark.scenario("fresh_db_with_model")
+def test_migrate__declarative__pending_sorted_lexically(migrate: Migrate):
+    """Declarative files are pending when out-of-sync and sorted lexically."""
+    (migrate.declarative_dir / "020.user_trigger.sql").write_text("SELECT 2;\n")
+    (migrate.declarative_dir / "010.user_view.sql").write_text("SELECT 1;\n")
+
+    result = migrate.check()
+    assert result.state == State.PENDING
+    assert result.pending == [
+        "views_indexes_triggers/010.user_view.sql",
+        "views_indexes_triggers/020.user_trigger.sql",
+    ]
+
+
+@pytest.mark.scenario("empty_db")
+def test_migrate__declarative__apply_records_negative_ids_and_reapplies_on_change(migrate: Migrate):
+    """Declarative apply uses negative IDs and re-applies when file text changes."""
+    path = migrate.declarative_dir / "010.user_view.sql"
+    path.write_text("CREATE VIEW IF NOT EXISTS v_user AS SELECT 1 AS id;\n")
+
+    result = migrate.check()
+    assert result.state == State.PENDING
+    assert result.pending == ["views_indexes_triggers/010.user_view.sql"]
+
+    migrate.apply("views_indexes_triggers/010.user_view.sql")
+
+    result = migrate.check()
+    assert result.state == State.CURRENT
+
+    rows = list(migrate.engine.connection.execute("SELECT id, script FROM _migrations WHERE filename = 'views_indexes_triggers/010.user_view.sql' ORDER BY id ASC"))
+    assert [r[0] for r in rows] == [-1]
+
+    path.write_text("CREATE VIEW IF NOT EXISTS v_user AS SELECT 1 AS id;\n-- changed\n")
+    result = migrate.check()
+    assert result.state == State.PENDING
+    assert result.pending == ["views_indexes_triggers/010.user_view.sql"]
+
+    migrate.apply("views_indexes_triggers/010.user_view.sql")
+
+    rows = list(migrate.engine.connection.execute("SELECT id, script FROM _migrations WHERE filename = 'views_indexes_triggers/010.user_view.sql' ORDER BY id ASC"))
+    assert [r[0] for r in rows] == [-2, -1]
+    assert rows[0][1].endswith("-- changed\n")
+
+
+@pytest.mark.scenario("empty_db")
+def test_migrate__declarative__out_of_sync_is_pending_not_conflicted_or_diverged(migrate: Migrate):
+    """Declarative mismatch always reports PENDING and never CONFLICTED/DIVERGED."""
+    path = migrate.declarative_dir / "010.user_view.sql"
+    path.write_text("CREATE VIEW IF NOT EXISTS v_user AS SELECT 1 AS id;\n")
+    migrate.apply("views_indexes_triggers/010.user_view.sql")
+    migrate.save_ref()
+
+    path.write_text("CREATE VIEW IF NOT EXISTS v_user AS SELECT 2 AS id;\n")
+
+    result = migrate.check()
+    assert result.state == State.PENDING
+    assert result.pending == ["views_indexes_triggers/010.user_view.sql"]
+    assert not result.conflicted
+    assert not result.conflicted_missing
+    assert not result.divergent
+    assert not result.divergent_missing

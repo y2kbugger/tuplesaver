@@ -121,5 +121,7 @@ Recursive with loop breaker: if state unchanged after a fix attempt, exit 1.
 - [ ] Generate ALTER instead of DROP/CREATE
 - [ ] Generate SELECT-INTO for general alters
 - [ ] Schema/application version pragma
+- [ ] Warning if anyone else has edited the schema since migration has last ran.
+
 
 # WIP
