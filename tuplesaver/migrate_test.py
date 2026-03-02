@@ -20,7 +20,7 @@ from pathlib import Path
 import colors as clr
 import pytest
 
-from .migrate import Migrate, State
+from .migrate import Migrate, Migration, SqliteMaster, State
 from .model import TableRow
 
 SCENARIOS_DIR = Path(__file__).parent / "migrate_scenarios"
@@ -148,8 +148,7 @@ def test_migrate__apply__executes_migration(migrate: Migrate):
     migrate.apply(result.pending[0])
 
     # Table should now exist
-    cursor = migrate.engine.connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='User'")
-    assert cursor.fetchone() is not None
+    assert migrate.engine.find_by(SqliteMaster, type="table", name="User") is not None
 
 
 @pytest.mark.scenario("fresh_db_with_model")
@@ -161,12 +160,10 @@ def test_migrate__apply__records_in_migrations_table(migrate: Migrate):
     migrate.apply(result.pending[0])
 
     # Check _migrations table
-    cursor = migrate.engine.connection.execute("SELECT id, filename, script FROM _migrations WHERE id = 1")
-    row = cursor.fetchone()
-    assert row is not None
-    assert row[0] == 1
-    assert row[1] == "001.create_user.sql"
-    assert "CREATE TABLE User" in row[2]
+    row = migrate.engine.find(Migration, 1)
+    assert row.id == 1
+    assert row.filename == "001.create_user.sql"
+    assert "CREATE TABLE User" in row.script
 
 
 @pytest.mark.scenario("fresh_db_with_model")
@@ -215,12 +212,10 @@ def test_migrate__apply__rolls_back_on_bad_script(migrate: Migrate):
         migrate.apply(filename)
 
     # Table should NOT exist — the CREATE TABLE was rolled back
-    cursor = migrate.engine.connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='User'")
-    assert cursor.fetchone() is None
+    assert migrate.engine.find_by(SqliteMaster, type="table", name="User") is None
 
     # _migrations should have no record
-    cursor = migrate.engine.connection.execute("SELECT count(*) FROM _migrations")
-    assert cursor.fetchone()[0] == 0
+    assert migrate.engine.select(Migration).fetchall() == []
 
 
 @pytest.mark.scenario("fresh_db_with_model")
@@ -1205,21 +1200,23 @@ def test_migrate__canonical_name__disk_wins_over_local(migrate: Migrate):
 
 
 @pytest.mark.scenario("fresh_db_with_model")
-def test_migrate__declarative__scaffold_created_and_ignored(migrate: Migrate):
-    """Migrate auto-creates declarative dir with starter file, which is ignored."""
-    assert migrate.declarative_dir.exists()
-    starter = migrate.declarative_dir / "view.sql"
-    assert starter.exists()
-    assert "documentation only" in starter.read_text().lower()
+def test_migrate__declarative__init_creates_scaffold(migrate: Migrate):
+    """init_declaritive() creates declarative dir with starter file that runs normally."""
+    assert not migrate.declarative_dir.exists()
+
+    path = migrate.init_declaritive()
+    assert path == migrate.declarative_dir / "010.views.sql"
+    assert path.exists()
 
     result = migrate.check()
-    assert result.state == State.MISMATCH
-    assert f"{migrate.declarative_dir.name}/view.sql" not in result.pending
+    # starter file is pending like any other declarative file
+    assert "views_indexes_triggers/010.views.sql" in result.pending
 
 
 @pytest.mark.scenario("fresh_db_with_model")
 def test_migrate__declarative__pending_sorted_lexically(migrate: Migrate):
     """Declarative files are pending when out-of-sync and sorted lexically."""
+    migrate.declarative_dir.mkdir(parents=True, exist_ok=True)
     (migrate.declarative_dir / "020.user_trigger.sql").write_text("SELECT 2;\n")
     (migrate.declarative_dir / "010.user_view.sql").write_text("SELECT 1;\n")
 
@@ -1234,6 +1231,7 @@ def test_migrate__declarative__pending_sorted_lexically(migrate: Migrate):
 @pytest.mark.scenario("empty_db")
 def test_migrate__declarative__apply_records_negative_ids_and_reapplies_on_change(migrate: Migrate):
     """Declarative apply uses negative IDs and re-applies when file text changes."""
+    migrate.declarative_dir.mkdir(parents=True, exist_ok=True)
     path = migrate.declarative_dir / "010.user_view.sql"
     path.write_text("CREATE VIEW IF NOT EXISTS v_user AS SELECT 1 AS id;\n")
 
@@ -1246,8 +1244,8 @@ def test_migrate__declarative__apply_records_negative_ids_and_reapplies_on_chang
     result = migrate.check()
     assert result.state == State.CURRENT
 
-    rows = list(migrate.engine.connection.execute("SELECT id, script FROM _migrations WHERE filename = 'views_indexes_triggers/010.user_view.sql' ORDER BY id ASC"))
-    assert [r[0] for r in rows] == [-1]
+    rows = migrate.engine.select(Migration, filename="views_indexes_triggers/010.user_view.sql").fetchall()
+    assert [r.id for r in rows] == [-1]
 
     path.write_text("CREATE VIEW IF NOT EXISTS v_user AS SELECT 1 AS id;\n-- changed\n")
     result = migrate.check()
@@ -1256,14 +1254,16 @@ def test_migrate__declarative__apply_records_negative_ids_and_reapplies_on_chang
 
     migrate.apply("views_indexes_triggers/010.user_view.sql")
 
-    rows = list(migrate.engine.connection.execute("SELECT id, script FROM _migrations WHERE filename = 'views_indexes_triggers/010.user_view.sql' ORDER BY id ASC"))
-    assert [r[0] for r in rows] == [-2, -1]
-    assert rows[0][1].endswith("-- changed\n")
+    rows = migrate.engine.select(Migration, filename="views_indexes_triggers/010.user_view.sql").fetchall()
+    rows.sort(key=lambda r: r.id)
+    assert [r.id for r in rows] == [-2, -1]
+    assert rows[0].script.endswith("-- changed\n")
 
 
 @pytest.mark.scenario("empty_db")
 def test_migrate__declarative__out_of_sync_is_pending_not_conflicted_or_diverged(migrate: Migrate):
     """Declarative mismatch always reports PENDING and never CONFLICTED/DIVERGED."""
+    migrate.declarative_dir.mkdir(parents=True, exist_ok=True)
     path = migrate.declarative_dir / "010.user_view.sql"
     path.write_text("CREATE VIEW IF NOT EXISTS v_user AS SELECT 1 AS id;\n")
     migrate.apply("views_indexes_triggers/010.user_view.sql")

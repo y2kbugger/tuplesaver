@@ -257,14 +257,15 @@ class Migrate:
         self.db_path = Path(db_path)
         self.engine = Engine(str(self.db_path))
         self.models = models
-        self._ensure_declarative_dir()
 
-    def _ensure_declarative_dir(self) -> None:
-        """Ensure declarative SQL folder exists with a starter guidance file."""
-        declarative_dir = self.declarative_dir
-        declarative_dir.mkdir(parents=True, exist_ok=True)
+    def init_declaritive(self) -> Path:
+        """Create the declarative SQL folder with a starter guidance file.
 
-        starter = declarative_dir / "view.sql"
+        Returns the path to the starter file.
+        """
+        self.declarative_dir.mkdir(parents=True, exist_ok=True)
+
+        starter = self.declarative_dir / "010.views.sql"
         if not starter.exists():
             starter.write_text(
                 "-- Declarative SQL files in this folder are applied in lexical filename order.\n"
@@ -272,8 +273,8 @@ class Migrate:
                 "-- Use naming to control dependency order between views, indexes, and triggers.\n"
                 "-- Write scripts idempotently (use DROP IF EXISTS / CREATE IF NOT EXISTS patterns where possible).\n"
                 "-- Avoid placing view/trigger/index definitions in numbered procedural migrations.\n"
-                "-- This file is documentation only and is ignored by migration checks.\n"
             )
+        return starter
 
     def _get_table_sql(self, table_name: str) -> str | None:
         """Get CREATE TABLE sql from sqlite_master, or None if not exists."""
@@ -373,8 +374,6 @@ class Migrate:
 
     def check(self) -> CheckResult:
         """Read-only checks. No side effects."""
-        self._ensure_declarative_dir()
-
         schema = {m.meta.table_name: self._compute_table_schema(m) for m in self.models}
 
         # Get migration files and applied migrations
@@ -504,9 +503,10 @@ class Migrate:
         return self.migrations_dir / "views_indexes_triggers"
 
     def _get_declarative_files(self) -> list[Path]:
-        """Return declarative SQL files sorted lexically (excluding starter doc file)."""
-        self._ensure_declarative_dir()
-        return sorted(p for p in self.declarative_dir.glob("*.sql") if p.is_file() and p.name != "view.sql")
+        """Return declarative SQL files sorted lexically."""
+        if not self.declarative_dir.exists():
+            return []
+        return sorted(p for p in self.declarative_dir.glob("*.sql") if p.is_file())
 
     def _get_migration_files(self) -> list[tuple[int, str, Path]]:
         """Get all migration files as (number, name, path) tuples, sorted by number."""

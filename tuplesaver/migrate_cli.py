@@ -70,8 +70,16 @@ def cmd_status(migrate: Migrate, args: argparse.Namespace) -> int:
 
 def cmd_generate(migrate: Migrate, args: argparse.Namespace) -> int:
     """Generate migration script from schema mismatch."""
+    init = getattr(args, "init_declaritive", False)
+    if init:
+        path = migrate.init_declaritive()
+        print(f"Initialized declarative SQL: {path}")
+
     result = migrate.check()
     if result.state == State.CURRENT:
+        print("Nothing to generate — schema already matches the DB")
+        return 0
+    if init and not result.has_schema_mismatch:
         print("Nothing to generate — schema already matches the DB")
         return 0
     if result.state != State.MISMATCH:
@@ -254,7 +262,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("status", help="Show summary of migration in progress")
-    sub.add_parser("generate", help="Generate migration script from schema mismatch")
+    gen_p = sub.add_parser("generate", help="Generate migration script from schema mismatch")
+    gen_p.add_argument(
+        "--init-declaritive",
+        action="store_true",
+        help="Initialize declarative SQL folder and starter script (010.views.sql)",
+    )
 
     apply_p = sub.add_parser("apply", help="Apply pending migrations")
     apply_p.add_argument("filename", nargs="?", default=None, help="Specific migration file to apply")

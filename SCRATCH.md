@@ -91,6 +91,9 @@ see: https://clickpy.clickhouse.com/dashboard/apsw
   Similar, add CRUD ORM on top of DataClass models that generate straight from the schema, or CREATE from dataclasses.
   - https://sqlite-utils.datasette.io/en/stable/python-api.html / https://github.com/AnswerDotAI/apswutils this is a library and a fork that adds apsw support to sqlite-utils.
 
+## other SQLite ORMs
+- https://pypi.org/project/sqler/ (repo seems deleted, downloaded tarball from pypi)
+
 
 Really need to read and understand this new annotation sematics coming in 3.14, as well as difference between inspect.get_nnotations and typing.get_type_hints
 https://docs.python.org/3/howto/annotations.html#annotations-howto
