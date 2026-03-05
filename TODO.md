@@ -2,11 +2,17 @@
 - Improved status detail for declarative migrations, e.g. show diff between file and db object
 - add db schema dump to migrations
 - make convertions depend on model not on db type affinity ( view aggs fail herez)
+- Explore other gains/implications from making a specialized convert fuctions up-front.
+    - adapts/converts must be known up front.
+    - already raises, but what about redefines, are redefines blocked?
+        - or redefines could just blow the cache
+    - require passing into engine?
 
 ## TableRow Model
 - disambiguate Row vs TableRow in relation to `is_row_model` and `get_meta`
 - Move lazy proxy descriptors to the metaclass
 - Find a remove unused exceptions
+- Harmonize typing of type[Row] to RowMeta (i think)
 - fix all ty and ruff errors in all files
 - test that you can add extra defs to a model without things blowing up (or add eager enforcement that you can't do this)
 - move stuff out of meta and into the model class itself, and then use that directly. e.g. `Model._meta.table_name` -> `Model.__tablename__` and `Model._meta.fields` -> `Model.__fields__`.
@@ -81,6 +87,7 @@
 - use the assert_type from typing to check type hints
   - Test types on select (both decorator and non)
 - fix names / order of model_test.py, e.g. test_table_meta_... -> test_get_meta__....
+- UnregisteredFieldTypeError
 
 
 # Next

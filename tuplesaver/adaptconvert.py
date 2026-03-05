@@ -9,7 +9,7 @@ from typing import Any
 
 import apsw
 
-from .model import is_row_model, native_columntypes, schematype
+from .model import RowMeta, is_row_model, native_columntypes, schematype
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +26,28 @@ class AdaptConvertTypeAlreadyRegistered(Exception):
         super().__init__(f"Persistance format for {AdaptConvertType} already exists. It is a native type (int, float, str, bytes) or already has an Adapt Convert registered")
 
 
+class UnregisteredFieldTypeError(ValueError):
+    def __init__(self, field_type: type | Any) -> None:
+        if is_row_model(field_type):
+            msg = (
+                f"Field Type `{field_type}` is a NamedTuple Row Model, but it has not been registered with the Persister Engine.\n"
+                "Use `engine.ensure_table_created({field_type.__name__})` to register it"
+            )
+        elif field_type is Any:
+            msg = "Field Type `Any` is not a valid type for persisting, it can only be used for reading"
+        else:
+            msg = f"Field Type `{field_type}` has not been registered with an adapter and converter.\n `register_adapt_convert` to register it"
+
+        super().__init__(msg)
+
+
 class AdaptConvertRegistry:
     """Provides cursors that can convert objects into one of the types supported by SQLite, or back from SQLite"""
 
     def __init__(self):
         self._adapters: dict[type, Callable] = {}
         self._converters: dict[str, Callable] = {}
+        self._model_converters: dict[type, Callable[[apsw.SQLiteValues], tuple]] = {}
 
     def __call__(self, connection: apsw.Connection) -> AdaptConvertCursor:
         "Returns a new convertor :class:`cursor <apsw.Cursor>` for the `connection`"
@@ -50,19 +66,51 @@ class AdaptConvertRegistry:
             return value.id
         raise TypeError(f"No adapter registered for type {type(value)}")
 
-    def convert_value(self, schematype: str, value: apsw.SQLiteValue) -> Any:
-        "Returns Python object from schema type and SQLite value"
-        if value is None:
-            return None
+    def make_converter_for_model(self, Model: RowMeta) -> Callable[[apsw.SQLiteValues], tuple]:
+        """Build and cache an optimized row-converter for *Model*.
 
-        converter = self._converters.get(schematype)
-        if not converter:
-            return value
+        Validates that every field type has a registered adapter, then
+        generates (via ``exec``) a tight converter function that maps a
+        raw SQLite row-tuple to a Python-typed tuple.  None values are
+        passed through without calling converters.  Fields whose
+        schematype has no converter are passed through as-is.
+        """
+
+        # -- validate field types ------------------------------------------------
+        for field in Model.meta.fields:
+            if field.type == Model:
+                continue  # recursive self-reference
+            if field.type is Any:
+                continue  # Any is valid for reading, skip validation
+            if not self.is_valid_adapttype(field.type):
+                raise UnregisteredFieldTypeError(field.type)
+
+        # -- build converter via exec -------------------------------------------
+        ns: dict[str, Any] = {}
+        parts: list[str] = []
+        for i, field in enumerate(Model.meta.fields):
+            converter = self._converters.get(field.sql_typename)
+            if converter is not None:
+                cname = f'_c{i}'
+                ns[cname] = converter
+                parts.append(f'{cname}(r[{i}]) if r[{i}] is not None else None')
+            else:
+                parts.append(f'r[{i}]')
+
+        body = ', '.join(parts)
+        func_code = f'def _convert(r):\n    return ({body},)'
+        exec(func_code, ns)
+        converter_func = ns['_convert']
+
+        self._model_converters[Model] = converter_func
+        return converter_func
+
+    def get_model_converter(self, Model: RowMeta) -> Callable[[apsw.SQLiteValues], tuple]:
+        """Return the cached converter for *Model*, building one if needed."""
         try:
-            return converter(value)
-        except Exception as e:
-            logger.error(f"Error converting value {value} with converter for type {schematype}: {e}")
-            return value  # onus on developer to put in the right types if there is not converter, why punish convertable values specifically?
+            return self._model_converters[Model]
+        except KeyError:
+            return self.make_converter_for_model(Model)
 
     def _convert_binding(self, _: apsw.Cursor, __: int, value: Any) -> apsw.SQLiteValue:
         # TODO: I think we could make this smarter by storing the adapters for a specific Model as a tuple and indexing into it, instead of calling adapt_value each time

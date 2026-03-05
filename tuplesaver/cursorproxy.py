@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 class Lazy[Model]:
     __slots__ = ("_cached", "_engine", "_id", "_model")
 
-    def __init__(self, engine: Engine, model: type[Row], id_: int):
+    def __init__(self, engine: Engine, model: type[TableRow], id_: int):
         self._engine = engine
         self._model = model
         self._id = id_
@@ -36,7 +36,7 @@ class Lazy[Model]:
     def __eq__(self, other: object) -> bool:
         if isinstance(other, int):
             return self._id == other
-        elif type(other) is self._model:
+        elif isinstance(other, TableRow) and type(other) is self._model:
             return self._id == other.id
         elif isinstance(other, Lazy):
             return self._model == other._model and self._id == other._id
@@ -81,10 +81,10 @@ class TypedCursorProxy[R: Row | TableRow](apsw.Cursor):
 
     @staticmethod
     def proxy_cursor_lazy(Model: type[R], cursor: apsw.Cursor, engine: Engine) -> TypedCursorProxy[R]:
+        convert = engine.adapt_convert_registry.get_model_converter(Model)
+
         def row_fac_lazy(c: apsw.Cursor, r: apsw.SQLiteValues) -> R:
-            # Convert SQLite values using model field types (not cursor description)
-            converted = tuple(engine.adapt_convert_registry.convert_value(field.sql_typename, v) for field, v in zip(Model.meta.fields, r, strict=True))
-            return _make_model_lazy(Model, c, converted, engine)
+            return _make_model_lazy(Model, c, convert(r), engine)
 
         cursor.row_trace = row_fac_lazy
 

@@ -54,23 +54,8 @@ class NoKwargFieldSpecifiedError(ValueError):
 
 
 class InvalidKwargFieldSpecifiedError(ValueError):
-    def __init__(self, Model: type[Row | TableRow], kwargs: dict[str, Any]) -> None:
+    def __init__(self, Model: type[TableRow], kwargs: dict[str, Any]) -> None:
         super().__init__(f"Invalid fields for {Model.__name__}: {', '.join(kwargs.keys())}. Valid fields are: {', '.join(f.name for f in Model.meta.fields)}")
-
-
-class UnregisteredFieldTypeError(ValueError):
-    def __init__(self, field_type: type | Any) -> None:
-        if is_row_model(field_type):
-            msg = (
-                f"Field Type `{field_type}` is a NamedTuple Row Model, but it has not been registered with the Persister Engine.\n"
-                "Use `engine.ensure_table_created({field_type.__name__})` to register it"
-            )
-        elif field_type is Any:
-            msg = "Field Type `Any` is not a valid type for persisting, it can only be used for reading"
-        else:
-            msg = f"Field Type `{field_type}` has not been registered with an adapter and converter.\n `register_adapt_convert` to register it"
-
-        super().__init__(msg)
 
 
 class IdNoneError(ValueError):
@@ -95,7 +80,6 @@ __all_errors__ = [
     LookupByAdHocModelImpossible,
     NoKwargFieldSpecifiedError,
     InvalidKwargFieldSpecifiedError,
-    UnregisteredFieldTypeError,
     IdNoneError,
     RecordNotFoundError,
     NoRecordToUpdateError,
@@ -120,12 +104,6 @@ class Engine:
         meta = Model.meta
 
         ddl = generate_create_table_ddl(Model)
-
-        for field in meta.fields:
-            if field.type == Model:
-                continue  # recursive
-            if not self.adapt_convert_registry.is_valid_adapttype(field.type):
-                raise UnregisteredFieldTypeError(field.type)
 
         try:
             self.connection.execute(ddl)
@@ -252,11 +230,11 @@ class Engine:
     def update[R: TableRow](self, Model_or_row: type[R] | R, row_id: int | None = None, **kwargs: Any) -> R:  # pyright: ignore [reportInconsistentOverload] allow overloads with different parameter names
         if not isinstance(Model_or_row, type):
             row = Model_or_row
-            Model = type(row)
+            Model: type[R] = type(row)
             assert row_id is None, "Do not provide row_id when passing a row instance."
             row_id = row.id
         else:
-            Model = Model_or_row
+            Model: type[R] = Model_or_row
             row = None
 
         if row_id is None:
