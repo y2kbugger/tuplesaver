@@ -60,7 +60,7 @@ def test_cli_status_mismatch(migrate: Migrate, capsys: pytest.CaptureFixture[str
 @pytest.mark.scenario("fresh_db_with_model")
 def test_cli_generate_ok(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
     """generate in MISMATCH state → prints path, file exists, exit 0."""
-    args = _ns(init_declaritive=False)
+    args = _ns(init_declarative=False)
     code = cmd_generate(migrate, args)
     assert code == 0
     out = capsys.readouterr().out
@@ -71,7 +71,7 @@ def test_cli_generate_ok(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -
 @pytest.mark.scenario("empty_db")
 def test_cli_generate_already_current(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
     """generate in CURRENT state → nothing to do, exit 0."""
-    args = _ns(init_declaritive=False)
+    args = _ns(init_declarative=False)
     code = cmd_generate(migrate, args)
     assert code == 0
     out = capsys.readouterr().out
@@ -79,9 +79,9 @@ def test_cli_generate_already_current(migrate: Migrate, capsys: pytest.CaptureFi
 
 
 @pytest.mark.scenario("empty_db")
-def test_cli_generate_init_declaritive(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
-    """generate --init-declaritive initializes starter and still returns CURRENT flow."""
-    args = _ns(init_declaritive=True)
+def test_cli_generate_init_declarative(migrate: Migrate, capsys: pytest.CaptureFixture[str]) -> None:
+    """generate --init-declarative initializes starter and still returns CURRENT flow."""
+    args = _ns(init_declarative=True)
     code = cmd_generate(migrate, args)
     assert code == 0
     out = capsys.readouterr().out

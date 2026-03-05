@@ -1201,10 +1201,10 @@ def test_migrate__canonical_name__disk_wins_over_local(migrate: Migrate):
 
 @pytest.mark.scenario("fresh_db_with_model")
 def test_migrate__declarative__init_creates_scaffold(migrate: Migrate):
-    """init_declaritive() creates declarative dir with starter file that runs normally."""
+    """init_declarative() creates declarative dir with starter file that runs normally."""
     assert not migrate.declarative_dir.exists()
 
-    path = migrate.init_declaritive()
+    path = migrate.init_declarative()
     assert path == migrate.declarative_dir / "010.views.sql"
     assert path.exists()
 
@@ -1278,3 +1278,22 @@ def test_migrate__declarative__out_of_sync_is_pending_not_conflicted_or_diverged
     assert not result.conflicted_missing
     assert not result.divergent
     assert not result.divergent_missing
+
+
+@pytest.mark.scenario("empty_db")
+def test_migrate__declarative__apply_rolls_back_on_bad_script(migrate: Migrate):
+    """Declarative apply() rolls back entirely when the script contains an error."""
+    import apsw
+
+    migrate.declarative_dir.mkdir(parents=True, exist_ok=True)
+    path = migrate.declarative_dir / "010.user_view.sql"
+    path.write_text("INSERT INTO nonexistent_table VALUES (1);\n")
+
+    result = migrate.check()
+    assert result.state == State.PENDING
+
+    with pytest.raises(apsw.SQLError):
+        migrate.apply("views_indexes_triggers/010.user_view.sql")
+
+    # _migrations should have no record — the transaction was rolled back
+    assert migrate.engine.select(Migration).fetchall() == []

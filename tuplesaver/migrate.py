@@ -258,7 +258,7 @@ class Migrate:
         self.engine = Engine(str(self.db_path))
         self.models = models
 
-    def init_declaritive(self) -> Path:
+    def init_declarative(self) -> Path:
         """Create the declarative SQL folder with a starter guidance file.
 
         Returns the path to the starter file.
