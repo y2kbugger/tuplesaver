@@ -74,10 +74,6 @@ class AdaptConvertRegistry:
             super().__init__(connection)
             self.factory = ac_registry
             self.convert_binding = ac_registry._convert_binding  # adapt callback
-            self.row_trace = self._row_converter  # convert callback
-
-        def _row_converter(self, cursor: apsw.Cursor, values: apsw.SQLiteValues) -> tuple[Any, ...]:
-            return tuple(self.factory.convert_value(d[1], v) for d, v in zip(cursor.get_description(), values, strict=True))
 
     def register_adapt_convert[D, V: apsw.SQLiteValue | bytes](self, AdaptConvertType: type[D], adapt: Callable[[D], V], convert: Callable[[V], D]) -> None:
         if not isinstance(AdaptConvertType, type):
