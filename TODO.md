@@ -1,7 +1,6 @@
 # WIP
 
 # Bugs
-- Order does not yet accespt t-stringjs
 - ruff complains about comparison to True, e.g. `if x == True` should be `if x` (is this supported by the Rel rendered)?
 
 
@@ -29,7 +28,6 @@ All of these need test cases (or need it verified that a test already exists), e
     - Also why does find, and select etc, allow `Row` models currently? Once we do the `__select_query__` feature this makes more sense, but i don't think it could work right now.
 - test that typechecker _knows_ that our models are immutable.
 - test param overide works on both __select_query__ AND predicates
-- test refactorable interpolation of columns in `order`.
 - test that one-to-one backrefs have the unique constraint.
 - test param passing backref fields to on insert. (only happens in anti-pattern of trying to reinsert from a fetched model with backrefs, but it still concerns me)
 

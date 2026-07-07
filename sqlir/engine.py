@@ -1,6 +1,7 @@
 import logging
 import re
 from collections.abc import Sequence
+from string.templatelib import Template
 from typing import Any
 
 import apsw
@@ -123,7 +124,7 @@ class Engine:
             raise e
 
     ##### Reading
-    def find[R: Row | TableRow](self, Model: type[R], target: Any = None, params: dict[str, Any] | None = None, /, *, order: str | None = None) -> R:
+    def find[R: Row | TableRow](self, Model: type[R], target: Any = None, params: dict[str, Any] | None = None, /, *, order: str | Template | None = None) -> R:
         """Find a single row by a relational expression. Raises RecordNotFoundError if no row is found.
 
         If target is missing or doesn't uniquely identify a row, return the
@@ -143,7 +144,7 @@ class Engine:
         return row
 
     def select[R: Row | TableRow](
-        self, Model: type[R], target: Any = None, params: dict[str, Any] | None = None, /, *, order: str | None = None, limit: int | None = None, offset: int | None = None
+        self, Model: type[R], target: Any = None, params: dict[str, Any] | None = None, /, *, order: str | Template | None = None, limit: int | None = None, offset: int | None = None
     ) -> TypedCursorProxy[R]:
         """Select rows by a relational expression, returning a typed cursor.
 

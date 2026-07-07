@@ -106,6 +106,44 @@ def test_select_where_tstring_scalar_subquery_clause_starts_on_own_line() -> Non
     assert params == {}
 
 
+def test_select_order_by_tstring_field() -> None:
+    params: dict[str, object] = {}
+
+    sql = build_select_sql(Athlete, None, params, order=t"{Athlete.number} DESC")
+
+    assert sql == "SELECT Athlete.id, Athlete.name, Athlete.team, Athlete.number FROM Athlete ORDER BY Athlete.number DESC"
+    assert params == {}
+
+
+def test_select_order_by_tstring_fk_path_uses_scalar_subquery() -> None:
+    params: dict[str, object] = {}
+
+    sql = build_select_sql(Athlete, None, params, order=t"{Athlete.team.teamname}")
+
+    assert sql == dd("""
+        SELECT Athlete.id, Athlete.name, Athlete.team, Athlete.number FROM Athlete ORDER BY (
+            SELECT team.teamname
+            FROM Team team
+            WHERE team.id = Athlete.team
+        )
+    """)
+    assert params == {}
+
+
+def test_select_order_by_tstring_with_where_target() -> None:
+    params: dict[str, object] = {}
+
+    sql = build_select_sql(Athlete, Athlete.number > 5, params, order=t"{Athlete.name} ASC", limit=2)
+
+    assert sql == dd("""
+        SELECT Athlete.id, Athlete.name, Athlete.team, Athlete.number FROM Athlete
+        WHERE Athlete.number > :p0
+        ORDER BY Athlete.name ASC
+        LIMIT 2
+    """)
+    assert params == {"p0": 5}
+
+
 def test_fanout_not_occur() -> None:
     engine = Engine(apsw.Connection(":memory:"))
     engine.ensure_table_created(League)

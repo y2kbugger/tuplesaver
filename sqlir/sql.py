@@ -7,6 +7,7 @@ itself stays in `sql_rel.py`.
 """
 
 from functools import cache
+from string.templatelib import Template
 from textwrap import dedent
 from typing import Any
 
@@ -19,18 +20,19 @@ from .sql_rel import compile_expr
 # ---------------------------------------------------------------------------
 
 
-def _append_where(sql: str, target: Any, params: dict[str, Any], start_idx: int = 0) -> str:
+def _append_where(sql: str, target: Any, params: dict[str, Any], start_idx: int = 0) -> tuple[str, int]:
     """Append a `WHERE <clause>` compiled from `target` to `sql`, mutating `params`.
 
     `start_idx` seeds the generated `p<idx>` parameter names so a wrapped
     `__select_query__` can avoid colliding with the inner query's bound params.
+    Returns the SQL and the next free `p<idx>` index for further clauses.
     """
     if target is None:
-        return sql
-    where_clause, _ = compile_expr(target, params, start_idx)
+        return sql, start_idx
+    where_clause, next_idx = compile_expr(target, params, start_idx)
     if where_clause:
         sql += f"\nWHERE {where_clause}"
-    return sql
+    return sql, next_idx
 
 
 @cache
@@ -76,7 +78,7 @@ def build_select_sql(
     target: Any = None,
     params: dict[str, Any] | None = None,
     *,
-    order: str | None = None,
+    order: str | Template | None = None,
     limit: int | None = None,
     offset: int | None = None,
 ) -> str:
@@ -93,13 +95,16 @@ def build_select_sql(
             return base
         alias = Model.__tablename__
         cols = ", ".join(f.name for f in Model.__fields__)
-        sql = _append_where(f"WITH {alias}({cols}) AS (\n{base}\n)\nSELECT * FROM {alias}", target, params, next_idx)
+        sql, next_idx = _append_where(f"WITH {alias}({cols}) AS (\n{base}\n)\nSELECT * FROM {alias}", target, params, next_idx)
     else:
-        sql = _append_where(_select_clause(Model), target, params)
+        sql, next_idx = _append_where(_select_clause(Model), target, params)
 
     separator = "\n" if "\n" in sql else " "
     if order:
-        sql += f"{separator}ORDER BY {order}"
+        # A t-string order lowers field interpolations to qualified column refs
+        # (or scalar subqueries for FK paths), keeping it refactorable.
+        order_sql = order if isinstance(order, str) else compile_expr(order, params, next_idx)[0]
+        sql += f"{separator}ORDER BY {order_sql}"
         separator = "\n"
     if limit is not None:
         sql += f"{separator}LIMIT {limit}"
@@ -160,7 +165,7 @@ def build_update_sql(
     field_names: frozenset[str],
 ) -> str:
     """Assemble a full `UPDATE` setting `field_names`, with WHERE compiled from `target`."""
-    return _append_where(_update_clause(Model, field_names), target, params)
+    return _append_where(_update_clause(Model, field_names), target, params)[0]
 
 
 # ---------------------------------------------------------------------------
@@ -174,4 +179,4 @@ def build_delete_sql(
     params: dict[str, Any],
 ) -> str:
     """Assemble a full `DELETE` for `Model`, with WHERE compiled from `target`."""
-    return _append_where(f"DELETE FROM {Model.__tablename__}", target, params)
+    return _append_where(f"DELETE FROM {Model.__tablename__}", target, params)[0]

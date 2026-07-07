@@ -138,6 +138,28 @@ def test_find__no_target_with_order(engine: Engine) -> None:
     assert engine.find(Team, order="size DESC") == r2
 
 
+def test_find__order_tstring(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+    r2 = engine.insert(Team("Tigers", 33))
+
+    # refactorable: `order` interpolates the field, not a string column name
+    assert engine.find(Team, order=t"{Team.size} DESC") == r2
+
+
+def test_select__order_tstring_fk_path(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.ensure_table_created(Person)
+    lions = engine.insert(Team("Lions", 30))
+    tigers = engine.insert(Team("Tigers", 33))
+    engine.insert(Person("Zoe", lions))
+    engine.insert(Person("Abe", tigers))
+
+    rows = engine.select(Person, order=t"{Person.team.name} DESC").fetchall()
+
+    assert [p.name for p in rows] == ["Abe", "Zoe"]
+
+
 def test_find__no_target_empty_table(engine: Engine) -> None:
     engine.ensure_table_created(Team)
     with pytest.raises(RecordNotFoundError):
@@ -323,6 +345,17 @@ def test_select__select_query_model__target_with_order_limit(engine: Engine) -> 
     rows = engine.select(Team_NameUpper, t"{Team_NameUpper.name} LIKE 'L%'", order="name", limit=1).fetchall()
 
     assert rows == [Team_NameUpper("Lions", "LIONS")]
+
+
+def test_select__select_query_model__order_tstring(engine: Engine) -> None:
+    engine.ensure_table_created(Team)
+    engine.insert(Team("Lions", 30))
+    engine.insert(Team("Tigers", 33))
+
+    # order references the model's OWN output columns via the wrapping CTE.
+    rows = engine.select(Team_NameUpper, order=t"{Team_NameUpper.shout} DESC").fetchall()
+
+    assert rows == [Team_NameUpper("Tigers", "TIGERS"), Team_NameUpper("Lions", "LIONS")]
 
 
 def test_find__select_query_model__target(engine: Engine) -> None:

@@ -34,7 +34,9 @@ class Engine:
   pred = t"{Post.score} >= {min_score}"
   engine.select(Post, pred, {"min_score": 50})
   engine.select(Post, pred, {"min_score": 90})
-- `order` clause, e.g. `"name DESC, id"`.
+- `order` clause, e.g. `"name DESC, id"`, or a t-string for refactor-safe
+  column references, e.g. `t"{Post.name} DESC"` (FK paths like
+  `t"{Athlete.team.name}"` lower to scalar subqueries).
 - `limit` and `offset` for pagination.
   ```
 
