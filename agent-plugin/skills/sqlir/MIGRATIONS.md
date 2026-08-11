@@ -1,3 +1,5 @@
+<!-- AUTO-GENERATED — DO NOT EDIT. Regenerate with: python scripts/sync_plugin.py Source: MIGRATIONS.md -->
+
 # Migrations
 
 Manage development and application of SQLite schema migrations.

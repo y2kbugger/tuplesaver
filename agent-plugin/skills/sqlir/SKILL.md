@@ -18,13 +18,16 @@ and `msgspec`, and requires **Python ≥ 3.14**.
 
 ## How to use this skill
 
-Two reference files are bundled alongside this skill. Read them on demand:
+Three reference files are bundled alongside this skill. Read them on demand:
 
 - [API.md](API.md) — the authoritative API reference: model concepts
   (`TableRow` / `Row`), the `Engine` CRUD surface, relation predicates and
-  t-strings, the full Python→SQLite type mapping, web-framework error handling,
-  and the migration system (states + `sqlir-migrate` CLI). Start here for
-  signatures and semantics.
+  t-strings, the full Python→SQLite type mapping, and web-framework error
+  handling. Start here for signatures and semantics.
+- [MIGRATIONS.md](MIGRATIONS.md) — the migration system: file layout, states
+  and their transitions, `pyproject.toml` config, and the `sqlir-migrate` CLI.
+  For CLI subcommands and flags, the source of truth is `sqlir-migrate --help`
+  and `sqlir-migrate <COMMAND> --help`.
 - [example.py](example.py) — a runnable, end-to-end tour in jupytext "percent"
   format (each `# %%` marks a cell). Covers models, CRUD, relations/joins,
   t-string predicates, advanced type persistence (datetime, Decimal, Enum,
@@ -56,6 +59,6 @@ Two reference files are bundled alongside this skill. Read them on demand:
 ## sqlir is UNDER ACTIVE DEVELOPMENT
 - Please, summarize quirks/bugs that you had to work around after finishing your task, and share them with the maintainers.
 
-> These two files are auto-generated copies kept in sync with the repo's
-> `API.md` and `example.ipynb` by `scripts/sync_plugin.py` (run via a
-> pre-commit hook). Do not edit them by hand.
+> These files are auto-generated copies kept in sync with the repo's
+> `API.md`, `MIGRATIONS.md`, and `example.ipynb` by `scripts/sync_plugin.py`
+> (run via a pre-commit hook). Do not edit them by hand.

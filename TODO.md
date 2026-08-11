@@ -1,11 +1,15 @@
 # WIP
 
 # Bugs
+- FK sql types should be INTEGER_ID not model name or something so that the type coming out is unabiguous.
 - ruff complains about comparison to True, e.g. `if x == True` should be `if x` (is this supported by the Rel rendered)?
+- FK constraints are declared (`REFERENCES Band(id)`), document on how users should set `PRAGMA foreign_keys = ON`, (and what are consequences of leaving it off). what tests /decision wdo we need to make regarding handling this?: `engine.delete(Band, id)` silently orphans every `BandMember.band`; the dangling id then surfaces later as a confusing `RecordNotFoundError` (or `None`?) at `Lazy` load time, far from the delete that caused it. Decide: enable the pragma in `Engine.__init__` (fail fast at delete with `ConstraintError`), or explicitly document/test the orphan behavior. Also decide what a `Lazy` load of a dangling FK should do.
+- `engine.update` lacks the unpersisted-FK guard that `insert` has: `engine.update(Post, 1, band=unsaved_band)` flows through `adapt_value` → `value.id` → binds NULL — silent data corruption on a nullable FK column (and an opaque NOT NULL constraint error otherwise). Raise `UnpersistedRelationshipError` for parity with `insert`. Needs a test either way.
 
 
 # Testing
 All of these need test cases (or need it verified that a test already exists), either to capture and preserve existing behavior, or to define and enforce new behavior. Some of these are also more like "decisions to make", the codify with tests.
+- `target=None` on `update`/`delete` silently no-ops (returns 0). Good as an accident guard, but it's invisible — a caller who *meant* "all rows" gets 0 and no signal, and a caller who passed `None` by bug (e.g. `row.id` that was never populated) also gets silence. Decide: keep-and-test the silent no-op, or raise on `None` and add an explicit opt-in for full-table update/delete (e.g. `target=sqlir.ALL`). Least-surprise leans toward raising. Yea we don't want to accidentally delete all, but then how to delete all?
 - test types msgspec cannot encode raise at write time — confirm error message is clear and actionable
 - test that everything works on when doing arbitrary adhoc model queries that select FK in as model relationships
 - unit test for self join also
@@ -50,6 +54,7 @@ All of these need test cases (or need it verified that a test already exists), e
 # Next
 - make rel template strings easily print as their resolved SQL for debugging
 - migration interactive restore list too long. can you page restores or head results?
+- update/delete by `RETURNING` — give `engine.update` a way to hand back the updated row(s) instead of just a change count (SQLite ≥ 3.35 `UPDATE ... RETURNING`). The htmx/form pattern of "update then re-render the row" currently costs an extra `find` round-trip and, worse, is a read-after-write that can race under concurrent writers; RETURNING makes it atomic. Maybe `engine.update(..., returning=True) -> list[R]` or a separate verb.
 
 
 
@@ -67,6 +72,7 @@ All of these need test cases (or need it verified that a test already exists), e
 - Find and remove unused exceptions
 - make sql*.py private also rel*.py probably...
 - many-to-many style backrefs
+- `engine.count(Model, target=None)` — `SELECT count(*)` with the same target/predicate machinery as `select`. Every internal CRUD list view needs "page N of M" / "showing X of Y"; today the workaround is a per-table `__select_query__` Row model or `len(fetchall())`, both silly for a count. Pairs naturally with the existing `limit`/`offset` pagination params.
 
 
 ## Shadow Swap Pattern for Zero-Downtime Table Rebuilds
@@ -169,14 +175,12 @@ class XXX(TableRow):
     place: str
     value: int
 
-    _meta = Meta(
-        unique_contraints=[('name','place')]
-    )
+    _meta = Meta(unique_contraints=[("name", "place")])
+
 
 engine.ensure_table_created(XXX)
-engine.upsert(XXX(name='a', place='b', value=777))
-engine.upsert(XXX(name='a', place='c', value=888))
-
+engine.upsert(XXX(name="a", place="b", value=777))
+engine.upsert(XXX(name="a", place="c", value=888))
 ```
 
 
@@ -238,3 +242,4 @@ approx 20% perf boost for execute many on 20k rows, not worth it, yet
   - It works technically: in 3.14 the annotation isn't evaluated until `get_type_hints()`, so `Annotated[Rows[Child], Child.parent]` resolves fine at compile time even with forward refs, and the metadata is readable via `__metadata__`.
   - REJECTED because the ergonomics are worse: every backref becomes `field: Annotated[Rows[Child], Child.fk] = backref()` — the FK is now duplicated conceptually (annotation slot + empty `backref()` call), the `backref()` call carries no information, and the line is noisier than `field: Rows[Child] = backref(fk=Child.fk)`.
   - The same lazy-resolution goal is covered more cheaply by also allowing the fully-qualified string form `backref(fk="Child.parent")`. That keeps the clean `backref(fk=...)` surface, mirrors the typed `Child.parent` spelling, and already covers the awkward cases (self-referential or parent-first declarations) without moving metadata into `Annotated`.
+- `engine.save(row)` - the proper ergonomic decision is "immediate mode, directly mutate db, no state outside of DB"

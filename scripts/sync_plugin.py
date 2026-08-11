@@ -3,6 +3,7 @@
 
 Source of truth:
 - ``API.md``        -> ``agent-plugin/skills/sqlir/API.md`` (verbatim copy)
+- ``MIGRATIONS.md`` -> ``agent-plugin/skills/sqlir/MIGRATIONS.md`` (verbatim copy)
 - ``example.ipynb`` -> ``agent-plugin/skills/sqlir/example.py`` (jupytext
   "percent" format, code only, no outputs)
 
@@ -25,10 +26,15 @@ SKILL_DIR = REPO_ROOT / "agent-plugin" / "skills" / "sqlir"
 API_SRC = REPO_ROOT / "API.md"
 API_DST = SKILL_DIR / "API.md"
 
+MIGRATIONS_SRC = REPO_ROOT / "MIGRATIONS.md"
+MIGRATIONS_DST = SKILL_DIR / "MIGRATIONS.md"
+
 NOTEBOOK_SRC = REPO_ROOT / "example.ipynb"
 EXAMPLE_DST = SKILL_DIR / "example.py"
 
-GENERATED_BANNER = "AUTO-GENERATED — DO NOT EDIT. Regenerate with: python scripts/sync_plugin.py"
+GENERATED_BANNER = (
+    "AUTO-GENERATED — DO NOT EDIT. Regenerate with: python scripts/sync_plugin.py"
+)
 
 
 def notebook_to_percent(notebook_path: Path) -> str:
@@ -65,8 +71,10 @@ def copy_api(api_src: Path, api_dst: Path) -> None:
 def main() -> None:
     SKILL_DIR.mkdir(parents=True, exist_ok=True)
     copy_api(API_SRC, API_DST)
+    copy_api(MIGRATIONS_SRC, MIGRATIONS_DST)
     EXAMPLE_DST.write_text(notebook_to_percent(NOTEBOOK_SRC), encoding="utf-8")
     print(f"synced -> {API_DST.relative_to(REPO_ROOT)}")
+    print(f"synced -> {MIGRATIONS_DST.relative_to(REPO_ROOT)}")
     print(f"synced -> {EXAMPLE_DST.relative_to(REPO_ROOT)}")
 
 
