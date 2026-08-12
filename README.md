@@ -104,6 +104,29 @@ and for formatting:
 
     ruff format
 
+## Releasing
+Publishing to PyPI is automated via GitHub Actions ([.github/workflows/publish.yml](.github/workflows/publish.yml)) using PyPI Trusted Publishing — no API tokens involved. Pushing a `v*` tag runs the tests, builds the sdist/wheel, and publishes to [pypi.org/project/sqlir](https://pypi.org/project/sqlir/).
+
+To cut a release:
+
+1. Bump `version` in `pyproject.toml`
+2. Commit and push
+3. Tag and push the tag:
+
+    git tag v0.4.0 && git push origin v0.4.0
+
+The tag should match the version in `pyproject.toml` (with a `v` prefix).
+
+One-time setup (already done, recorded here for reference):
+
+- Trusted publisher registered on PyPI (Owner `y2kbugger`, repo `sqlir`, workflow `publish.yml`, environment `pypi`)
+- GitHub environment named `pypi` created in repo Settings → Environments
+
+To sanity-check a build locally before tagging:
+
+    uv build
+    uv run --isolated --no-project --with dist/sqlir-*.whl python -c "import sqlir"
+
 ## Updating
 
 Run the following to update the lock file, and .venv

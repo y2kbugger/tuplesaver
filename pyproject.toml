@@ -1,14 +1,31 @@
 [project]
 name = "sqlir"
-version = "0.4.0"
+version = "0.5.0"
 description = "A simple, opinionated persister for immutable dataclass-style models on SQLite."
 authors = [{ name = "y2k", email = "git@y2kbugger.com" }]
 requires-python = ">=3.14"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["sqlite", "orm", "persistence", "dataclass", "msgspec", "immutable"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
 dependencies = [
     "apsw>=3.51.1.0",
     "msgspec>=0.19.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/y2kbugger/sqlir"
+Repository = "https://github.com/y2kbugger/sqlir"
+Issues = "https://github.com/y2kbugger/sqlir/issues"
 
 [project.scripts]
 sqlir-migrate = "sqlir.migrate_cli:main"
@@ -51,6 +68,7 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-root = "."
+wheel-exclude = ["*_test.py", "conftest.py", "sqlir/migrate_scenarios/**"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
