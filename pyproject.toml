@@ -1,6 +1,6 @@
 [project]
 name = "sqlir"
-version = "0.5.0"
+version = "0.5.1"
 description = "A simple, opinionated persister for immutable dataclass-style models on SQLite."
 authors = [{ name = "y2k", email = "git@y2kbugger.com" }]
 requires-python = ">=3.14"
