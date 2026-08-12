@@ -32,9 +32,7 @@ MIGRATIONS_DST = SKILL_DIR / "MIGRATIONS.md"
 NOTEBOOK_SRC = REPO_ROOT / "example.ipynb"
 EXAMPLE_DST = SKILL_DIR / "example.py"
 
-GENERATED_BANNER = (
-    "AUTO-GENERATED — DO NOT EDIT. Regenerate with: python scripts/sync_plugin.py"
-)
+GENERATED_BANNER = "AUTO-GENERATED — DO NOT EDIT. Regenerate with: python scripts/sync_plugin.py"
 
 
 def notebook_to_percent(notebook_path: Path) -> str:
