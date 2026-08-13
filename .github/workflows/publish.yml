@@ -35,5 +35,4 @@ jobs:
           path: dist/
       - uses: astral-sh/setup-uv@v5
       - name: Publish to PyPI
-        # --check-url makes re-pushed tags a no-op instead of a failure when the version is already on PyPI
-        run: uv publish --check-url https://pypi.org/simple/sqlir/
+        run: uv publish

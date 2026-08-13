@@ -142,6 +142,9 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
     trailers/bylines to commit messages, PR descriptions, or code.** Commits are
     authored by the repo owner alone. Write plain, imperative-mood commit
     messages matching the existing `git log` style.
+- **Releases: never re-push or force-push a tag.** If a release is botched,
+    delete the bad tag from GitHub, bump to the next version, and tag fresh.
+    A version/tag, once pushed, is immutable — fix forward with a new bump.
 - Always check `TODO.md` before suggesting changes. Many "obvious" features are
   already tracked as non-goals or future work.
 - Remove the todo bullet points from `TODO.md` when you start it, not when you finish it. This helps track in-progress work and prevents vestigial todos not getting removed once the work is done.
