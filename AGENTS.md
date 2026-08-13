@@ -138,6 +138,10 @@ you should always run tests, then `ty check` then ` ruff check --fix` in that or
 - Run the full suite (`pytest -vv`); all 227+ tests should pass
 
 ## Dev pratices
+- **NEVER add `Co-Authored-By`, "Generated with", or any other AI-attribution
+    trailers/bylines to commit messages, PR descriptions, or code.** Commits are
+    authored by the repo owner alone. Write plain, imperative-mood commit
+    messages matching the existing `git log` style.
 - Always check `TODO.md` before suggesting changes. Many "obvious" features are
   already tracked as non-goals or future work.
 - Remove the todo bullet points from `TODO.md` when you start it, not when you finish it. This helps track in-progress work and prevents vestigial todos not getting removed once the work is done.
